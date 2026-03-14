@@ -7,20 +7,11 @@ RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 DirectoryIndex index.php
 
 # Proteger archivos sensibles
-<Files "config.php">
-    Order Allow,Deny
-    Deny from all
-</Files>
-
-<Files "auth.php">
-    Order Allow,Deny
-    Deny from all
-</Files>
-
-<Files "database.sql">
-    Order Allow,Deny
-    Deny from all
-</Files>
+<FilesMatch "^(config|auth|database\.sql|hype_api|crear_admin)">
+    <IfModule mod_authz_core.c>
+        Require all denied
+    </IfModule>
+</FilesMatch>
 
 # Prevenir listado de directorios
 Options -Indexes
