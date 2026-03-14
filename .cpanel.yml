@@ -16,4 +16,8 @@ deployment:
     - /bin/cp producto.php $DEPLOYPATH
     - /bin/cp procesar_pedido.php $DEPLOYPATH
     - /bin/cp mis_pedidos.php $DEPLOYPATH
+    - /bin/cp admin_productos.php $DEPLOYPATH
+    - /bin/cp admin_pines.php $DEPLOYPATH
+    - /bin/cp hype_api.php $DEPLOYPATH
+    - /bin/cp resultado_pedido.php $DEPLOYPATH
     - /bin/cp .htaccess $DEPLOYPATH
