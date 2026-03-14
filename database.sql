@@ -1,9 +1,9 @@
 -- ===== BASE DE DATOS GAMERSREV =====
 -- Ejecutar este script en phpMyAdmin de cPanel
 
-CREATE DATABASE IF NOT EXISTS gamersre_tienda CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS gamersrev_tienda CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
-USE gamersre_tienda;
+USE gamersrev_tienda;
 
 -- Tabla de usuarios
 CREATE TABLE IF NOT EXISTS usuarios (
