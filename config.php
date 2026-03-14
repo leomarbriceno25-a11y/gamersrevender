@@ -4,9 +4,9 @@ session_start();
 
 // Configuración de la base de datos
 define('DB_HOST', 'localhost');
-define('DB_NAME', 'gamersrev_tienda');  // Local: gamersrev_tienda | cPanel: gamersre_tienda
-define('DB_USER', 'root');               // Local: root | cPanel: gamersre_admin
-define('DB_PASS', '');                   // Local: vacio | cPanel: TU_PASSWORD
+define('DB_NAME', 'gamersre_tienda');
+define('DB_USER', 'gamersre_admin');
+define('DB_PASS', 'Leomar.27');
 
 // Configuración de la tienda
 define('TIENDA_NOMBRE', 'GamersRev');
