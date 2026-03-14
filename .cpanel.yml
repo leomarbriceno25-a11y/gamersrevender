@@ -1,0 +1,19 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/gamersre/public_html/
+    - /bin/cp -R css $DEPLOYPATH
+    - /bin/cp -R includes $DEPLOYPATH
+    - /bin/cp index.php $DEPLOYPATH
+    - /bin/cp config.php $DEPLOYPATH
+    - /bin/cp auth.php $DEPLOYPATH
+    - /bin/cp login.php $DEPLOYPATH
+    - /bin/cp registro.php $DEPLOYPATH
+    - /bin/cp logout.php $DEPLOYPATH
+    - /bin/cp dashboard.php $DEPLOYPATH
+    - /bin/cp freefire.php $DEPLOYPATH
+    - /bin/cp giftcards.php $DEPLOYPATH
+    - /bin/cp producto.php $DEPLOYPATH
+    - /bin/cp procesar_pedido.php $DEPLOYPATH
+    - /bin/cp mis_pedidos.php $DEPLOYPATH
+    - /bin/cp .htaccess $DEPLOYPATH
