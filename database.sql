@@ -83,6 +83,33 @@ CREATE TABLE IF NOT EXISTS pines (
     FOREIGN KEY (pedido_id) REFERENCES pedidos(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Tabla de carteras (wallet)
+CREATE TABLE IF NOT EXISTS carteras (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    usuario_id INT NOT NULL UNIQUE,
+    saldo DECIMAL(10,2) DEFAULT 0.00,
+    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+    ultima_actualizacion DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tabla de transacciones de cartera
+CREATE TABLE IF NOT EXISTS transacciones (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    usuario_id INT NOT NULL,
+    tipo ENUM('recarga', 'compra', 'reembolso') NOT NULL,
+    monto DECIMAL(10,2) NOT NULL,
+    saldo_anterior DECIMAL(10,2) NOT NULL,
+    saldo_nuevo DECIMAL(10,2) NOT NULL,
+    descripcion VARCHAR(255) DEFAULT NULL,
+    pedido_id INT DEFAULT NULL,
+    admin_id INT DEFAULT NULL,
+    fecha DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+    FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
+    FOREIGN KEY (admin_id) REFERENCES usuarios(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- ===== DATOS INICIALES =====
 
 -- Categorias

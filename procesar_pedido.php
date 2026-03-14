@@ -15,7 +15,6 @@ $usuario = obtenerUsuarioActual();
 $producto_id = intval($_POST['producto_id'] ?? 0);
 $cantidad = intval($_POST['cantidad'] ?? 1);
 $id_juego = trim($_POST['id_juego'] ?? '');
-$metodo_pago = trim($_POST['metodo_pago'] ?? '');
 
 // Obtener producto
 $stmt = $db->prepare("SELECT * FROM productos WHERE id = ? AND activo = 1");
@@ -30,10 +29,47 @@ if (!$producto) {
 
 $total = $producto['precio'] * $cantidad;
 
-// Guardar pedido en la base de datos
-$stmt = $db->prepare("INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, metodo_pago) VALUES (?, ?, ?, ?, ?, ?)");
-$stmt->execute([$usuario['id'], $producto_id, $cantidad, $total, $id_juego, $metodo_pago]);
-$pedido_id = $db->lastInsertId();
+// === VERIFICAR SALDO EN CARTERA ===
+$db->beginTransaction();
+try {
+    // Crear cartera si no existe
+    $stmt = $db->prepare("INSERT IGNORE INTO carteras (usuario_id, saldo) VALUES (?, 0.00)");
+    $stmt->execute([$usuario['id']]);
+
+    // Obtener saldo con bloqueo
+    $stmt = $db->prepare("SELECT saldo FROM carteras WHERE usuario_id = ? FOR UPDATE");
+    $stmt->execute([$usuario['id']]);
+    $saldo_actual = $stmt->fetchColumn();
+
+    if ($saldo_actual < $total) {
+        $db->rollBack();
+        setFlash('Saldo insuficiente. Tu saldo es $' . number_format($saldo_actual, 2) . ' y el total es $' . number_format($total, 2) . '. Recarga tu cartera para continuar.', 'error');
+        header('Location: producto.php?id=' . $producto_id);
+        exit;
+    }
+
+    $saldo_nuevo = $saldo_actual - $total;
+
+    // Descontar saldo
+    $stmt = $db->prepare("UPDATE carteras SET saldo = ? WHERE usuario_id = ?");
+    $stmt->execute([$saldo_nuevo, $usuario['id']]);
+
+    // Guardar pedido
+    $stmt = $db->prepare("INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, metodo_pago) VALUES (?, ?, ?, ?, ?, 'cartera')");
+    $stmt->execute([$usuario['id'], $producto_id, $cantidad, $total, $id_juego]);
+    $pedido_id = $db->lastInsertId();
+
+    // Registrar transacción
+    $stmt = $db->prepare("INSERT INTO transacciones (usuario_id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, pedido_id) VALUES (?, 'compra', ?, ?, ?, ?, ?)");
+    $stmt->execute([$usuario['id'], $total, $saldo_actual, $saldo_nuevo, 'Compra: ' . $producto['nombre'] . ' x' . $cantidad, $pedido_id]);
+
+    $db->commit();
+} catch (Exception $e) {
+    $db->rollBack();
+    setFlash('Error al procesar el pago: ' . $e->getMessage(), 'error');
+    header('Location: producto.php?id=' . $producto_id);
+    exit;
+}
 
 // === CANJE AUTOMÁTICO (solo para Free Fire con ID de juego) ===
 $canje_exitoso = false;
@@ -41,7 +77,6 @@ $canje_resultados = [];
 
 if ($producto['categoria'] === 'freefire' && !empty($id_juego)) {
     for ($i = 0; $i < $cantidad; $i++) {
-        // Buscar un PIN disponible para este producto
         $stmt = $db->prepare("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1");
         $stmt->execute([$producto_id]);
         $pin_disponible = $stmt->fetch();
@@ -51,21 +86,17 @@ if ($producto['categoria'] === 'freefire' && !empty($id_juego)) {
             break;
         }
 
-        // Marcar PIN como "procesando" temporalmente
         $stmt = $db->prepare("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = NOW() WHERE id = ?");
         $stmt->execute([$usuario['id'], $pedido_id, $pin_disponible['id']]);
 
-        // Intentar canjear el PIN
         $resultado = hypeCanjearPin($pin_disponible['pin'], $id_juego);
         $canje_resultados[] = $resultado;
 
         if ($resultado['ok']) {
-            // Guardar nombre del jugador
             $stmt = $db->prepare("UPDATE pines SET nombre_juego = ? WHERE id = ?");
             $stmt->execute([$resultado['username'] ?? '', $pin_disponible['id']]);
             $canje_exitoso = true;
         } else {
-            // Marcar PIN como error
             $stmt = $db->prepare("UPDATE pines SET estado = 'error' WHERE id = ?");
             $stmt->execute([$pin_disponible['id']]);
         }
@@ -81,25 +112,10 @@ if ($canje_exitoso) {
     exit;
 }
 
-// Si no hay stock o es gift card, redirigir a WhatsApp
+// Si no hay stock de PINs o es gift card, pedido queda pendiente para procesamiento manual
 $stmt = $db->prepare("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?");
 $stmt->execute([$pedido_id]);
-
-$mensaje = "🎮 *NUEVO PEDIDO #$pedido_id - " . TIENDA_NOMBRE . "*\n\n";
-$mensaje .= "👤 *Cliente:* " . $usuario['nombre'] . "\n";
-$mensaje .= "📧 *Email:* " . $usuario['email'] . "\n";
-$mensaje .= "🛒 *Producto:* " . $producto['nombre'] . "\n";
-$mensaje .= "📦 *Cantidad:* x" . $cantidad . "\n";
-$mensaje .= "💰 *Total:* $" . number_format($total, 2) . "\n";
-$mensaje .= "💳 *Método de pago:* " . $metodo_pago . "\n";
-
-if (!empty($id_juego)) {
-    $mensaje .= "🎯 *ID Free Fire:* " . $id_juego . "\n";
-}
-
-$mensaje .= "\n¡Hola! Quiero realizar este pedido. ¿Cómo procedo con el pago?";
-
-$whatsapp_url = "https://wa.me/" . WHATSAPP_NUMERO . "?text=" . urlencode($mensaje);
-header("Location: $whatsapp_url");
+setFlash('¡Pedido #' . $pedido_id . ' registrado! Se descontaron $' . number_format($total, 2) . ' de tu cartera. Tu pedido será procesado pronto.', 'success');
+header('Location: resultado_pedido.php?id=' . $pedido_id);
 exit;
 ?>

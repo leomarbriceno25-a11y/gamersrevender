@@ -11,6 +11,11 @@ $stmt = $db->prepare("SELECT COUNT(*) as total_pedidos, COALESCE(SUM(total), 0) 
 $stmt->execute([$usuario['id']]);
 $stats = $stmt->fetch();
 
+// Obtener saldo de cartera
+$stmt = $db->prepare("SELECT COALESCE(saldo, 0) as saldo FROM carteras WHERE usuario_id = ?");
+$stmt->execute([$usuario['id']]);
+$saldo = $stmt->fetchColumn() ?: 0;
+
 // Obtener últimos pedidos
 $stmt = $db->prepare("SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC LIMIT 5");
 $stmt->execute([$usuario['id']]);
@@ -43,11 +48,11 @@ require_once 'includes/header.php';
                     <p>Pedidos realizados</p>
                 </div>
             </div>
-            <div class="stat-card">
-                <div class="stat-icon"><i class="fas fa-dollar-sign"></i></div>
+            <div class="stat-card stat-card-wallet">
+                <div class="stat-icon"><i class="fas fa-wallet"></i></div>
                 <div class="stat-info">
-                    <h3>$<?php echo number_format($stats['total_gastado'], 2); ?></h3>
-                    <p>Total gastado</p>
+                    <h3><a href="cartera.php" class="stat-link">$<?php echo number_format($saldo, 2); ?></a></h3>
+                    <p>Saldo en cartera</p>
                 </div>
             </div>
             <div class="stat-card">

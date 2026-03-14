@@ -29,10 +29,12 @@
                 <a href="dashboard.php"><i class="fas fa-home"></i> Inicio</a>
                 <a href="freefire.php"><i class="fas fa-fire"></i> Free Fire</a>
                 <a href="giftcards.php"><i class="fas fa-gift"></i> Gift Cards</a>
+                <a href="cartera.php"><i class="fas fa-wallet"></i> Cartera</a>
                 <a href="mis_pedidos.php"><i class="fas fa-shopping-bag"></i> Mis Pedidos</a>
                 <?php if (esAdmin()): ?>
                 <a href="admin_productos.php"><i class="fas fa-boxes-stacked"></i> Productos</a>
                 <a href="admin_pines.php"><i class="fas fa-key"></i> PINs</a>
+                <a href="admin_recargas.php"><i class="fas fa-wallet"></i> Recargas</a>
                 <?php endif; ?>
             </div>
             <div class="nav-user">

@@ -20,4 +20,6 @@ deployment:
     - /bin/cp admin_pines.php $DEPLOYPATH
     - /bin/cp hype_api.php $DEPLOYPATH
     - /bin/cp resultado_pedido.php $DEPLOYPATH
+    - /bin/cp cartera.php $DEPLOYPATH
+    - /bin/cp admin_recargas.php $DEPLOYPATH
     - /bin/cp .htaccess $DEPLOYPATH

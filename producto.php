@@ -4,11 +4,17 @@ require_once 'auth.php';
 requiereLogin();
 
 $db = conectarDB();
+$usuario = obtenerUsuarioActual();
 $id = intval($_GET['id'] ?? 0);
 
 $stmt = $db->prepare("SELECT * FROM productos WHERE id = ? AND activo = 1");
 $stmt->execute([$id]);
 $producto = $stmt->fetch();
+
+// Obtener saldo de cartera
+$stmt = $db->prepare("SELECT COALESCE(saldo, 0) as saldo FROM carteras WHERE usuario_id = ?");
+$stmt->execute([$usuario['id']]);
+$saldo = $stmt->fetchColumn() ?: 0;
 
 if (!$producto) {
     setFlash('Producto no encontrado', 'error');
@@ -65,16 +71,19 @@ require_once 'includes/header.php';
                         </select>
                     </div>
 
-                    <div class="form-group">
-                        <label for="metodo_pago"><i class="fas fa-credit-card"></i> Método de pago</label>
-                        <select id="metodo_pago" name="metodo_pago" class="form-select" required>
-                            <option value="">Selecciona...</option>
-                            <option value="transferencia">Transferencia bancaria</option>
-                            <option value="pago_movil">Pago Móvil</option>
-                            <option value="binance">Binance Pay / USDT</option>
-                            <option value="paypal">PayPal</option>
-                            <option value="zinli">Zinli</option>
-                        </select>
+                    <div class="wallet-payment-box">
+                        <div class="wallet-payment-info">
+                            <i class="fas fa-wallet"></i>
+                            <div>
+                                <span class="wallet-payment-label">Pago con cartera</span>
+                                <span class="wallet-payment-saldo <?php echo $saldo >= $producto['precio'] ? 'text-green' : 'text-red'; ?>">Saldo: $<?php echo number_format($saldo, 2); ?></span>
+                            </div>
+                        </div>
+                        <?php if ($saldo < $producto['precio']): ?>
+                        <div class="wallet-insufficient">
+                            <i class="fas fa-exclamation-triangle"></i> Saldo insuficiente. <a href="cartera.php">Recarga tu cartera</a>
+                        </div>
+                        <?php endif; ?>
                     </div>
 
                     <div class="order-summary">
@@ -89,9 +98,14 @@ require_once 'includes/header.php';
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-block btn-lg">
-                        <i class="fab fa-whatsapp"></i> Pedir por WhatsApp
+                    <button type="submit" class="btn btn-primary btn-block btn-lg" <?php echo $saldo < $producto['precio'] ? 'disabled' : ''; ?>>
+                        <i class="fas fa-wallet"></i> Pagar con Cartera
                     </button>
+                    <?php if ($saldo < $producto['precio']): ?>
+                    <a href="cartera.php" class="btn btn-secondary btn-block">
+                        <i class="fas fa-plus-circle"></i> Recargar Cartera
+                    </a>
+                    <?php endif; ?>
                 </form>
             </div>
         </div>
