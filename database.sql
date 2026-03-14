@@ -1,9 +1,6 @@
 -- ===== BASE DE DATOS GAMERSREV =====
 -- Ejecutar este script en phpMyAdmin de cPanel
-
-CREATE DATABASE IF NOT EXISTS gamersrev_tienda CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-
-USE gamersrev_tienda;
+-- Seleccionar la BD gamersre_tienda antes de ejecutar
 
 -- Tabla de usuarios
 CREATE TABLE IF NOT EXISTS usuarios (
@@ -18,6 +15,18 @@ CREATE TABLE IF NOT EXISTS usuarios (
     ultimo_login DATETIME DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
+-- Tabla de categorias
+CREATE TABLE IF NOT EXISTS categorias (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    nombre VARCHAR(100) NOT NULL,
+    slug VARCHAR(100) NOT NULL UNIQUE,
+    icono VARCHAR(50) DEFAULT 'fa-folder',
+    descripcion TEXT,
+    activo TINYINT(1) DEFAULT 1,
+    orden INT DEFAULT 0,
+    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
 -- Tabla de productos
 CREATE TABLE IF NOT EXISTS productos (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -28,6 +37,19 @@ CREATE TABLE IF NOT EXISTS productos (
     icono VARCHAR(50) DEFAULT 'fa-gem',
     activo TINYINT(1) DEFAULT 1,
     fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Tabla de servicios
+CREATE TABLE IF NOT EXISTS servicios (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    producto_id INT NOT NULL,
+    nombre VARCHAR(200) NOT NULL,
+    descripcion TEXT,
+    precio DECIMAL(10,2) NOT NULL,
+    activo TINYINT(1) DEFAULT 1,
+    orden INT DEFAULT 0,
+    fecha_creacion DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (producto_id) REFERENCES productos(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Tabla de pedidos
@@ -45,7 +67,28 @@ CREATE TABLE IF NOT EXISTS pedidos (
     FOREIGN KEY (producto_id) REFERENCES productos(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- ===== PRODUCTOS INICIALES =====
+-- Tabla de PINs
+CREATE TABLE IF NOT EXISTS pines (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    producto_id INT NOT NULL,
+    pin VARCHAR(255) NOT NULL,
+    estado ENUM('disponible', 'usado', 'error') DEFAULT 'disponible',
+    usado_por INT DEFAULT NULL,
+    pedido_id INT DEFAULT NULL,
+    nombre_juego VARCHAR(100) DEFAULT NULL,
+    fecha_agregado DATETIME DEFAULT CURRENT_TIMESTAMP,
+    fecha_usado DATETIME DEFAULT NULL,
+    FOREIGN KEY (producto_id) REFERENCES productos(id),
+    FOREIGN KEY (usado_por) REFERENCES usuarios(id),
+    FOREIGN KEY (pedido_id) REFERENCES pedidos(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ===== DATOS INICIALES =====
+
+-- Categorias
+INSERT INTO categorias (nombre, slug, icono, descripcion, orden) VALUES
+('Free Fire', 'freefire', 'fa-fire', 'Recargas de diamantes Free Fire', 1),
+('Gift Cards', 'giftcard', 'fa-gift', 'Tarjetas de regalo para todas las plataformas', 2);
 
 -- Free Fire
 INSERT INTO productos (nombre, descripcion, precio, categoria, icono) VALUES
@@ -66,3 +109,7 @@ INSERT INTO productos (nombre, descripcion, precio, categoria, icono) VALUES
 ('Gift Card Steam $20', 'Tarjeta Steam Wallet $20 USD', 22.00, 'giftcard', 'fa-gift'),
 ('Gift Card Google Play $10', 'Tarjeta Google Play $10 USD', 11.00, 'giftcard', 'fa-gift'),
 ('Gift Card iTunes $10', 'Tarjeta iTunes/App Store $10 USD', 11.50, 'giftcard', 'fa-gift');
+
+-- Usuario admin (password: admin123)
+INSERT INTO usuarios (nombre, email, password, telefono, rol) VALUES
+('Admin', 'admin@gamersrev.com', '$2y$10$YjdSFnhmT1JV1de.5NJ8meeguBGSvO5y5r0eGlfdm/6c.6EhKfO.y', '0000000000', 'admin');
