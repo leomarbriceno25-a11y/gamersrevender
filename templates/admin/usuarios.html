@@ -1,0 +1,36 @@
+{% extends 'base.html' %}
+{% block title %}Admin Usuarios - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-users"></i> Gestión de Usuarios</h1>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Activo</th><th>Registro</th><th>Último Login</th></tr>
+                </thead>
+                <tbody>
+                    {% for u in usuarios %}
+                    <tr>
+                        <td>{{ u.id }}</td>
+                        <td>{{ u.nombre }}</td>
+                        <td>{{ u.email }}</td>
+                        <td><span class="badge badge-{{ 'completado' if u.rol == 'admin' else 'procesando' }}">{{ u.rol|capitalize }}</span></td>
+                        <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.2f'|format(u.saldo) }}</td>
+                        <td>{{ 'Sí' if u.activo else 'No' }}</td>
+                        <td>{{ u.fecha_registro or '-' }}</td>
+                        <td>{{ u.ultimo_login or 'Nunca' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endblock %}

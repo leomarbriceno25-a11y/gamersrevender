@@ -1,0 +1,75 @@
+{% extends 'base.html' %}
+{% block title %}Mi Cartera - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1><i class="fas fa-wallet"></i> Mi Cartera</h1>
+        <p>Gestiona tu saldo y revisa tus movimientos</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="wallet-overview">
+            <div class="wallet-balance-card">
+                <div class="wallet-balance-icon"><i class="fas fa-wallet"></i></div>
+                <div class="wallet-balance-info">
+                    <span class="wallet-balance-label">Saldo disponible</span>
+                    <span class="wallet-balance-amount">${{ '%.2f'|format(saldo) }}</span>
+                </div>
+            </div>
+            <div class="wallet-actions">
+                <a href="{{ url_for('catalogo', slug='freefire') }}" class="btn btn-primary"><i class="fas fa-fire"></i> Diamantes</a>
+                <a href="{{ url_for('catalogo', slug='giftcard') }}" class="btn btn-secondary"><i class="fas fa-gift"></i> Gift Cards</a>
+            </div>
+        </div>
+
+        <div class="wallet-info-box">
+            <i class="fas fa-info-circle"></i>
+            <p>Para recargar tu cartera, contacta al administrador por WhatsApp. Una vez confirmado el pago, tu saldo se actualizará.</p>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <h2 class="section-title"><i class="fas fa-exchange-alt"></i> Historial de Movimientos</h2>
+        {% if transacciones %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Monto</th><th>Saldo</th></tr>
+                </thead>
+                <tbody>
+                    {% for t in transacciones %}
+                    <tr>
+                        <td>{{ t.fecha }}</td>
+                        <td>
+                            {% if t.tipo == 'recarga' %}
+                            <span class="badge badge-completado"><i class="fas fa-arrow-up"></i> Recarga</span>
+                            {% elif t.tipo == 'compra' %}
+                            <span class="badge badge-procesando"><i class="fas fa-arrow-down"></i> Compra</span>
+                            {% else %}
+                            <span class="badge badge-pendiente"><i class="fas fa-undo"></i> Reembolso</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ t.descripcion or '-' }}</td>
+                        <td class="{{ 'text-red' if t.tipo == 'compra' else 'text-green' }}">
+                            {{ '-' if t.tipo == 'compra' else '+' }}${{ '%.2f'|format(t.monto) }}
+                        </td>
+                        <td>${{ '%.2f'|format(t.saldo_nuevo) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-receipt"></i>
+            <h2>Sin movimientos</h2>
+            <p>Aún no tienes transacciones en tu cartera</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

@@ -1,0 +1,246 @@
+{% extends 'base.html' %}
+{% block title %}Admin Productos - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-boxes-stacked"></i> Gestión de Productos</h1>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="admin-card" id="form-producto">
+            <h2 id="form-titulo"><i class="fas fa-plus-circle"></i> Nuevo Producto</h2>
+            <form method="POST" id="producto-form">
+                <input type="hidden" name="accion" id="form-accion" value="crear">
+                <input type="hidden" name="producto_id" id="form-producto-id" value="">
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label><i class="fas fa-tag"></i> Nombre</label>
+                        <input type="text" name="nombre" id="form-nombre" placeholder="Nombre del producto" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-dollar-sign"></i> Precio ($)</label>
+                        <input type="number" name="precio" id="form-precio" step="0.01" min="0.01" placeholder="0.00" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-folder"></i> Categoría</label>
+                        <select name="categoria_id" id="form-categoria" class="form-select" required>
+                            {% for c in categorias %}
+                            <option value="{{ c.id }}">{{ c.nombre }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-icons"></i> Icono</label>
+                        <input type="text" name="icono" id="form-icono" value="fa-gem" placeholder="fa-gem">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-align-left"></i> Descripción</label>
+                    <input type="text" name="descripcion" id="form-descripcion" placeholder="Descripción del producto">
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="activo" id="form-activo" checked> Producto activo (visible en catálogo)
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="usa_api" id="form-usa-api" onchange="toggleMonto()"> <i class="fas fa-bolt" style="color:#fbbf24;"></i> Usa API Hype Games (canje automático con PINes del almacén)
+                    </label>
+                </div>
+                <div class="form-group" id="monto-api-group" style="display:none;">
+                    <label><i class="fas fa-gem" style="color:#fbbf24;"></i> Monto API (paquete de diamantes)</label>
+                    <select name="monto_api" id="form-monto-api" class="form-select">
+                        <option value="0">Sin monto (no aplica)</option>
+                        <option value="1">1 - 110 diamantes (100+10)</option>
+                        <option value="2">2 - 341 diamantes (310+31)</option>
+                        <option value="3">3 - 572 diamantes (520+52)</option>
+                        <option value="4">4 - 1166 diamantes (1060+106)</option>
+                        <option value="5">5 - 2376 diamantes (2180+196)</option>
+                        <option value="6">6 - 6138 diamantes (5600+538)</option>
+                    </select>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="form-btn">
+                        <i class="fas fa-plus"></i> <span id="form-btn-text">Crear Producto</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="btn-cancelar" style="display:none;" onclick="resetForm()">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+            <h2 class="section-title" style="margin:0;"><i class="fas fa-list"></i> Productos ({{ productos|length }})</h2>
+            <button type="button" class="btn btn-sm btn-danger" id="btn-eliminar-prod" style="display:none;" onclick="eliminarProductosSel()">
+                <i class="fas fa-trash"></i> Eliminar seleccionados (<span id="count-prod-sel">0</span>)
+            </button>
+        </div>
+        {% if productos %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="width:40px;"><input type="checkbox" id="sel-todos-prod" onclick="toggleTodosProd(this)" title="Seleccionar todos"></th>
+                        <th>Orden</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>API</th><th>Monto</th><th>Activo</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in productos %}
+                    <tr id="row-{{ p.id }}">
+                        <td><input type="checkbox" class="sel-prod" value="{{ p.id }}" onclick="actualizarConteoProd()"></td>
+                        <td>
+                            <div class="order-arrows">
+                                <button class="btn-arrow" onclick="moverProducto({{ p.id }}, 'up')" title="Subir"><i class="fas fa-chevron-up"></i></button>
+                                <button class="btn-arrow" onclick="moverProducto({{ p.id }}, 'down')" title="Bajar"><i class="fas fa-chevron-down"></i></button>
+                            </div>
+                        </td>
+                        <td><i class="fas {{ p.icono }}"></i> {{ p.nombre }}</td>
+                        <td>{{ p.categoria_nombre or '-' }}</td>
+                        <td>${{ '%.2f'|format(p.precio) }}</td>
+                        <td>
+                            {% if p.usa_api %}
+                            <span class="badge badge-pendiente"><i class="fas fa-bolt"></i> API</span>
+                            {% else %}
+                            <span style="color:var(--text-secondary);">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if p.monto_api %}
+                            <span class="badge badge-procesando">{{ p.monto_api }}</span>
+                            {% else %}
+                            <span style="color:var(--text-secondary);">-</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if p.activo %}
+                            <span class="badge badge-completado">Activo</span>
+                            {% else %}
+                            <span class="badge badge-cancelado">Inactivo</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="action-btns">
+                                <button class="btn btn-sm btn-secondary" onclick="editarProducto({{ p.id }}, '{{ p.nombre|e }}', {{ p.precio }}, {{ p.categoria_id }}, '{{ p.icono }}', '{{ p.descripcion|e }}', {{ p.activo }}, {{ p.usa_api }}, {{ p.monto_api }}, {{ p.orden }})">
+                                    <i class="fas fa-edit"></i> Editar
+                                </button>
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="accion" value="eliminar">
+                                    <input type="hidden" name="producto_id" value="{{ p.id }}">
+                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar {{ p.nombre }}? Esta acción no se puede deshacer.')">
+                                        <i class="fas fa-trash"></i> Eliminar
+                                    </button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-box-open"></i>
+            <h2>Sin productos</h2>
+            <p>Crea tu primer producto usando el formulario de arriba</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleMonto() {
+    var show = document.getElementById('form-usa-api').checked;
+    document.getElementById('monto-api-group').style.display = show ? 'block' : 'none';
+    if (!show) document.getElementById('form-monto-api').value = '0';
+}
+
+function toggleTodosProd(master) {
+    var checks = document.querySelectorAll('.sel-prod');
+    checks.forEach(function(c) { c.checked = master.checked; });
+    actualizarConteoProd();
+}
+
+function actualizarConteoProd() {
+    var checks = document.querySelectorAll('.sel-prod:checked');
+    var btn = document.getElementById('btn-eliminar-prod');
+    var count = document.getElementById('count-prod-sel');
+    count.textContent = checks.length;
+    btn.style.display = checks.length > 0 ? 'inline-flex' : 'none';
+    var todos = document.querySelectorAll('.sel-prod');
+    document.getElementById('sel-todos-prod').checked = checks.length === todos.length && todos.length > 0;
+}
+
+function eliminarProductosSel() {
+    var checks = document.querySelectorAll('.sel-prod:checked');
+    var ids = [];
+    checks.forEach(function(c) { ids.push(parseInt(c.value)); });
+    if (ids.length === 0) return;
+    if (!confirm('¿Eliminar ' + ids.length + ' producto(s) seleccionado(s)? Esta acción no se puede deshacer.')) return;
+    fetch('/admin/productos/eliminar-lote', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: ids})
+    }).then(function(r) { return r.json(); }).then(function(data) {
+        alert('Se eliminaron ' + data.eliminados + ' producto(s).');
+        location.reload();
+    });
+}
+
+function moverProducto(id, dir) {
+    fetch('/admin/productos/orden', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: id, dir: dir})
+    }).then(function() { location.reload(); });
+}
+
+function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi) {
+    document.getElementById('form-accion').value = 'editar';
+    document.getElementById('form-producto-id').value = id;
+    document.getElementById('form-nombre').value = nombre;
+    document.getElementById('form-precio').value = precio;
+    document.getElementById('form-categoria').value = categoriaId;
+    document.getElementById('form-icono').value = icono;
+    document.getElementById('form-descripcion').value = descripcion;
+    document.getElementById('form-activo').checked = activo == 1;
+    document.getElementById('form-usa-api').checked = usaApi == 1;
+    document.getElementById('form-monto-api').value = montoApi;
+    toggleMonto();
+    document.getElementById('form-titulo').innerHTML = '<i class="fas fa-edit"></i> Editar Producto #' + id;
+    document.getElementById('form-btn-text').textContent = 'Guardar Cambios';
+    document.getElementById('form-btn').querySelector('i').className = 'fas fa-save';
+    document.getElementById('btn-cancelar').style.display = 'inline-flex';
+    document.getElementById('form-producto').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('form-producto').style.borderColor = '#7c3aed';
+}
+
+function resetForm() {
+    document.getElementById('form-accion').value = 'crear';
+    document.getElementById('form-producto-id').value = '';
+    document.getElementById('form-nombre').value = '';
+    document.getElementById('form-precio').value = '';
+    document.getElementById('form-icono').value = 'fa-gem';
+    document.getElementById('form-descripcion').value = '';
+    document.getElementById('form-activo').checked = true;
+    document.getElementById('form-usa-api').checked = false;
+    document.getElementById('form-monto-api').value = '0';
+    toggleMonto();
+    document.getElementById('form-titulo').innerHTML = '<i class="fas fa-plus-circle"></i> Nuevo Producto';
+    document.getElementById('form-btn-text').textContent = 'Crear Producto';
+    document.getElementById('form-btn').querySelector('i').className = 'fas fa-plus';
+    document.getElementById('btn-cancelar').style.display = 'none';
+    document.getElementById('form-producto').style.borderColor = '';
+}
+</script>
+{% endblock %}

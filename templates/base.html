@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}{{ tienda_nombre }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="flash-message flash-{{ category }}">
+        <div class="container">
+            <i class="fas {{ 'fa-check-circle' if category == 'success' else 'fa-exclamation-circle' }}"></i>
+            {{ message }}
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <nav class="navbar">
+        <div class="container nav-container">
+            <a href="{{ url_for('dashboard') if current_user else url_for('login') }}" class="nav-logo">
+                <i class="fas fa-gamepad"></i> {{ tienda_nombre }}
+            </a>
+            {% if current_user %}
+            <div class="nav-links">
+                <a href="{{ url_for('dashboard') }}"><i class="fas fa-home"></i> Inicio</a>
+                <a href="{{ url_for('catalogo') }}"><i class="fas fa-store"></i> Catálogo</a>
+                <a href="{{ url_for('cartera') }}"><i class="fas fa-wallet"></i> ${{ '%.2f'|format(saldo) }}</a>
+                <a href="{{ url_for('mis_pedidos') }}"><i class="fas fa-shopping-bag"></i> Pedidos</a>
+                {% if current_user.rol == 'admin' %}
+                <a href="{{ url_for('admin_panel') }}"><i class="fas fa-cog"></i> Admin</a>
+                {% endif %}
+            </div>
+            <div class="nav-user">
+                <span class="nav-username"><i class="fas fa-user-circle"></i> {{ current_user.nombre }}</span>
+                <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline"><i class="fas fa-sign-out-alt"></i> Salir</a>
+            </div>
+            {% else %}
+            <div class="nav-links">
+                <a href="{{ url_for('login') }}"><i class="fas fa-sign-in-alt"></i> Iniciar Sesión</a>
+                <a href="{{ url_for('registro') }}"><i class="fas fa-user-plus"></i> Registrarse</a>
+            </div>
+            {% endif %}
+            <button class="nav-toggle" id="navToggle"><i class="fas fa-bars"></i></button>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-grid">
+                <div class="footer-col">
+                    <h3><i class="fas fa-gamepad"></i> {{ tienda_nombre }}</h3>
+                    <p>Plataforma de recargas y gift cards para revendedores. Precios al mayor, entrega rápida.</p>
+                </div>
+                <div class="footer-col">
+                    <h3><i class="fas fa-link"></i> Enlaces</h3>
+                    <ul>
+                        <li><a href="{{ url_for('catalogo') }}"><i class="fas fa-store"></i> Catálogo</a></li>
+                        <li><a href="{{ url_for('cartera') }}"><i class="fas fa-wallet"></i> Mi Cartera</a></li>
+                        <li><a href="{{ url_for('mis_pedidos') }}"><i class="fas fa-shopping-bag"></i> Mis Pedidos</a></li>
+                    </ul>
+                </div>
+                <div class="footer-col">
+                    <h3><i class="fas fa-headset"></i> Soporte</h3>
+                    <ul>
+                        <li><i class="fab fa-whatsapp"></i> WhatsApp: Contactar</li>
+                        <li><i class="fas fa-envelope"></i> admin@gamersrev.com</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="footer-bottom">
+                <p>&copy; 2026 {{ tienda_nombre }} - Todos los derechos reservados</p>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        const navToggle = document.getElementById('navToggle');
+        if (navToggle) {
+            navToggle.addEventListener('click', () => {
+                document.querySelectorAll('.nav-links, .nav-user').forEach(el => el.classList.toggle('active'));
+            });
+        }
+        // Auto-hide flash messages
+        document.querySelectorAll('.flash-message').forEach(el => {
+            setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 4000);
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,109 @@
+{% extends 'base.html' %}
+{% block title %}Admin Recargas - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-wallet"></i> Gestión de Recargas</h1>
+        <p>Recarga saldo a los revendedores</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="admin-card">
+            <h2><i class="fas fa-plus-circle"></i> Recargar Saldo</h2>
+            <form method="POST">
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> Usuario</label>
+                        <select name="usuario_id" id="usuario_id" class="form-select" required>
+                            <option value="">Seleccionar usuario...</option>
+                            {% for u in usuarios %}
+                            <option value="{{ u.id }}">{{ u.nombre }} ({{ u.email }}) - Saldo: ${{ '%.2f'|format(u.saldo) }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-dollar-sign"></i> Monto</label>
+                        <input type="number" name="monto" id="monto" step="0.01" min="0.01" placeholder="0.00" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-comment"></i> Descripción</label>
+                    <input type="text" name="descripcion" placeholder="Ej: Recarga por transferencia" value="Recarga de saldo">
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Aplicar Recarga</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <h2 class="section-title"><i class="fas fa-users"></i> Saldos de Usuarios</h2>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Saldo</th><th>Acciones</th></tr>
+                </thead>
+                <tbody>
+                    {% for u in usuarios %}
+                    <tr>
+                        <td>{{ u.id }}</td>
+                        <td>{{ u.nombre }}</td>
+                        <td>{{ u.email }}</td>
+                        <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.2f'|format(u.saldo) }}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="document.getElementById('usuario_id').value='{{ u.id }}'; document.getElementById('monto').focus(); window.scrollTo(0,0);">
+                                <i class="fas fa-plus"></i> Recargar
+                            </button>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+
+{% if transacciones %}
+<section class="section">
+    <div class="container">
+        <h2 class="section-title"><i class="fas fa-history"></i> Últimas Transacciones</h2>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr><th>Fecha</th><th>Usuario</th><th>Tipo</th><th>Monto</th><th>Saldo</th><th>Descripción</th><th>Admin</th></tr>
+                </thead>
+                <tbody>
+                    {% for t in transacciones %}
+                    <tr>
+                        <td>{{ t.fecha }}</td>
+                        <td>{{ t.usuario_nombre }}</td>
+                        <td>
+                            {% if t.tipo == 'recarga' %}
+                            <span class="badge badge-completado"><i class="fas fa-arrow-up"></i> Recarga</span>
+                            {% elif t.tipo == 'compra' %}
+                            <span class="badge badge-procesando"><i class="fas fa-arrow-down"></i> Compra</span>
+                            {% else %}
+                            <span class="badge badge-pendiente"><i class="fas fa-undo"></i> Reembolso</span>
+                            {% endif %}
+                        </td>
+                        <td class="{{ 'text-red' if t.tipo == 'compra' else 'text-green' }}">
+                            {{ '-' if t.tipo == 'compra' else '+' }}${{ '%.2f'|format(t.monto) }}
+                        </td>
+                        <td>${{ '%.2f'|format(t.saldo_nuevo) }}</td>
+                        <td>{{ t.descripcion or '-' }}</td>
+                        <td>{{ t.admin_nombre or '-' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,105 @@
+{% extends 'base.html' %}
+{% block title %}Admin Panel - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1><i class="fas fa-cog"></i> Panel de Administración</h1>
+        <p>Gestiona tu tienda</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-users"></i></div>
+                <div class="stat-info">
+                    <h3><a href="{{ url_for('admin_usuarios') }}" class="stat-link">{{ total_users }}</a></h3>
+                    <p>Usuarios</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-shopping-cart"></i></div>
+                <div class="stat-info">
+                    <h3><a href="{{ url_for('admin_pedidos') }}" class="stat-link">{{ total_pedidos }}</a></h3>
+                    <p>Pedidos totales</p>
+                </div>
+            </div>
+            <div class="stat-card stat-card-wallet">
+                <div class="stat-icon"><i class="fas fa-dollar-sign"></i></div>
+                <div class="stat-info">
+                    <h3>${{ '%.2f'|format(total_ventas) }}</h3>
+                    <p>Ventas completadas</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-clock"></i></div>
+                <div class="stat-info">
+                    <h3>{{ total_pendientes }}</h3>
+                    <p>Pendientes</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="admin-nav-grid">
+            <a href="{{ url_for('admin_recargas') }}" class="admin-nav-card">
+                <i class="fas fa-wallet"></i>
+                <h3>Recargas</h3>
+                <p>Recargar saldo a usuarios</p>
+            </a>
+            <a href="{{ url_for('admin_productos') }}" class="admin-nav-card">
+                <i class="fas fa-boxes-stacked"></i>
+                <h3>Productos</h3>
+                <p>Gestionar catálogo</p>
+            </a>
+            <a href="{{ url_for('admin_pedidos') }}" class="admin-nav-card">
+                <i class="fas fa-shopping-bag"></i>
+                <h3>Pedidos</h3>
+                <p>Gestionar pedidos</p>
+            </a>
+            <a href="{{ url_for('admin_usuarios') }}" class="admin-nav-card">
+                <i class="fas fa-users"></i>
+                <h3>Usuarios</h3>
+                <p>Gestionar revendedores</p>
+            </a>
+            <a href="{{ url_for('admin_almacen') }}" class="admin-nav-card">
+                <i class="fas fa-warehouse"></i>
+                <h3>Almacén</h3>
+                <p>PINes para canje API</p>
+            </a>
+            <a href="{{ url_for('admin_categorias') }}" class="admin-nav-card">
+                <i class="fas fa-folder-open"></i>
+                <h3>Categorías</h3>
+                <p>Juegos y plataformas</p>
+            </a>
+        </div>
+    </div>
+</section>
+
+{% if ultimos_pedidos %}
+<section class="section">
+    <div class="container">
+        <h2 class="section-title"><i class="fas fa-history"></i> Últimos Pedidos</h2>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr><th>#</th><th>Usuario</th><th>Producto</th><th>Total</th><th>Estado</th><th>Fecha</th></tr>
+                </thead>
+                <tbody>
+                    {% for p in ultimos_pedidos %}
+                    <tr>
+                        <td>{{ p.id }}</td>
+                        <td>{{ p.usuario_nombre }}</td>
+                        <td>{{ p.producto_nombre }}</td>
+                        <td>${{ '%.2f'|format(p.total) }}</td>
+                        <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
+                        <td>{{ p.fecha_pedido }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

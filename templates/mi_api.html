@@ -1,0 +1,67 @@
+{% extends 'base.html' %}
+{% block title %}Mi API Key - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1><i class="fas fa-key"></i> Mi API Key</h1>
+        <p>Usa tu API Key para conectar tu sistema a nuestra plataforma</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container" style="max-width:700px;">
+        <div class="card" style="padding:2rem;">
+            <h2 style="margin-bottom:1rem;"><i class="fas fa-shield-alt" style="color:var(--accent-primary);"></i> Tu API Key</h2>
+
+            {% if user.api_key %}
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; margin-bottom:1.5rem; position:relative;">
+                <code id="api-key" style="color:#51cf66; font-size:0.95rem; word-break:break-all;">{{ user.api_key }}</code>
+                <button onclick="copiarKey()" class="btn btn-sm btn-secondary" style="position:absolute; top:0.5rem; right:0.5rem;">
+                    <i class="fas fa-copy"></i> Copiar
+                </button>
+            </div>
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:1.5rem;">
+                <i class="fas fa-exclamation-triangle" style="color:#fbbf24;"></i>
+                <strong>No compartas tu API Key.</strong> Cualquiera con tu key puede hacer compras desde tu saldo.
+            </p>
+            {% else %}
+            <div style="background:var(--bg-primary); border:1px dashed var(--border); border-radius:8px; padding:2rem; text-align:center; margin-bottom:1.5rem;">
+                <i class="fas fa-key" style="font-size:2rem; color:var(--text-secondary); margin-bottom:0.5rem; display:block;"></i>
+                <p style="color:var(--text-secondary);">No tienes una API Key generada</p>
+            </div>
+            {% endif %}
+
+            <form method="POST">
+                <button type="submit" class="btn btn-primary" onclick="return confirm('{{ '¿Regenerar tu API Key? La anterior dejará de funcionar.' if user.api_key else '¿Generar una nueva API Key?' }}')">
+                    <i class="fas fa-sync-alt"></i> {{ 'Regenerar API Key' if user.api_key else 'Generar API Key' }}
+                </button>
+            </form>
+        </div>
+
+        <div class="card" style="padding:2rem; margin-top:1.5rem;">
+            <h2 style="margin-bottom:1rem;"><i class="fas fa-book" style="color:var(--accent-primary);"></i> Documentación</h2>
+            <p style="color:var(--text-secondary); margin-bottom:1rem;">Consulta la documentación completa de la API para integrar tu sistema.</p>
+            <a href="{{ url_for('api_docs') }}" class="btn btn-secondary"><i class="fas fa-external-link-alt"></i> Ver Documentación API</a>
+        </div>
+
+        <div class="card" style="padding:2rem; margin-top:1.5rem;">
+            <h2 style="margin-bottom:1rem;"><i class="fas fa-terminal" style="color:var(--accent-primary);"></i> Prueba Rápida</h2>
+            <p style="color:var(--text-secondary); margin-bottom:0.5rem;">Consulta tu saldo:</p>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+                <code style="color:#7c3aed; font-size:0.85rem;">curl -H "X-API-Key: {{ user.api_key or 'TU_API_KEY' }}" {{ request.host_url }}api/v1/saldo</code>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function copiarKey() {
+    var key = document.getElementById('api-key').textContent;
+    navigator.clipboard.writeText(key).then(function() {
+        alert('API Key copiada al portapapeles');
+    });
+}
+</script>
+{% endblock %}

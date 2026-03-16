@@ -1,0 +1,798 @@
+from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify
+from functools import wraps
+from werkzeug.security import check_password_hash
+from werkzeug.utils import secure_filename
+from models import (
+    init_db, get_db, get_user_by_id, get_user_by_email, get_user_by_api_key,
+    create_user, get_saldo, recargar_saldo, descontar_saldo
+)
+import config
+import secrets
+import os
+import uuid
+
+app = Flask(__name__)
+app.secret_key = config.SECRET_KEY
+
+UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg'}
+
+
+def allowed_file(filename):
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+
+def save_upload(file):
+    if file and file.filename and allowed_file(file.filename):
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        filename = f"{uuid.uuid4().hex}.{ext}"
+        filepath = os.path.join(UPLOAD_FOLDER, filename)
+        file.save(filepath)
+        return f"/static/uploads/{filename}"
+    return None
+
+
+init_db()
+
+
+# ===== DECORADORES =====
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            flash('Inicia sesión para continuar', 'error')
+            return redirect(url_for('login'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
+        user = get_user_by_id(session['user_id'])
+        if not user or user['rol'] != 'admin':
+            flash('Acceso denegado', 'error')
+            return redirect(url_for('dashboard'))
+        return f(*args, **kwargs)
+    return decorated
+
+
+def api_key_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
+        if not api_key:
+            return jsonify({'error': 'API key requerida'}), 401
+        user = get_user_by_api_key(api_key)
+        if not user:
+            return jsonify({'error': 'API key inválida'}), 401
+        request.api_user = user
+        return f(*args, **kwargs)
+    return decorated
+
+
+@app.context_processor
+def inject_globals():
+    user = None
+    saldo = 0
+    if 'user_id' in session:
+        user = get_user_by_id(session['user_id'])
+        if user:
+            saldo = get_saldo(user['id'])
+    return dict(current_user=user, saldo=saldo, tienda_nombre=config.TIENDA_NOMBRE)
+
+
+# ===== AUTH =====
+@app.route('/')
+def index():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('login'))
+
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        user = get_user_by_email(email)
+        if user and check_password_hash(user['password'], password):
+            if not user['activo']:
+                flash('Cuenta desactivada. Contacta al administrador.', 'error')
+                return render_template('login.html')
+            session['user_id'] = user['id']
+            session['user_nombre'] = user['nombre']
+            session['user_rol'] = user['rol']
+            db = get_db()
+            db.execute("UPDATE usuarios SET ultimo_login = datetime('now','localtime') WHERE id = ?", (user['id'],))
+            db.commit()
+            db.close()
+            flash(f'Bienvenido, {user["nombre"]}!', 'success')
+            return redirect(url_for('dashboard'))
+        flash('Email o contraseña incorrectos', 'error')
+    return render_template('login.html')
+
+
+@app.route('/registro', methods=['GET', 'POST'])
+def registro():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        nombre = request.form.get('nombre', '').strip()
+        email = request.form.get('email', '').strip()
+        password = request.form.get('password', '')
+        telefono = request.form.get('telefono', '').strip()
+        if not nombre or not email or not password:
+            flash('Todos los campos son obligatorios', 'error')
+            return render_template('registro.html')
+        if len(password) < 6:
+            flash('La contraseña debe tener al menos 6 caracteres', 'error')
+            return render_template('registro.html')
+        user = create_user(nombre, email, password, telefono)
+        if not user:
+            flash('El email ya está registrado', 'error')
+            return render_template('registro.html')
+        flash('Registro exitoso. Inicia sesión.', 'success')
+        return redirect(url_for('login'))
+    return render_template('registro.html')
+
+
+@app.route('/logout')
+def logout():
+    session.clear()
+    flash('Sesión cerrada', 'success')
+    return redirect(url_for('login'))
+
+
+# ===== DASHBOARD =====
+@app.route('/dashboard')
+@login_required
+def dashboard():
+    user = get_user_by_id(session['user_id'])
+    db = get_db()
+    stats = db.execute("SELECT COUNT(*) as total_pedidos, COALESCE(SUM(total), 0) as total_gastado FROM pedidos WHERE usuario_id = ?", (user['id'],)).fetchone()
+    ultimos = db.execute("SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC LIMIT 5", (user['id'],)).fetchall()
+    categorias = db.execute("SELECT c.*, (SELECT COUNT(*) FROM productos p WHERE p.categoria_id = c.id AND p.activo = 1) as total_productos FROM categorias c WHERE c.activo = 1 ORDER BY c.orden").fetchall()
+    saldo = get_saldo(user['id'])
+    db.close()
+    return render_template('dashboard.html', user=user, stats=stats, ultimos=ultimos, categorias=categorias, saldo=saldo)
+
+
+# ===== CATALOGO =====
+@app.route('/catalogo')
+@login_required
+def catalogo():
+    db = get_db()
+    categorias = db.execute("SELECT c.*, (SELECT COUNT(*) FROM productos p WHERE p.categoria_id = c.id AND p.activo = 1) as total_productos FROM categorias c WHERE c.activo = 1 ORDER BY c.orden").fetchall()
+    db.close()
+    return render_template('catalogo.html', categorias=categorias)
+
+
+@app.route('/catalogo/<slug>')
+@login_required
+def catalogo_juego(slug):
+    db = get_db()
+    cat = db.execute("SELECT * FROM categorias WHERE slug = ? AND activo = 1", (slug,)).fetchone()
+    if not cat:
+        flash('Juego no encontrado', 'error')
+        return redirect(url_for('catalogo'))
+    productos = db.execute("SELECT * FROM productos WHERE categoria_id = ? AND activo = 1 ORDER BY orden ASC, precio ASC", (cat['id'],)).fetchall()
+    db.close()
+    return render_template('catalogo_juego.html', categoria=cat, productos=productos)
+
+
+@app.route('/producto/<int:id>')
+@login_required
+def producto(id):
+    db = get_db()
+    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.slug as categoria_slug FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (id,)).fetchone()
+    db.close()
+    if not prod:
+        flash('Producto no encontrado', 'error')
+        return redirect(url_for('catalogo'))
+    saldo = get_saldo(session['user_id'])
+    return render_template('producto.html', producto=prod, saldo=saldo)
+
+
+# ===== COMPRAR =====
+@app.route('/comprar', methods=['POST'])
+@login_required
+def comprar():
+    producto_id = int(request.form.get('producto_id', 0))
+    cantidad = int(request.form.get('cantidad', 1))
+    id_juego = request.form.get('id_juego', '').strip()
+
+    db = get_db()
+    prod = db.execute("SELECT * FROM productos WHERE id = ? AND activo = 1", (producto_id,)).fetchone()
+    if not prod:
+        flash('Producto no encontrado', 'error')
+        db.close()
+        return redirect(url_for('catalogo'))
+
+    total = prod['precio'] * cantidad
+    user_id = session['user_id']
+
+    resultado = descontar_saldo(user_id, total, f"Compra: {prod['nombre']} x{cantidad}")
+    if resultado is None:
+        saldo = get_saldo(user_id)
+        flash(f'Saldo insuficiente. Tu saldo es ${saldo:.2f} y el total es ${total:.2f}', 'error')
+        db.close()
+        return redirect(url_for('producto', id=producto_id))
+
+    db.execute("INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, estado) VALUES (?,?,?,?,?,?)",
+               (user_id, producto_id, cantidad, total, id_juego, 'procesando'))
+    pedido_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    # Actualizar transacción con pedido_id
+    db.execute("UPDATE transacciones SET pedido_id = ? WHERE id = (SELECT id FROM transacciones WHERE usuario_id = ? AND pedido_id IS NULL ORDER BY id DESC LIMIT 1)",
+               (pedido_id, user_id))
+    db.commit()
+
+    # Si el producto usa API (Free Fire), canjear PIN automáticamente
+    if prod['usa_api'] and id_juego:
+        pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
+        if pin_row:
+            from hype_api import canjear_pin_completo
+            # Marcar PIN como usado antes de intentar canje
+            db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
+                       (user_id, pedido_id, pin_row['id']))
+            db.commit()
+
+            try:
+                resultado_api = canjear_pin_completo(pin_row['pin'], id_juego, prod['monto_api'])
+                if resultado_api.get('ok'):
+                    nombre_jugador = resultado_api.get('username', '')
+                    db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador, pedido_id))
+                    db.commit()
+                    db.close()
+                    flash(f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador} (ID: {id_juego}).', 'success')
+                    return redirect(url_for('pedido_detalle', id=pedido_id))
+                else:
+                    # Canje falló - marcar PIN como error, reembolsar
+                    db.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_row['id'],))
+                    db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                    db.commit()
+                    recargar_saldo(user_id, total, f"Reembolso: Error canje pedido #{pedido_id}")
+                    db.close()
+                    error_msg = resultado_api.get('error', 'Error desconocido en el canje')
+                    flash(f'Error en canje automático: {error_msg}. Se reembolsó ${total:.2f} a tu cartera.', 'error')
+                    return redirect(url_for('pedido_detalle', id=pedido_id))
+            except Exception as e:
+                db.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_row['id'],))
+                db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                db.commit()
+                recargar_saldo(user_id, total, f"Reembolso: Excepción canje pedido #{pedido_id}")
+                db.close()
+                flash(f'Error inesperado en el canje. Se reembolsó ${total:.2f} a tu cartera.', 'error')
+                return redirect(url_for('pedido_detalle', id=pedido_id))
+        else:
+            # No hay PINes disponibles - reembolsar
+            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db.commit()
+            recargar_saldo(user_id, total, f"Reembolso: Sin PINes disponibles pedido #{pedido_id}")
+            db.close()
+            flash('No hay PINes disponibles para este producto. Se reembolsó tu saldo.', 'error')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
+
+    db.close()
+    flash(f'Pedido #{pedido_id} registrado. Se descontaron ${total:.2f} de tu cartera.', 'success')
+    return redirect(url_for('pedido_detalle', id=pedido_id))
+
+
+@app.route('/pedido/<int:id>')
+@login_required
+def pedido_detalle(id):
+    db = get_db()
+    pedido = db.execute("SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.id = ? AND p.usuario_id = ?", (id, session['user_id'])).fetchone()
+    db.close()
+    if not pedido:
+        flash('Pedido no encontrado', 'error')
+        return redirect(url_for('mis_pedidos'))
+    return render_template('pedido.html', pedido=pedido)
+
+
+@app.route('/mis-pedidos')
+@login_required
+def mis_pedidos():
+    db = get_db()
+    pedidos = db.execute("SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC", (session['user_id'],)).fetchall()
+    db.close()
+    return render_template('mis_pedidos.html', pedidos=pedidos)
+
+
+# ===== CARTERA =====
+@app.route('/cartera')
+@login_required
+def cartera():
+    db = get_db()
+    saldo = get_saldo(session['user_id'])
+    transacciones = db.execute("SELECT t.*, u.nombre as admin_nombre FROM transacciones t LEFT JOIN usuarios u ON t.admin_id = u.id WHERE t.usuario_id = ? ORDER BY t.fecha DESC LIMIT 50", (session['user_id'],)).fetchall()
+    db.close()
+    return render_template('cartera.html', saldo=saldo, transacciones=transacciones)
+
+
+# ===== ADMIN =====
+@app.route('/admin')
+@admin_required
+def admin_panel():
+    db = get_db()
+    total_users = db.execute("SELECT COUNT(*) as c FROM usuarios").fetchone()['c']
+    total_pedidos = db.execute("SELECT COUNT(*) as c FROM pedidos").fetchone()['c']
+    total_ventas = db.execute("SELECT COALESCE(SUM(total), 0) as c FROM pedidos WHERE estado = 'completado'").fetchone()['c']
+    total_pendientes = db.execute("SELECT COUNT(*) as c FROM pedidos WHERE estado = 'pendiente'").fetchone()['c']
+    ultimos_pedidos = db.execute("SELECT p.*, u.nombre as usuario_nombre, pr.nombre as producto_nombre FROM pedidos p JOIN usuarios u ON p.usuario_id = u.id JOIN productos pr ON p.producto_id = pr.id ORDER BY p.fecha_pedido DESC LIMIT 10").fetchall()
+    db.close()
+    return render_template('admin/panel.html', total_users=total_users, total_pedidos=total_pedidos, total_ventas=total_ventas, total_pendientes=total_pendientes, ultimos_pedidos=ultimos_pedidos)
+
+
+@app.route('/admin/usuarios')
+@admin_required
+def admin_usuarios():
+    db = get_db()
+    usuarios = db.execute("SELECT u.*, COALESCE(c.saldo, 0) as saldo FROM usuarios u LEFT JOIN carteras c ON u.id = c.usuario_id ORDER BY u.fecha_registro DESC").fetchall()
+    db.close()
+    return render_template('admin/usuarios.html', usuarios=usuarios)
+
+
+@app.route('/admin/recargas', methods=['GET', 'POST'])
+@admin_required
+def admin_recargas():
+    if request.method == 'POST':
+        usuario_id = int(request.form.get('usuario_id', 0))
+        monto = float(request.form.get('monto', 0))
+        descripcion = request.form.get('descripcion', 'Recarga de saldo').strip()
+        if usuario_id > 0 and monto > 0:
+            user = get_user_by_id(usuario_id)
+            if user:
+                nuevo_saldo = recargar_saldo(usuario_id, monto, descripcion, session['user_id'])
+                flash(f'Recarga de ${monto:.2f} aplicada a {user["nombre"]}. Nuevo saldo: ${nuevo_saldo:.2f}', 'success')
+            else:
+                flash('Usuario no encontrado', 'error')
+        else:
+            flash('Datos inválidos', 'error')
+        return redirect(url_for('admin_recargas'))
+
+    db = get_db()
+    usuarios = db.execute("SELECT u.*, COALESCE(c.saldo, 0) as saldo FROM usuarios u LEFT JOIN carteras c ON u.id = c.usuario_id ORDER BY u.nombre").fetchall()
+    transacciones = db.execute("SELECT t.*, u.nombre as usuario_nombre, a.nombre as admin_nombre FROM transacciones t JOIN usuarios u ON t.usuario_id = u.id LEFT JOIN usuarios a ON t.admin_id = a.id ORDER BY t.fecha DESC LIMIT 30").fetchall()
+    db.close()
+    return render_template('admin/recargas.html', usuarios=usuarios, transacciones=transacciones)
+
+
+@app.route('/admin/productos', methods=['GET', 'POST'])
+@admin_required
+def admin_productos():
+    db = get_db()
+    if request.method == 'POST':
+        accion = request.form.get('accion')
+        if accion == 'crear':
+            nombre = request.form.get('nombre', '').strip()
+            descripcion = request.form.get('descripcion', '').strip()
+            precio = float(request.form.get('precio', 0))
+            categoria_id = int(request.form.get('categoria_id', 0))
+            icono = request.form.get('icono', 'fa-gem').strip()
+            usa_api = 1 if request.form.get('usa_api') else 0
+            monto_api = int(request.form.get('monto_api', 0))
+            orden = int(request.form.get('orden', 0))
+            if nombre and precio > 0 and categoria_id > 0:
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, orden) VALUES (?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, orden))
+                db.commit()
+                flash(f'Producto "{nombre}" creado', 'success')
+        elif accion == 'editar':
+            prod_id = int(request.form.get('producto_id', 0))
+            nombre = request.form.get('nombre', '').strip()
+            descripcion = request.form.get('descripcion', '').strip()
+            precio = float(request.form.get('precio', 0))
+            categoria_id = int(request.form.get('categoria_id', 0))
+            activo = 1 if request.form.get('activo') else 0
+            usa_api = 1 if request.form.get('usa_api') else 0
+            monto_api = int(request.form.get('monto_api', 0))
+            orden = int(request.form.get('orden', 0))
+            if prod_id > 0 and nombre and precio > 0:
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, orden=? WHERE id=?",
+                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, orden, prod_id))
+                db.commit()
+                flash(f'Producto actualizado', 'success')
+        elif accion == 'eliminar':
+            prod_id = int(request.form.get('producto_id', 0))
+            if prod_id > 0:
+                db.execute("DELETE FROM productos WHERE id = ?", (prod_id,))
+                db.commit()
+                flash('Producto eliminado', 'success')
+        return redirect(url_for('admin_productos'))
+
+    productos = db.execute("SELECT p.*, c.nombre as categoria_nombre FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id ORDER BY c.orden, p.orden, p.nombre").fetchall()
+    categorias = db.execute("SELECT * FROM categorias ORDER BY orden").fetchall()
+    db.close()
+    return render_template('admin/productos.html', productos=productos, categorias=categorias)
+
+
+@app.route('/admin/productos/eliminar-lote', methods=['POST'])
+@admin_required
+def admin_productos_eliminar_lote():
+    data = request.get_json()
+    ids = data.get('ids', [])
+    db = get_db()
+    eliminados = 0
+    for prod_id in ids:
+        db.execute("DELETE FROM productos WHERE id = ?", (prod_id,))
+        eliminados += 1
+    db.commit()
+    db.close()
+    return jsonify({'ok': True, 'eliminados': eliminados})
+
+
+@app.route('/admin/productos/orden', methods=['POST'])
+@admin_required
+def admin_producto_orden():
+    data = request.get_json()
+    prod_id = data.get('id')
+    direccion = data.get('dir')  # 'up' o 'down'
+    db = get_db()
+    prod = db.execute("SELECT id, categoria_id FROM productos WHERE id = ?", (prod_id,)).fetchone()
+    if not prod:
+        db.close()
+        return jsonify({'ok': False})
+    cat_id = prod['categoria_id']
+    # Obtener todos los productos de esta categoría ordenados
+    todos = db.execute("SELECT id FROM productos WHERE categoria_id = ? ORDER BY orden ASC, id ASC", (cat_id,)).fetchall()
+    ids = [r['id'] for r in todos]
+    # Normalizar: asignar orden 0,1,2,3...
+    for i, pid in enumerate(ids):
+        db.execute("UPDATE productos SET orden = ? WHERE id = ?", (i, pid))
+    db.commit()
+    # Encontrar posición actual
+    pos = ids.index(prod_id)
+    if direccion == 'up' and pos > 0:
+        ids[pos], ids[pos - 1] = ids[pos - 1], ids[pos]
+    elif direccion == 'down' and pos < len(ids) - 1:
+        ids[pos], ids[pos + 1] = ids[pos + 1], ids[pos]
+    # Reasignar orden final
+    for i, pid in enumerate(ids):
+        db.execute("UPDATE productos SET orden = ? WHERE id = ?", (i, pid))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/admin/categorias/orden', methods=['POST'])
+@admin_required
+def admin_categoria_orden():
+    data = request.get_json()
+    cat_id = data.get('id')
+    direccion = data.get('dir')
+    db = get_db()
+    cat = db.execute("SELECT id FROM categorias WHERE id = ?", (cat_id,)).fetchone()
+    if not cat:
+        db.close()
+        return jsonify({'ok': False})
+    # Obtener todas las categorías ordenadas
+    todas = db.execute("SELECT id FROM categorias ORDER BY orden ASC, id ASC").fetchall()
+    ids = [r['id'] for r in todas]
+    # Normalizar
+    for i, cid in enumerate(ids):
+        db.execute("UPDATE categorias SET orden = ? WHERE id = ?", (i, cid))
+    db.commit()
+    # Encontrar posición actual
+    pos = ids.index(cat_id)
+    if direccion == 'up' and pos > 0:
+        ids[pos], ids[pos - 1] = ids[pos - 1], ids[pos]
+    elif direccion == 'down' and pos < len(ids) - 1:
+        ids[pos], ids[pos + 1] = ids[pos + 1], ids[pos]
+    # Reasignar orden final
+    for i, cid in enumerate(ids):
+        db.execute("UPDATE categorias SET orden = ? WHERE id = ?", (i, cid))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/admin/categorias/eliminar-lote', methods=['POST'])
+@admin_required
+def admin_categorias_eliminar_lote():
+    data = request.get_json()
+    ids = data.get('ids', [])
+    db = get_db()
+    eliminadas = 0
+    omitidas = 0
+    for cat_id in ids:
+        prods = db.execute("SELECT COUNT(*) as c FROM productos WHERE categoria_id = ?", (cat_id,)).fetchone()
+        if prods['c'] > 0:
+            omitidas += 1
+        else:
+            db.execute("DELETE FROM categorias WHERE id = ?", (cat_id,))
+            eliminadas += 1
+    db.commit()
+    db.close()
+    return jsonify({'ok': True, 'eliminadas': eliminadas, 'omitidas': omitidas})
+
+
+@app.route('/admin/categorias', methods=['GET', 'POST'])
+@admin_required
+def admin_categorias():
+    db = get_db()
+    if request.method == 'POST':
+        accion = request.form.get('accion')
+        if accion == 'crear':
+            nombre = request.form.get('nombre', '').strip()
+            slug = request.form.get('slug', '').strip().lower().replace(' ', '')
+            icono = request.form.get('icono', 'fa-gamepad').strip()
+            imagen = request.form.get('imagen_url', '').strip()
+            archivo = request.files.get('imagen_file')
+            uploaded = save_upload(archivo)
+            if uploaded:
+                imagen = uploaded
+            tipo = request.form.get('tipo', 'juegos')
+            descripcion = request.form.get('descripcion', '').strip()
+            orden = int(request.form.get('orden', 0))
+            if nombre and slug:
+                try:
+                    db.execute("INSERT INTO categorias (nombre, slug, icono, imagen, tipo, descripcion, orden) VALUES (?,?,?,?,?,?,?)",
+                               (nombre, slug, icono, imagen, tipo, descripcion, orden))
+                    db.commit()
+                    flash(f'Categoría "{nombre}" creada', 'success')
+                except Exception:
+                    flash('Error: el slug ya existe', 'error')
+        elif accion == 'editar':
+            cat_id = int(request.form.get('categoria_id', 0))
+            nombre = request.form.get('nombre', '').strip()
+            slug = request.form.get('slug', '').strip().lower().replace(' ', '')
+            icono = request.form.get('icono', 'fa-gamepad').strip()
+            imagen = request.form.get('imagen_url', '').strip()
+            archivo = request.files.get('imagen_file')
+            uploaded = save_upload(archivo)
+            if uploaded:
+                imagen = uploaded
+            elif not imagen:
+                old = db.execute("SELECT imagen FROM categorias WHERE id = ?", (cat_id,)).fetchone()
+                if old:
+                    imagen = old['imagen']
+            tipo = request.form.get('tipo', 'juegos')
+            descripcion = request.form.get('descripcion', '').strip()
+            orden = int(request.form.get('orden', 0))
+            activo = 1 if request.form.get('activo') else 0
+            if cat_id > 0 and nombre and slug:
+                db.execute("UPDATE categorias SET nombre=?, slug=?, icono=?, imagen=?, tipo=?, descripcion=?, orden=?, activo=? WHERE id=?",
+                           (nombre, slug, icono, imagen, tipo, descripcion, orden, activo, cat_id))
+                db.commit()
+                flash('Categoría actualizada', 'success')
+        elif accion == 'eliminar':
+            cat_id = int(request.form.get('categoria_id', 0))
+            if cat_id > 0:
+                prods = db.execute("SELECT COUNT(*) as c FROM productos WHERE categoria_id = ?", (cat_id,)).fetchone()
+                if prods['c'] > 0:
+                    flash(f'No se puede eliminar: tiene {prods["c"]} producto(s) asociados', 'error')
+                else:
+                    db.execute("DELETE FROM categorias WHERE id = ?", (cat_id,))
+                    db.commit()
+                    flash('Categoría eliminada', 'success')
+        return redirect(url_for('admin_categorias'))
+
+    categorias = db.execute("SELECT c.*, (SELECT COUNT(*) FROM productos p WHERE p.categoria_id = c.id) as total_productos FROM categorias c ORDER BY c.orden").fetchall()
+    db.close()
+    return render_template('admin/categorias.html', categorias=categorias)
+
+
+@app.route('/admin/almacen', methods=['GET', 'POST'])
+@admin_required
+def admin_almacen():
+    db = get_db()
+    if request.method == 'POST':
+        accion = request.form.get('accion')
+        if accion == 'agregar':
+            producto_id = int(request.form.get('producto_id', 0))
+            pines_text = request.form.get('pines', '').strip()
+            if producto_id > 0 and pines_text:
+                pines_list = [p.strip() for p in pines_text.split('\n') if p.strip()]
+                count = 0
+                for pin in pines_list:
+                    db.execute("INSERT INTO pines (producto_id, pin) VALUES (?, ?)", (producto_id, pin))
+                    count += 1
+                db.commit()
+                flash(f'{count} PIN(es) agregados al almacén', 'success')
+            else:
+                flash('Selecciona un producto y agrega al menos un PIN', 'error')
+        elif accion == 'eliminar':
+            pin_id = int(request.form.get('pin_id', 0))
+            if pin_id > 0:
+                db.execute("DELETE FROM pines WHERE id = ? AND estado = 'disponible'", (pin_id,))
+                db.commit()
+                flash('PIN eliminado', 'success')
+        elif accion == 'eliminar_todos':
+            producto_id = int(request.form.get('producto_id', 0))
+            if producto_id > 0:
+                db.execute("DELETE FROM pines WHERE producto_id = ? AND estado = 'disponible'", (producto_id,))
+                db.commit()
+                flash('PINes disponibles eliminados', 'success')
+        return redirect(url_for('admin_almacen'))
+
+    # Productos que usan API (Free Fire)
+    productos_api = db.execute("SELECT * FROM productos WHERE usa_api = 1 ORDER BY nombre").fetchall()
+    # Stock por producto
+    stock = {}
+    for p in productos_api:
+        count = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (p['id'],)).fetchone()
+        stock[p['id']] = count['c']
+    # Todos los pines agrupados
+    pines = db.execute("SELECT pi.*, pr.nombre as producto_nombre FROM pines pi JOIN productos pr ON pi.producto_id = pr.id ORDER BY pi.estado ASC, pi.fecha_agregado DESC").fetchall()
+    # Filtro por producto
+    filtro = request.args.get('producto_id', '')
+    if filtro:
+        pines = db.execute("SELECT pi.*, pr.nombre as producto_nombre FROM pines pi JOIN productos pr ON pi.producto_id = pr.id WHERE pi.producto_id = ? ORDER BY pi.estado ASC, pi.fecha_agregado DESC", (int(filtro),)).fetchall()
+    db.close()
+    return render_template('admin/almacen.html', productos_api=productos_api, stock=stock, pines=pines, filtro=filtro)
+
+
+@app.route('/admin/pedidos')
+@admin_required
+def admin_pedidos():
+    db = get_db()
+    pedidos = db.execute("SELECT p.*, u.nombre as usuario_nombre, u.email as usuario_email, pr.nombre as producto_nombre FROM pedidos p JOIN usuarios u ON p.usuario_id = u.id JOIN productos pr ON p.producto_id = pr.id ORDER BY p.fecha_pedido DESC").fetchall()
+    db.close()
+    return render_template('admin/pedidos.html', pedidos=pedidos)
+
+
+@app.route('/admin/pedido/<int:id>/estado', methods=['POST'])
+@admin_required
+def admin_cambiar_estado(id):
+    estado = request.form.get('estado', 'pendiente')
+    db = get_db()
+    db.execute("UPDATE pedidos SET estado = ? WHERE id = ?", (estado, id))
+    db.commit()
+    db.close()
+    flash(f'Pedido #{id} actualizado a {estado}', 'success')
+    return redirect(url_for('admin_pedidos'))
+
+
+# ===== API KEY MANAGEMENT =====
+@app.route('/mi-api', methods=['GET', 'POST'])
+@login_required
+def mi_api():
+    db = get_db()
+    user = db.execute("SELECT * FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+    if request.method == 'POST':
+        nueva_key = secrets.token_hex(32)
+        db.execute("UPDATE usuarios SET api_key = ? WHERE id = ?", (nueva_key, session['user_id']))
+        db.commit()
+        user = db.execute("SELECT * FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+        flash('API Key generada exitosamente', 'success')
+    db.close()
+    return render_template('mi_api.html', user=user)
+
+
+@app.route('/api/docs')
+def api_docs():
+    return render_template('api_docs.html')
+
+
+# ===== API PARA REVENDEDORES =====
+@app.route('/api/v1/saldo', methods=['GET'])
+@api_key_required
+def api_saldo():
+    user = request.api_user
+    saldo = get_saldo(user['id'])
+    return jsonify({'ok': True, 'saldo': saldo, 'nombre': user['nombre']})
+
+
+@app.route('/api/v1/productos', methods=['GET'])
+@api_key_required
+def api_productos():
+    db = get_db()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    db.close()
+    return jsonify({'ok': True, 'productos': [dict(p) for p in productos]})
+
+
+@app.route('/api/v1/comprar', methods=['POST'])
+@api_key_required
+def api_comprar():
+    user = request.api_user
+    data = request.get_json() or {}
+    producto_id = data.get('producto_id', 0)
+    cantidad = data.get('cantidad', 1)
+    id_juego = data.get('id_juego', '')
+
+    db = get_db()
+    prod = db.execute("SELECT * FROM productos WHERE id = ? AND activo = 1", (producto_id,)).fetchone()
+    if not prod:
+        db.close()
+        return jsonify({'ok': False, 'error': 'Producto no encontrado'}), 404
+
+    total = prod['precio'] * cantidad
+    resultado = descontar_saldo(user['id'], total, f"API: {prod['nombre']} x{cantidad}")
+    if resultado is None:
+        saldo = get_saldo(user['id'])
+        db.close()
+        return jsonify({'ok': False, 'error': 'Saldo insuficiente', 'saldo': saldo, 'total': total}), 400
+
+    db.execute("INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, estado) VALUES (?,?,?,?,?,?)",
+               (user['id'], producto_id, cantidad, total, id_juego, 'pendiente'))
+    pedido_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+    db.commit()
+
+    # Si usa API (Free Fire), intentar canje automático
+    nombre_jugador = ''
+    if prod['usa_api'] and id_juego:
+        pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
+        if pin_row:
+            from hype_api import canjear_pin_completo
+            db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
+                       (user['id'], pedido_id, pin_row['id']))
+            db.commit()
+            try:
+                resultado_api = canjear_pin_completo(pin_row['pin'], id_juego, prod['monto_api'])
+                if resultado_api.get('ok'):
+                    nombre_jugador = resultado_api.get('username', '')
+                    db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador, pedido_id))
+                    db.commit()
+                else:
+                    db.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_row['id'],))
+                    db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                    db.commit()
+                    recargar_saldo(user['id'], total, f"Reembolso API: Error canje pedido #{pedido_id}")
+                    db.close()
+                    return jsonify({
+                        'ok': False,
+                        'error': resultado_api.get('error', 'Error en canje automático'),
+                        'pedido_id': pedido_id,
+                        'reembolsado': True,
+                        'saldo_restante': get_saldo(user['id'])
+                    }), 400
+            except Exception as e:
+                db.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_row['id'],))
+                db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                db.commit()
+                recargar_saldo(user['id'], total, f"Reembolso API: Excepción pedido #{pedido_id}")
+                db.close()
+                return jsonify({
+                    'ok': False,
+                    'error': str(e),
+                    'pedido_id': pedido_id,
+                    'reembolsado': True,
+                    'saldo_restante': get_saldo(user['id'])
+                }), 500
+        else:
+            db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
+            db.commit()
+
+    db.close()
+    nuevo_saldo = get_saldo(user['id'])
+    return jsonify({
+        'ok': True,
+        'pedido_id': pedido_id,
+        'total': total,
+        'saldo_restante': nuevo_saldo,
+        'nombre_jugador': nombre_jugador,
+        'mensaje': f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador} (ID: {id_juego})' if nombre_jugador else f'Pedido #{pedido_id} creado exitosamente'
+    })
+
+
+@app.route('/api/v1/pedidos', methods=['GET'])
+@api_key_required
+def api_pedidos():
+    user = request.api_user
+    db = get_db()
+    pedidos = db.execute("SELECT p.id, p.cantidad, p.total, p.id_juego, p.estado, p.fecha_pedido, pr.nombre as producto FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC LIMIT 50", (user['id'],)).fetchall()
+    db.close()
+    return jsonify({'ok': True, 'pedidos': [dict(p) for p in pedidos]})
+
+
+@app.route('/api/v1/transacciones', methods=['GET'])
+@api_key_required
+def api_transacciones():
+    user = request.api_user
+    db = get_db()
+    trans = db.execute("SELECT id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, fecha FROM transacciones WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 50", (user['id'],)).fetchall()
+    db.close()
+    return jsonify({'ok': True, 'transacciones': [dict(t) for t in trans]})
+
+
+if __name__ == '__main__':
+    init_db()
+    app.run(debug=True, host='0.0.0.0', port=5000)

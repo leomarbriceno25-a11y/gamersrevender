@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+{% block title %}Pedido #{{ pedido.id }} - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('mis_pedidos') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Mis Pedidos</a>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="result-card result-{{ 'success' if pedido.estado == 'completado' else 'pending' }}">
+            <div class="result-icon">
+                {% if pedido.estado == 'completado' %}
+                <i class="fas fa-check-circle"></i>
+                {% elif pedido.estado == 'cancelado' %}
+                <i class="fas fa-times-circle"></i>
+                {% else %}
+                <i class="fas fa-clock"></i>
+                {% endif %}
+            </div>
+            <h1>Pedido #{{ pedido.id }}</h1>
+            <p class="result-status">Estado: <span class="badge badge-{{ pedido.estado }}">{{ pedido.estado|capitalize }}</span></p>
+
+            <div class="order-summary" style="max-width: 400px; margin: 1.5rem auto;">
+                <div class="summary-row">
+                    <span>Producto</span>
+                    <span>{{ pedido.producto_nombre }}</span>
+                </div>
+                <div class="summary-row">
+                    <span>Cantidad</span>
+                    <span>x{{ pedido.cantidad }}</span>
+                </div>
+                {% if pedido.id_juego %}
+                <div class="summary-row">
+                    <span>ID de Juego</span>
+                    <span>{{ pedido.id_juego }}</span>
+                </div>
+                {% endif %}
+                {% if pedido.nombre_jugador %}
+                <div class="summary-row">
+                    <span>Jugador</span>
+                    <span style="color:#51cf66;font-weight:600;">{{ pedido.nombre_jugador }}</span>
+                </div>
+                {% endif %}
+                <div class="summary-total">
+                    <span>Total</span>
+                    <span>${{ '%.2f'|format(pedido.total) }}</span>
+                </div>
+            </div>
+
+            <div class="empty-buttons">
+                <a href="{{ url_for('catalogo') }}" class="btn btn-primary"><i class="fas fa-store"></i> Seguir comprando</a>
+                <a href="{{ url_for('mis_pedidos') }}" class="btn btn-secondary"><i class="fas fa-list"></i> Mis pedidos</a>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

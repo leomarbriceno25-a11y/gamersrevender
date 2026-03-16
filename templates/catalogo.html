@@ -1,0 +1,71 @@
+{% extends 'base.html' %}
+{% block title %}Catálogo Completo - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1><i class="fas fa-gamepad"></i> Catálogo Completo</h1>
+        <p>Explora todos nuestros productos por categoría</p>
+    </div>
+</section>
+
+{% set juegos = categorias | selectattr('tipo', 'equalto', 'juegos') | list %}
+{% set giftcards = categorias | selectattr('tipo', 'equalto', 'giftcards') | list %}
+
+{% if juegos %}
+<section class="section">
+    <div class="container">
+        <div class="catalog-section-header">
+            <h2><i class="fas fa-gamepad"></i> Juegos</h2>
+            <span class="catalog-count">{{ juegos|length }} producto{{ 's' if juegos|length != 1 }}</span>
+        </div>
+        <div class="games-grid">
+            {% for cat in juegos %}
+            <a href="{{ url_for('catalogo_juego', slug=cat.slug) }}" class="game-card-img">
+                <div class="game-card-bg" style="background-image: url('{{ cat.imagen }}');"></div>
+                <div class="game-card-overlay"></div>
+                <div class="game-card-content">
+                    <span class="game-tag">JUEGOS</span>
+                    <h3>{{ cat.nombre | upper }}</h3>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if giftcards %}
+<section class="section">
+    <div class="container">
+        <div class="catalog-section-header">
+            <h2><i class="fas fa-gift"></i> Gift Cards</h2>
+            <span class="catalog-count">{{ giftcards|length }} producto{{ 's' if giftcards|length != 1 }}</span>
+        </div>
+        <div class="games-grid">
+            {% for cat in giftcards %}
+            <a href="{{ url_for('catalogo_juego', slug=cat.slug) }}" class="game-card-img">
+                <div class="game-card-bg" style="background-image: url('{{ cat.imagen }}');"></div>
+                <div class="game-card-overlay"></div>
+                <div class="game-card-content">
+                    <span class="game-tag game-tag-gift">GIFT CARDS</span>
+                    <h3>{{ cat.nombre | upper }}</h3>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if not categorias %}
+<section class="section">
+    <div class="container">
+        <div class="empty-state">
+            <i class="fas fa-gamepad"></i>
+            <h2>Sin juegos</h2>
+            <p>No hay juegos disponibles aún</p>
+        </div>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

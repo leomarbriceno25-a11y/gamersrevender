@@ -1,10 +1,10 @@
-# IDE
-.vscode/
-.idea/
-
-# OS
-Thumbs.db
-.DS_Store
-
-# Env
+instance/
+__pycache__/
+*.pyc
 .env
+venv/
+*.db
+.idea/
+.vscode/
+test_api.py
+static/uploads/

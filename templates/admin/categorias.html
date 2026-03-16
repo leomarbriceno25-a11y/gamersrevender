@@ -1,0 +1,264 @@
+{% extends 'base.html' %}
+{% block title %}Admin Categorías - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-folder-open"></i> Gestión de Categorías</h1>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="admin-card" id="form-categoria">
+            <h2 id="form-titulo"><i class="fas fa-plus-circle"></i> Nueva Categoría</h2>
+            <form method="POST" id="cat-form" enctype="multipart/form-data">
+                <input type="hidden" name="accion" id="form-accion" value="crear">
+                <input type="hidden" name="categoria_id" id="form-cat-id" value="">
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label><i class="fas fa-tag"></i> Nombre</label>
+                        <input type="text" name="nombre" id="form-nombre" placeholder="Ej: Free Fire" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-link"></i> Slug (URL)</label>
+                        <input type="text" name="slug" id="form-slug" placeholder="Ej: freefire" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-icons"></i> Icono FontAwesome</label>
+                        <input type="text" name="icono" id="form-icono" value="fa-gamepad" placeholder="fa-gamepad">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-layer-group"></i> Tipo</label>
+                        <select name="tipo" id="form-tipo" class="form-select">
+                            <option value="juegos">Juegos</option>
+                            <option value="giftcards">Gift Cards</option>
+                            <option value="streaming">Streaming</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-upload"></i> Imagen (subir desde PC)</label>
+                        <input type="file" name="imagen_file" id="form-imagen-file" accept="image/*" style="padding:0.5rem;">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-link"></i> O imagen por URL (opcional)</label>
+                    <input type="text" name="imagen_url" id="form-imagen-url" placeholder="https://ejemplo.com/imagen.jpg">
+                </div>
+                <div class="form-group" id="preview-container" style="display:none;">
+                    <label><i class="fas fa-eye"></i> Imagen actual</label>
+                    <img id="form-preview" src="" alt="Preview" style="max-width:200px;max-height:120px;border-radius:8px;border:1px solid var(--border);">
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-sort-numeric-up"></i> Orden</label>
+                    <input type="number" name="orden" id="form-orden" value="0" min="0">
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-align-left"></i> Descripción</label>
+                    <input type="text" name="descripcion" id="form-descripcion" placeholder="Descripción corta de la categoría">
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="activo" id="form-activo" checked> Categoría activa (visible en catálogo)
+                    </label>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" id="form-btn">
+                        <i class="fas fa-plus"></i> <span id="form-btn-text">Crear Categoría</span>
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="btn-cancelar" style="display:none;" onclick="resetForm()">
+                        <i class="fas fa-times"></i> Cancelar
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem;">
+            <h2 class="section-title" style="margin:0;"><i class="fas fa-list"></i> Categorías ({{ categorias|length }})</h2>
+            <button type="button" class="btn btn-sm btn-danger" id="btn-eliminar-sel" style="display:none;" onclick="eliminarSeleccionadas()">
+                <i class="fas fa-trash"></i> Eliminar seleccionadas (<span id="count-sel">0</span>)
+            </button>
+        </div>
+        {% if categorias %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th style="width:40px;"><input type="checkbox" id="sel-todos" onclick="toggleTodos(this)" title="Seleccionar todos"></th>
+                        <th>Orden</th><th>Imagen</th><th>Nombre</th><th>Slug</th><th>Tipo</th><th>Productos</th><th>Activa</th><th>Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in categorias %}
+                    <tr>
+                        <td><input type="checkbox" class="sel-cat" value="{{ c.id }}" onclick="actualizarConteo()"></td>
+                        <td>
+                            <div class="order-arrows">
+                                <button class="btn-arrow" onclick="moverCat({{ c.id }}, 'up')" title="Subir"><i class="fas fa-chevron-up"></i></button>
+                                <button class="btn-arrow" onclick="moverCat({{ c.id }}, 'down')" title="Bajar"><i class="fas fa-chevron-down"></i></button>
+                            </div>
+                        </td>
+                        <td>
+                            {% if c.imagen %}
+                            <img src="{{ c.imagen }}" alt="{{ c.nombre }}" style="width:60px;height:45px;object-fit:cover;border-radius:6px;">
+                            {% else %}
+                            <i class="fas {{ c.icono }}" style="font-size:1.5rem;color:var(--accent-primary);"></i>
+                            {% endif %}
+                        </td>
+                        <td><strong>{{ c.nombre }}</strong></td>
+                        <td><code>{{ c.slug }}</code></td>
+                        <td><span class="badge {{ 'badge-completado' if c.tipo == 'juegos' else 'badge-pendiente' }}">{{ c.tipo }}</span></td>
+                        <td>{{ c.total_productos }}</td>
+                        <td>
+                            {% if c.activo %}
+                            <span class="badge badge-completado">Sí</span>
+                            {% else %}
+                            <span class="badge badge-cancelado">No</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="action-btns">
+                                <button class="btn btn-sm btn-secondary" onclick="editarCat({{ c.id }}, '{{ c.nombre|e }}', '{{ c.slug }}', '{{ c.icono }}', '{{ c.imagen|e }}', '{{ c.tipo }}', '{{ c.descripcion|e }}', {{ c.orden }}, {{ c.activo }})">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                                {% if c.total_productos == 0 %}
+                                <form method="POST" style="display:inline;">
+                                    <input type="hidden" name="accion" value="eliminar">
+                                    <input type="hidden" name="categoria_id" value="{{ c.id }}">
+                                    <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar {{ c.nombre }}?')">
+                                        <i class="fas fa-trash"></i>
+                                    </button>
+                                </form>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-folder-open"></i>
+            <h2>Sin categorías</h2>
+            <p>Crea tu primera categoría usando el formulario de arriba</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function toggleTodos(master) {
+    var checks = document.querySelectorAll('.sel-cat');
+    checks.forEach(function(c) { c.checked = master.checked; });
+    actualizarConteo();
+}
+
+function actualizarConteo() {
+    var checks = document.querySelectorAll('.sel-cat:checked');
+    var btn = document.getElementById('btn-eliminar-sel');
+    var count = document.getElementById('count-sel');
+    count.textContent = checks.length;
+    btn.style.display = checks.length > 0 ? 'inline-flex' : 'none';
+    var todos = document.querySelectorAll('.sel-cat');
+    document.getElementById('sel-todos').checked = checks.length === todos.length && todos.length > 0;
+}
+
+function eliminarSeleccionadas() {
+    var checks = document.querySelectorAll('.sel-cat:checked');
+    var ids = [];
+    checks.forEach(function(c) { ids.push(parseInt(c.value)); });
+    if (ids.length === 0) return;
+    if (!confirm('¿Eliminar ' + ids.length + ' categoría(s) seleccionada(s)? Las que tengan productos asociados NO se eliminarán.')) return;
+    fetch('/admin/categorias/eliminar-lote', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ids: ids})
+    }).then(function(r) { return r.json(); }).then(function(data) {
+        if (data.eliminadas > 0) {
+            alert('Se eliminaron ' + data.eliminadas + ' categoría(s).' + (data.omitidas > 0 ? ' ' + data.omitidas + ' omitida(s) por tener productos.' : ''));
+        } else {
+            alert('No se eliminó ninguna categoría. ' + (data.omitidas > 0 ? data.omitidas + ' tienen productos asociados.' : ''));
+        }
+        location.reload();
+    });
+}
+
+function moverCat(id, dir) {
+    fetch('/admin/categorias/orden', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({id: id, dir: dir})
+    }).then(function() { location.reload(); });
+}
+
+function editarCat(id, nombre, slug, icono, imagen, tipo, descripcion, orden, activo) {
+    document.getElementById('form-accion').value = 'editar';
+    document.getElementById('form-cat-id').value = id;
+    document.getElementById('form-nombre').value = nombre;
+    document.getElementById('form-slug').value = slug;
+    document.getElementById('form-icono').value = icono;
+    document.getElementById('form-imagen-url').value = imagen;
+    document.getElementById('form-imagen-file').value = '';
+    document.getElementById('form-tipo').value = tipo;
+    document.getElementById('form-descripcion').value = descripcion;
+    document.getElementById('form-orden').value = orden;
+    document.getElementById('form-activo').checked = activo == 1;
+    document.getElementById('form-titulo').innerHTML = '<i class="fas fa-edit"></i> Editar Categoría #' + id;
+    document.getElementById('form-btn-text').textContent = 'Guardar Cambios';
+    document.getElementById('form-btn').querySelector('i').className = 'fas fa-save';
+    document.getElementById('btn-cancelar').style.display = 'inline-flex';
+    if (imagen) {
+        document.getElementById('form-preview').src = imagen;
+        document.getElementById('preview-container').style.display = 'block';
+    } else {
+        document.getElementById('preview-container').style.display = 'none';
+    }
+    document.getElementById('form-categoria').scrollIntoView({ behavior: 'smooth' });
+    document.getElementById('form-categoria').style.borderColor = '#7c3aed';
+}
+
+function resetForm() {
+    document.getElementById('form-accion').value = 'crear';
+    document.getElementById('form-cat-id').value = '';
+    document.getElementById('form-nombre').value = '';
+    document.getElementById('form-slug').value = '';
+    document.getElementById('form-icono').value = 'fa-gamepad';
+    document.getElementById('form-imagen-url').value = '';
+    document.getElementById('form-imagen-file').value = '';
+    document.getElementById('form-tipo').value = 'juegos';
+    document.getElementById('form-descripcion').value = '';
+    document.getElementById('form-orden').value = '0';
+    document.getElementById('form-activo').checked = true;
+    document.getElementById('preview-container').style.display = 'none';
+    document.getElementById('form-titulo').innerHTML = '<i class="fas fa-plus-circle"></i> Nueva Categoría';
+    document.getElementById('form-btn-text').textContent = 'Crear Categoría';
+    document.getElementById('form-btn').querySelector('i').className = 'fas fa-plus';
+    document.getElementById('btn-cancelar').style.display = 'none';
+    document.getElementById('form-categoria').style.borderColor = '';
+}
+
+document.getElementById('form-nombre').addEventListener('input', function() {
+    if (document.getElementById('form-accion').value === 'crear') {
+        document.getElementById('form-slug').value = this.value.toLowerCase().replace(/\s+/g, '').replace(/[^a-z0-9]/g, '');
+    }
+});
+
+document.getElementById('form-imagen-file').addEventListener('change', function() {
+    if (this.files && this.files[0]) {
+        var reader = new FileReader();
+        reader.onload = function(e) {
+            document.getElementById('form-preview').src = e.target.result;
+            document.getElementById('preview-container').style.display = 'block';
+        };
+        reader.readAsDataURL(this.files[0]);
+    }
+});
+</script>
+{% endblock %}

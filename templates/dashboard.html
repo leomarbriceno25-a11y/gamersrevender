@@ -1,0 +1,122 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="dashboard-hero">
+    <div class="container">
+        <h1>Bienvenido, <span class="text-gradient">{{ user.nombre }}</span></h1>
+        <p>Panel de revendedor - Gestiona tus compras y saldo</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card stat-card-wallet">
+                <div class="stat-icon"><i class="fas fa-wallet"></i></div>
+                <div class="stat-info">
+                    <h3><a href="{{ url_for('cartera') }}" class="stat-link">${{ '%.2f'|format(saldo) }}</a></h3>
+                    <p>Saldo en cartera</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-shopping-cart"></i></div>
+                <div class="stat-info">
+                    <h3>{{ stats.total_pedidos }}</h3>
+                    <p>Pedidos realizados</p>
+                </div>
+            </div>
+        </div>
+
+        {% if user.api_key %}
+        <div class="api-key-box">
+            <h3><i class="fas fa-key"></i> Tu API Key</h3>
+            <div class="api-key-value">
+                <code id="apiKey">{{ user.api_key }}</code>
+                <button class="btn btn-sm btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('apiKey').textContent); this.innerHTML='<i class=\'fas fa-check\'></i> Copiado';">
+                    <i class="fas fa-copy"></i> Copiar
+                </button>
+            </div>
+            <p class="api-key-hint">Usa esta key para conectarte vía API. Base URL: <code>/api/v1/</code></p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+{% set juegos = categorias | selectattr('tipo', 'equalto', 'juegos') | list %}
+{% set giftcards = categorias | selectattr('tipo', 'equalto', 'giftcards') | list %}
+
+{% if juegos %}
+<section class="section">
+    <div class="container">
+        <div class="catalog-section-header">
+            <h2><i class="fas fa-gamepad"></i> Juegos</h2>
+            <span class="catalog-count">{{ juegos|length }} juego{{ 's' if juegos|length != 1 }}</span>
+        </div>
+        <div class="games-grid">
+            {% for cat in juegos %}
+            <a href="{{ url_for('catalogo_juego', slug=cat.slug) }}" class="game-card-img">
+                <div class="game-card-bg" style="background-image: url('{{ cat.imagen }}');"></div>
+                <div class="game-card-overlay"></div>
+                <div class="game-card-content">
+                    <span class="game-tag">JUEGOS</span>
+                    <h3>{{ cat.nombre | upper }}</h3>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if giftcards %}
+<section class="section">
+    <div class="container">
+        <div class="catalog-section-header">
+            <h2><i class="fas fa-gift"></i> Gift Cards</h2>
+            <span class="catalog-count">{{ giftcards|length }} producto{{ 's' if giftcards|length != 1 }}</span>
+        </div>
+        <div class="games-grid">
+            {% for cat in giftcards %}
+            <a href="{{ url_for('catalogo_juego', slug=cat.slug) }}" class="game-card-img">
+                <div class="game-card-bg" style="background-image: url('{{ cat.imagen }}');"></div>
+                <div class="game-card-overlay"></div>
+                <div class="game-card-content">
+                    <span class="game-tag game-tag-gift">GIFT CARDS</span>
+                    <h3>{{ cat.nombre | upper }}</h3>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+{% if ultimos %}
+<section class="section">
+    <div class="container">
+        <h2 class="section-title"><i class="fas fa-history"></i> Últimos Pedidos</h2>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr><th>#</th><th>Producto</th><th>Total</th><th>Estado</th><th>Fecha</th></tr>
+                </thead>
+                <tbody>
+                    {% for p in ultimos %}
+                    <tr>
+                        <td>{{ p.id }}</td>
+                        <td>{{ p.producto_nombre }}</td>
+                        <td>${{ '%.2f'|format(p.total) }}</td>
+                        <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
+                        <td>{{ p.fecha_pedido }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="text-center" style="margin-top:1rem;">
+            <a href="{{ url_for('mis_pedidos') }}" class="btn btn-secondary">Ver todos</a>
+        </div>
+    </div>
+</section>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+{% block title %}Mis Pedidos - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1><i class="fas fa-shopping-bag"></i> Mis Pedidos</h1>
+        <p>Historial de todas tus compras</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        {% if pedidos %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr><th>#</th><th>Producto</th><th>Cant.</th><th>Total</th><th>Estado</th><th>Fecha</th></tr>
+                </thead>
+                <tbody>
+                    {% for p in pedidos %}
+                    <tr>
+                        <td>{{ p.id }}</td>
+                        <td>{{ p.producto_nombre }}</td>
+                        <td>x{{ p.cantidad }}</td>
+                        <td>${{ '%.2f'|format(p.total) }}</td>
+                        <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
+                        <td>{{ p.fecha_pedido }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-shopping-bag"></i>
+            <h2>Sin pedidos</h2>
+            <p>Aún no has realizado ningún pedido</p>
+            <div class="empty-buttons">
+                <a href="{{ url_for('catalogo') }}" class="btn btn-primary"><i class="fas fa-store"></i> Ver Catálogo</a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

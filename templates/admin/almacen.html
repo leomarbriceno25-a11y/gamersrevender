@@ -1,0 +1,154 @@
+{% extends 'base.html' %}
+{% block title %}Almacén de PINes - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-warehouse"></i> Almacén de PINes</h1>
+        <p>Gestiona los PINes de Free Fire para canje automático vía API</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <!-- Stock resumen -->
+        <h2 class="section-title"><i class="fas fa-boxes-stacked"></i> Stock Disponible</h2>
+        <div class="stats-grid">
+            {% for p in productos_api %}
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-gem"></i></div>
+                <div class="stat-info">
+                    <h3>{{ stock.get(p.id, 0) }}</h3>
+                    <p>{{ p.nombre }}</p>
+                </div>
+            </div>
+            {% endfor %}
+            {% if not productos_api %}
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="stat-info">
+                    <h3>0</h3>
+                    <p>No hay productos con API activa. Actívalo en Productos.</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+{% if productos_api %}
+<section class="section">
+    <div class="container">
+        <div class="admin-card">
+            <h2><i class="fas fa-plus-circle"></i> Agregar PINes</h2>
+            <form method="POST">
+                <input type="hidden" name="accion" value="agregar">
+                <div class="form-grid-2">
+                    <div class="form-group">
+                        <label><i class="fas fa-gem"></i> Producto</label>
+                        <select name="producto_id" class="form-select" required>
+                            <option value="">Seleccionar producto...</option>
+                            {% for p in productos_api %}
+                            <option value="{{ p.id }}">{{ p.nombre }} (Stock: {{ stock.get(p.id, 0) }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-info-circle"></i> Instrucciones</label>
+                        <p style="color: var(--text-secondary); font-size: 0.85rem; padding-top: 0.5rem;">
+                            Coloca un PIN por línea. Se agregarán todos al almacén del producto seleccionado.
+                        </p>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label><i class="fas fa-key"></i> PINes (uno por línea)</label>
+                    <textarea name="pines" rows="8" placeholder="ABC123DEF456&#10;GHI789JKL012&#10;MNO345PQR678" required style="width:100%;padding:0.8rem 1rem;background:var(--bg-primary);border:1px solid var(--border);border-radius:var(--radius);color:var(--text-primary);font-family:monospace;font-size:0.9rem;resize:vertical;"></textarea>
+                </div>
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-plus"></i> Agregar PINes al Almacén</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<section class="section">
+    <div class="container">
+        <h2 class="section-title"><i class="fas fa-key"></i> PINes en Almacén ({{ pines|length }})</h2>
+
+        <!-- Filtros -->
+        <div class="cat-filters" style="margin-bottom: 1rem;">
+            <a href="{{ url_for('admin_almacen') }}" class="btn {{ 'btn-primary' if not filtro else 'btn-secondary' }} btn-sm">
+                <i class="fas fa-th"></i> Todos
+            </a>
+            {% for p in productos_api %}
+            <a href="{{ url_for('admin_almacen', producto_id=p.id) }}" class="btn {{ 'btn-primary' if filtro == p.id|string else 'btn-secondary' }} btn-sm">
+                <i class="fas fa-gem"></i> {{ p.nombre }} ({{ stock.get(p.id, 0) }})
+            </a>
+            {% endfor %}
+        </div>
+
+        {% if filtro and productos_api %}
+        <div style="margin-bottom: 1rem;">
+            <form method="POST" style="display:inline;">
+                <input type="hidden" name="accion" value="eliminar_todos">
+                <input type="hidden" name="producto_id" value="{{ filtro }}">
+                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar TODOS los PINes disponibles de este producto?')">
+                    <i class="fas fa-trash"></i> Eliminar todos los disponibles
+                </button>
+            </form>
+        </div>
+        {% endif %}
+
+        {% if pines %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr><th>ID</th><th>Producto</th><th>PIN</th><th>Estado</th><th>Usado por</th><th>Fecha</th><th>Acciones</th></tr>
+                </thead>
+                <tbody>
+                    {% for pin in pines %}
+                    <tr>
+                        <td>{{ pin.id }}</td>
+                        <td>{{ pin.producto_nombre }}</td>
+                        <td><code style="background:var(--bg-primary);padding:0.2rem 0.5rem;border-radius:4px;font-size:0.8rem;">{{ pin.pin }}</code></td>
+                        <td>
+                            {% if pin.estado == 'disponible' %}
+                            <span class="badge badge-completado"><i class="fas fa-check"></i> Disponible</span>
+                            {% elif pin.estado == 'usado' %}
+                            <span class="badge badge-procesando"><i class="fas fa-check-double"></i> Usado</span>
+                            {% else %}
+                            <span class="badge badge-cancelado"><i class="fas fa-times"></i> Error</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ pin.usado_por or '-' }}</td>
+                        <td>{{ pin.fecha_agregado }}</td>
+                        <td>
+                            {% if pin.estado == 'disponible' %}
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="accion" value="eliminar">
+                                <input type="hidden" name="pin_id" value="{{ pin.id }}">
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar este PIN?')">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </form>
+                            {% else %}
+                            <span style="color:var(--text-secondary);font-size:0.8rem;">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-key"></i>
+            <h2>Sin PINes</h2>
+            <p>Agrega PINes usando el formulario de arriba</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

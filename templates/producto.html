@@ -1,0 +1,104 @@
+{% extends 'base.html' %}
+{% block title %}{{ producto.nombre }} - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('catalogo_juego', slug=producto.categoria_slug) }}" class="btn-back">
+            <i class="fas fa-arrow-left"></i> Volver a {{ producto.categoria_nombre }}
+        </a>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="product-detail">
+            <div class="product-detail-info">
+                <div class="product-detail-icon"><i class="fas {{ producto.icono }}"></i></div>
+                <h1>{{ producto.nombre }}</h1>
+                <p class="product-detail-desc">{{ producto.descripcion }}</p>
+                <div class="product-detail-price">${{ '%.2f'|format(producto.precio) }}</div>
+                <div class="product-badges">
+                    <span class="badge badge-completado"><i class="fas fa-bolt"></i> Entrega instantánea</span>
+                    <span class="badge badge-procesando"><i class="fas fa-shield-alt"></i> 100% Seguro</span>
+                </div>
+            </div>
+
+            <div class="product-detail-form">
+                <h2><i class="fas fa-shopping-cart"></i> Realizar Pedido</h2>
+                <form method="POST" action="{{ url_for('comprar') }}">
+                    <input type="hidden" name="producto_id" value="{{ producto.id }}">
+
+                    {% if producto.categoria_slug == 'freefire' %}
+                    <div class="form-group">
+                        <label><i class="fas fa-gamepad"></i> ID de Free Fire *</label>
+                        <input type="text" name="id_juego" placeholder="Ingresa tu ID de Free Fire" required>
+                    </div>
+                    {% endif %}
+
+                    <input type="hidden" name="cantidad" value="1">
+
+                    <div class="wallet-payment-box">
+                        <div class="wallet-payment-info">
+                            <i class="fas fa-wallet"></i>
+                            <div>
+                                <span class="wallet-payment-label">Pago con cartera</span>
+                                <span class="wallet-payment-saldo {{ 'text-green' if saldo >= producto.precio else 'text-red' }}">Saldo: ${{ '%.2f'|format(saldo) }}</span>
+                            </div>
+                        </div>
+                        {% if saldo < producto.precio %}
+                        <div class="wallet-insufficient">
+                            <i class="fas fa-exclamation-triangle"></i> Saldo insuficiente. <a href="{{ url_for('cartera') }}">Recarga tu cartera</a>
+                        </div>
+                        {% endif %}
+                    </div>
+
+                    <div class="order-summary">
+                        <h3>Resumen</h3>
+                        <div class="summary-row">
+                            <span>{{ producto.nombre }}</span>
+                            <span id="summary-price">${{ '%.2f'|format(producto.precio) }}</span>
+                        </div>
+                        <div class="summary-total">
+                            <span>Total:</span>
+                            <span id="summary-total">${{ '%.2f'|format(producto.precio) }}</span>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-block btn-lg" id="btn-comprar" {{ 'disabled' if saldo < producto.precio }}>
+                        <i class="fas fa-wallet"></i> Pagar con Cartera
+                    </button>
+                    {% if saldo < producto.precio %}
+                    <a href="{{ url_for('cartera') }}" class="btn btn-secondary btn-block">
+                        <i class="fas fa-plus-circle"></i> Recargar Cartera
+                    </a>
+                    {% endif %}
+                </form>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div id="loading-overlay" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,14,23,0.92); z-index:9999; display:none; justify-content:center; align-items:center;">
+    <div style="text-align:center;">
+        <div class="spinner" style="width:60px; height:60px; border:4px solid var(--border); border-top:4px solid #7c3aed; border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 1.5rem;"></div>
+        <h2 style="color:white; margin-bottom:0.5rem;"><i class="fas fa-bolt" style="color:#fbbf24;"></i> Procesando tu recarga...</h2>
+        <p style="color:var(--text-secondary);">Conectando con el servidor del juego. No cierres esta página.</p>
+        <p style="color:var(--text-secondary); font-size:0.85rem;">Esto puede tardar unos segundos...</p>
+    </div>
+</div>
+<style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelector('form[action="{{ url_for("comprar") }}"]').addEventListener('submit', function(e) {
+    var btn = document.getElementById('btn-comprar');
+    if (btn.disabled) { e.preventDefault(); return; }
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+    var overlay = document.getElementById('loading-overlay');
+    overlay.style.display = 'flex';
+});
+</script>
+{% endblock %}
+

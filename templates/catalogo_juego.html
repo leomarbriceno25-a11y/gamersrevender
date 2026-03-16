@@ -1,0 +1,37 @@
+{% extends 'base.html' %}
+{% block title %}{{ categoria.nombre }} - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('catalogo') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Juegos</a>
+        <h1><i class="fas {{ categoria.icono }}"></i> {{ categoria.nombre }}</h1>
+        <p>{{ categoria.descripcion }}</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        {% if productos %}
+        <div class="products-grid">
+            {% for prod in productos %}
+            <div class="product-card">
+                <div class="product-icon"><i class="fas {{ prod.icono }}"></i></div>
+                <h3>{{ prod.nombre }}</h3>
+                <p class="product-desc">{{ prod.descripcion }}</p>
+                <div class="product-price">${{ '%.2f'|format(prod.precio) }}</div>
+                <a href="{{ url_for('producto', id=prod.id) }}" class="btn btn-primary btn-sm btn-block">
+                    <i class="fas fa-shopping-cart"></i> Comprar
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-box-open"></i>
+            <h2>Sin productos</h2>
+            <p>No hay recargas disponibles para {{ categoria.nombre }} aún</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
