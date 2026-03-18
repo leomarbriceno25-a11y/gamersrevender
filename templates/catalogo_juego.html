@@ -18,7 +18,7 @@
                 <div class="product-icon"><i class="fas {{ prod.icono }}"></i></div>
                 <h3>{{ prod.nombre }}</h3>
                 <p class="product-desc">{{ prod.descripcion }}</p>
-                <div class="product-price">${{ '%.2f'|format(prod.precio) }}</div>
+                <div class="product-price">${{ '%.4f'|format(prod.precio) }}</div>
                 <a href="{{ url_for('producto', id=prod.id) }}" class="btn btn-primary btn-sm btn-block">
                     <i class="fas fa-shopping-cart"></i> Comprar
                 </a>

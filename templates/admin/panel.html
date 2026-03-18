@@ -28,7 +28,7 @@
             <div class="stat-card stat-card-wallet">
                 <div class="stat-icon"><i class="fas fa-dollar-sign"></i></div>
                 <div class="stat-info">
-                    <h3>${{ '%.2f'|format(total_ventas) }}</h3>
+                    <h3>${{ '%.4f'|format(total_ventas) }}</h3>
                     <p>Ventas completadas</p>
                 </div>
             </div>
@@ -96,7 +96,7 @@
                         <td>{{ p.id }}</td>
                         <td>{{ p.usuario_nombre }}</td>
                         <td>{{ p.producto_nombre }}</td>
-                        <td>${{ '%.2f'|format(p.total) }}</td>
+                        <td>${{ '%.4f'|format(p.total) }}</td>
                         <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
                         <td>{{ p.fecha_pedido }}</td>
                     </tr>

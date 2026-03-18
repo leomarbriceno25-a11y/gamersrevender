@@ -31,7 +31,7 @@
             <div class="nav-links">
                 <a href="{{ url_for('dashboard') }}"><i class="fas fa-home"></i> Inicio</a>
                 <a href="{{ url_for('catalogo') }}"><i class="fas fa-store"></i> Catálogo</a>
-                <a href="{{ url_for('cartera') }}"><i class="fas fa-wallet"></i> ${{ '%.2f'|format(saldo) }}</a>
+                <a href="{{ url_for('cartera') }}"><i class="fas fa-wallet"></i> ${{ '%.4f'|format(saldo) }}</a>
                 <a href="{{ url_for('mis_pedidos') }}"><i class="fas fa-shopping-bag"></i> Pedidos</a>
                 {% if current_user.rol == 'admin' %}
                 <a href="{{ url_for('admin_panel') }}"><i class="fas fa-cog"></i> Admin</a>

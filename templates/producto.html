@@ -16,7 +16,7 @@
                 <div class="product-detail-icon"><i class="fas {{ producto.icono }}"></i></div>
                 <h1>{{ producto.nombre }}</h1>
                 <p class="product-detail-desc">{{ producto.descripcion }}</p>
-                <div class="product-detail-price">${{ '%.2f'|format(producto.precio) }}</div>
+                <div class="product-detail-price">${{ '%.4f'|format(producto.precio) }}</div>
                 <div class="product-badges">
                     <span class="badge badge-completado"><i class="fas fa-bolt"></i> Entrega instantánea</span>
                     <span class="badge badge-procesando"><i class="fas fa-shield-alt"></i> 100% Seguro</span>
@@ -59,7 +59,7 @@
                             <i class="fas fa-wallet"></i>
                             <div>
                                 <span class="wallet-payment-label">Pago con cartera</span>
-                                <span class="wallet-payment-saldo {{ 'text-green' if saldo >= producto.precio else 'text-red' }}">Saldo: ${{ '%.2f'|format(saldo) }}</span>
+                                <span class="wallet-payment-saldo {{ 'text-green' if saldo >= producto.precio else 'text-red' }}">Saldo: ${{ '%.4f'|format(saldo) }}</span>
                             </div>
                         </div>
                         {% if saldo < producto.precio %}
@@ -73,11 +73,11 @@
                         <h3>Resumen</h3>
                         <div class="summary-row">
                             <span>{{ producto.nombre }}</span>
-                            <span id="summary-price">${{ '%.2f'|format(producto.precio) }}</span>
+                            <span id="summary-price">${{ '%.4f'|format(producto.precio) }}</span>
                         </div>
                         <div class="summary-total">
                             <span>Total:</span>
-                            <span id="summary-total">${{ '%.2f'|format(producto.precio) }}</span>
+                            <span id="summary-total">${{ '%.4f'|format(producto.precio) }}</span>
                         </div>
                     </div>
 
@@ -98,7 +98,7 @@
                         <h3>Precio</h3>
                         <div class="summary-row">
                             <span>{{ producto.nombre }}</span>
-                            <span style="font-weight:bold; color:#22c55e;">${{ '%.2f'|format(producto.precio) }}</span>
+                            <span style="font-weight:bold; color:#22c55e;">${{ '%.4f'|format(producto.precio) }}</span>
                         </div>
                     </div>
                     <div style="margin-top:1rem; padding:0.75rem; background:var(--bg-primary); border-radius:8px;">

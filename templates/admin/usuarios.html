@@ -55,7 +55,7 @@
                         <td>{{ u.nombre }}</td>
                         <td>{{ u.email }}</td>
                         <td><span class="badge badge-{{ 'completado' if u.rol == 'admin' else 'procesando' }}">{{ u.rol|capitalize }}</span></td>
-                        <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.2f'|format(u.saldo) }}</td>
+                        <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.4f'|format(u.saldo) }}</td>
                         <td>
                             {% if u.activo %}
                                 <span class="badge badge-completado">Activo</span>

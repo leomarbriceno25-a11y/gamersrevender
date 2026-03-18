@@ -14,7 +14,7 @@
             <div class="stat-card stat-card-wallet">
                 <div class="stat-icon"><i class="fas fa-wallet"></i></div>
                 <div class="stat-info">
-                    <h3><a href="{{ url_for('cartera') }}" class="stat-link">${{ '%.2f'|format(saldo) }}</a></h3>
+                    <h3><a href="{{ url_for('cartera') }}" class="stat-link">${{ '%.4f'|format(saldo) }}</a></h3>
                     <p>Saldo en cartera</p>
                 </div>
             </div>
@@ -105,7 +105,7 @@
                     <tr>
                         <td>{{ p.id }}</td>
                         <td>{{ p.producto_nombre }}</td>
-                        <td>${{ '%.2f'|format(p.total) }}</td>
+                        <td>${{ '%.4f'|format(p.total) }}</td>
                         <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
                         <td>{{ p.fecha_pedido }}</td>
                     </tr>

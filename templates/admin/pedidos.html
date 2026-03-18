@@ -24,7 +24,7 @@
                         <td>{{ p.usuario_email }}</td>
                         <td>{{ p.producto_nombre }}</td>
                         <td>x{{ p.cantidad }}</td>
-                        <td>${{ '%.2f'|format(p.total) }}</td>
+                        <td>${{ '%.4f'|format(p.total) }}</td>
                         <td>{{ p.id_juego or '-' }}</td>
                         <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
                         <td>{{ p.fecha_pedido }}</td>

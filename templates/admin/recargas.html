@@ -20,13 +20,13 @@
                         <select name="usuario_id" id="usuario_id" class="form-select" required>
                             <option value="">Seleccionar usuario...</option>
                             {% for u in usuarios %}
-                            <option value="{{ u.id }}">{{ u.nombre }} ({{ u.email }}) - Saldo: ${{ '%.2f'|format(u.saldo) }}</option>
+                            <option value="{{ u.id }}">{{ u.nombre }} ({{ u.email }}) - Saldo: ${{ '%.4f'|format(u.saldo) }}</option>
                             {% endfor %}
                         </select>
                     </div>
                     <div class="form-group">
                         <label><i class="fas fa-dollar-sign"></i> Monto</label>
-                        <input type="number" name="monto" id="monto" step="0.01" min="0.01" placeholder="0.00" required>
+                        <input type="number" name="monto" id="monto" step="0.0001" min="0.01" placeholder="0.00" required>
                     </div>
                 </div>
                 <div class="form-group">
@@ -55,7 +55,7 @@
                         <td>{{ u.id }}</td>
                         <td>{{ u.nombre }}</td>
                         <td>{{ u.email }}</td>
-                        <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.2f'|format(u.saldo) }}</td>
+                        <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.4f'|format(u.saldo) }}</td>
                         <td>
                             <button class="btn btn-sm btn-primary" onclick="document.getElementById('usuario_id').value='{{ u.id }}'; document.getElementById('monto').focus(); window.scrollTo(0,0);">
                                 <i class="fas fa-plus"></i> Recargar
@@ -93,9 +93,9 @@
                             {% endif %}
                         </td>
                         <td class="{{ 'text-red' if t.tipo == 'compra' else 'text-green' }}">
-                            {{ '-' if t.tipo == 'compra' else '+' }}${{ '%.2f'|format(t.monto) }}
+                            {{ '-' if t.tipo == 'compra' else '+' }}${{ '%.4f'|format(t.monto) }}
                         </td>
-                        <td>${{ '%.2f'|format(t.saldo_nuevo) }}</td>
+                        <td>${{ '%.4f'|format(t.saldo_nuevo) }}</td>
                         <td>{{ t.descripcion or '-' }}</td>
                         <td>{{ t.admin_nombre or '-' }}</td>
                     </tr>

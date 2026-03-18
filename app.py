@@ -257,7 +257,7 @@ def comprar():
     resultado = descontar_saldo(user_id, total, f"Compra: {prod['nombre']} x{cantidad}")
     if resultado is None:
         saldo = get_saldo(user_id)
-        flash(f'Saldo insuficiente. Tu saldo es ${saldo:.2f} y el total es ${total:.2f}', 'error')
+        flash(f'Saldo insuficiente. Tu saldo es ${saldo:.4f} y el total es ${total:.4f}', 'error')
         db.close()
         return redirect(url_for('producto', id=producto_id))
 
@@ -309,7 +309,7 @@ def comprar():
                 db2.close()
                 recargar_saldo(user_id, total, f"Reembolso: Error GamePoint pedido #{pedido_id}")
                 error_msg = resultado_api.get('error', resultado_api.get('message', 'Error desconocido'))
-                flash(f'Error en recarga: {error_msg}. Se reembolsó ${total:.2f} a tu cartera.', 'error')
+                flash(f'Error en recarga: {error_msg}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
         except Exception as e:
             db2 = get_db()
@@ -317,7 +317,7 @@ def comprar():
             db2.commit()
             db2.close()
             recargar_saldo(user_id, total, f"Reembolso: Excepción GamePoint pedido #{pedido_id}")
-            flash(f'Error inesperado en la recarga. Se reembolsó ${total:.2f} a tu cartera.', 'error')
+            flash(f'Error inesperado en la recarga. Se reembolsó ${total:.4f} a tu cartera.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Hype Games (Free Fire), canjear PIN automáticamente
@@ -352,7 +352,7 @@ def comprar():
                     db2.close()
                     recargar_saldo(user_id, total, f"Reembolso: Error canje pedido #{pedido_id}")
                     error_msg = resultado_api.get('error', 'Error desconocido en el canje')
-                    flash(f'Error en canje automático: {error_msg}. Se reembolsó ${total:.2f} a tu cartera.', 'error')
+                    flash(f'Error en canje automático: {error_msg}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
                     return redirect(url_for('pedido_detalle', id=pedido_id))
             except Exception as e:
                 db2 = get_db()
@@ -361,7 +361,7 @@ def comprar():
                 db2.commit()
                 db2.close()
                 recargar_saldo(user_id, total, f"Reembolso: Excepción canje pedido #{pedido_id}")
-                flash(f'Error inesperado en el canje. Se reembolsó ${total:.2f} a tu cartera.', 'error')
+                flash(f'Error inesperado en el canje. Se reembolsó ${total:.4f} a tu cartera.', 'error')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
         else:
             # No hay PINes disponibles - liberar transacción y reembolsar
@@ -373,7 +373,7 @@ def comprar():
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
     db.close()
-    flash(f'Pedido #{pedido_id} registrado. Se descontaron ${total:.2f} de tu cartera.', 'success')
+    flash(f'Pedido #{pedido_id} registrado. Se descontaron ${total:.4f} de tu cartera.', 'success')
     return redirect(url_for('pedido_detalle', id=pedido_id))
 
 
@@ -463,7 +463,7 @@ def admin_recargas():
             user = get_user_by_id(usuario_id)
             if user:
                 nuevo_saldo = recargar_saldo(usuario_id, monto, descripcion, session['user_id'])
-                flash(f'Recarga de ${monto:.2f} aplicada a {user["nombre"]}. Nuevo saldo: ${nuevo_saldo:.2f}', 'success')
+                flash(f'Recarga de ${monto:.4f} aplicada a {user["nombre"]}. Nuevo saldo: ${nuevo_saldo:.4f}', 'success')
             else:
                 flash('Usuario no encontrado', 'error')
         else:

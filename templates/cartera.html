@@ -15,7 +15,7 @@
                 <div class="wallet-balance-icon"><i class="fas fa-wallet"></i></div>
                 <div class="wallet-balance-info">
                     <span class="wallet-balance-label">Saldo disponible</span>
-                    <span class="wallet-balance-amount">${{ '%.2f'|format(saldo) }}</span>
+                    <span class="wallet-balance-amount">${{ '%.4f'|format(saldo) }}</span>
                 </div>
             </div>
             <div class="wallet-actions">
@@ -55,9 +55,9 @@
                         </td>
                         <td>{{ t.descripcion or '-' }}</td>
                         <td class="{{ 'text-red' if t.tipo == 'compra' else 'text-green' }}">
-                            {{ '-' if t.tipo == 'compra' else '+' }}${{ '%.2f'|format(t.monto) }}
+                            {{ '-' if t.tipo == 'compra' else '+' }}${{ '%.4f'|format(t.monto) }}
                         </td>
-                        <td>${{ '%.2f'|format(t.saldo_nuevo) }}</td>
+                        <td>${{ '%.4f'|format(t.saldo_nuevo) }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>

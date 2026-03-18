@@ -22,7 +22,7 @@
                     </div>
                     <div class="form-group">
                         <label><i class="fas fa-dollar-sign"></i> Precio ($)</label>
-                        <input type="number" name="precio" id="form-precio" step="0.01" min="0.01" placeholder="0.00" required>
+                        <input type="number" name="precio" id="form-precio" step="0.0001" min="0.0001" placeholder="0.0000" required>
                     </div>
                     <div class="form-group">
                         <label><i class="fas fa-folder"></i> Categoría</label>
@@ -135,7 +135,7 @@
                         </td>
                         <td><i class="fas {{ p.icono }}"></i> {{ p.nombre }}</td>
                         <td>{{ p.categoria_nombre or '-' }}</td>
-                        <td>${{ '%.2f'|format(p.precio) }}</td>
+                        <td>${{ '%.4f'|format(p.precio) }}</td>
                         <td>
                             {% if p.gamepoint_product_id %}
                             <span class="badge badge-completado"><i class="fas fa-globe"></i> GamePoint</span>
