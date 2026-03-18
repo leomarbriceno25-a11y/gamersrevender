@@ -53,6 +53,8 @@ def init_db():
             activo INTEGER DEFAULT 1,
             usa_api INTEGER DEFAULT 0,
             monto_api INTEGER DEFAULT 0,
+            gamepoint_product_id INTEGER DEFAULT 0,
+            gamepoint_package_id INTEGER DEFAULT 0,
             orden INTEGER DEFAULT 0,
             fecha_creacion TEXT DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (categoria_id) REFERENCES categorias(id)
@@ -110,6 +112,13 @@ def init_db():
             FOREIGN KEY (usado_por) REFERENCES usuarios(id)
         );
     """)
+
+    # Migración: agregar columnas GamePoint si no existen
+    try:
+        db.execute("SELECT gamepoint_product_id FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN gamepoint_product_id INTEGER DEFAULT 0")
+        db.execute("ALTER TABLE productos ADD COLUMN gamepoint_package_id INTEGER DEFAULT 0")
 
     # Crear admin si no existe
     admin = db.execute("SELECT id FROM usuarios WHERE email = ?", ('admin@gamersrev.com',)).fetchone()

@@ -28,10 +28,10 @@
                 <form method="POST" action="{{ url_for('comprar') }}">
                     <input type="hidden" name="producto_id" value="{{ producto.id }}">
 
-                    {% if producto.categoria_slug == 'freefire' %}
+                    {% if producto.gamepoint_product_id or producto.categoria_slug == 'freefire' %}
                     <div class="form-group">
-                        <label><i class="fas fa-gamepad"></i> ID de Free Fire *</label>
-                        <input type="text" name="id_juego" placeholder="Ingresa tu ID de Free Fire" required>
+                        <label><i class="fas fa-gamepad"></i> Player ID (ID del jugador) *</label>
+                        <input type="text" name="id_juego" placeholder="Ingresa tu ID de jugador" required>
                     </div>
                     {% endif %}
 
