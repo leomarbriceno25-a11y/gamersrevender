@@ -822,11 +822,12 @@ def api_saldo():
 def api_productos():
     import json as _json
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.gamepoint_product_id, p.gamepoint_fields, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.gamepoint_product_id, p.gamepoint_fields, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
         d = dict(p)
+        usa_api_hype = d.pop('usa_api', 0)
         # Parsear campos requeridos para que el revendedor sepa qué enviar
         fields_raw = d.pop('gamepoint_fields', '') or ''
         campos = []
@@ -835,7 +836,12 @@ def api_productos():
                 campos = _json.loads(fields_raw)
             except Exception:
                 campos = []
-        d['campos_requeridos'] = [{'nombre': f['name'], 'descripcion': f['desc'], 'tipo': f['type'], 'opciones': f.get('options', [])} for f in campos]
+        if campos:
+            d['campos_requeridos'] = [{'nombre': f['name'], 'descripcion': f['desc'], 'tipo': f['type'], 'opciones': f.get('options', [])} for f in campos]
+        elif usa_api_hype:
+            d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador en Free Fire', 'tipo': 'string', 'opciones': []}]
+        else:
+            d['campos_requeridos'] = []
         d['usa_gamepoint'] = bool(d.pop('gamepoint_product_id', 0))
         result.append(d)
     return jsonify({'ok': True, 'productos': result})
