@@ -69,17 +69,29 @@
                     </label>
                 </div>
                 <div id="gamepoint-group" style="display:none;">
+                    <input type="hidden" name="gamepoint_fields" id="form-gp-fields" value="">
                     <div class="form-grid-2">
                         <div class="form-group">
                             <label><i class="fas fa-gamepad" style="color:#3b82f6;"></i> GamePoint Product ID</label>
-                            <input type="number" name="gamepoint_product_id" id="form-gp-product" value="0" min="0" placeholder="Ej: 220 (Free Fire GLOBAL)">
+                            <div style="display:flex; gap:0.5rem;">
+                                <input type="number" name="gamepoint_product_id" id="form-gp-product" value="0" min="0" placeholder="Ej: 220" style="flex:1;">
+                                <button type="button" class="btn btn-sm btn-primary" onclick="cargarCamposGP()" id="btn-cargar-gp"><i class="fas fa-download"></i> Cargar</button>
+                            </div>
                         </div>
                         <div class="form-group">
                             <label><i class="fas fa-box" style="color:#3b82f6;"></i> GamePoint Package ID</label>
-                            <input type="number" name="gamepoint_package_id" id="form-gp-package" value="0" min="0" placeholder="Ej: 31478 (100 Diamonds)">
+                            <input type="number" name="gamepoint_package_id" id="form-gp-package" value="0" min="0" placeholder="Ej: 31478">
                         </div>
                     </div>
-                    <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:-0.5rem;">Consulta IDs en la API de GamePoint. El cliente debe ingresar su Player ID al comprar.</p>
+                    <div id="gp-fields-preview" style="display:none; margin-top:0.5rem; padding:0.75rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px;">
+                        <p style="font-size:0.85rem; margin-bottom:0.5rem;"><strong><i class="fas fa-keyboard"></i> Campos del formulario de compra:</strong></p>
+                        <div id="gp-fields-list"></div>
+                    </div>
+                    <div id="gp-packages-preview" style="display:none; margin-top:0.5rem; padding:0.75rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; max-height:200px; overflow-y:auto;">
+                        <p style="font-size:0.85rem; margin-bottom:0.5rem;"><strong><i class="fas fa-box-open"></i> Paquetes disponibles (click para copiar ID):</strong></p>
+                        <div id="gp-packages-list"></div>
+                    </div>
+                    <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.5rem;">Ingresa el Product ID y presiona "Cargar" para ver campos y paquetes. Consulta la sección GamePoint API para los IDs.</p>
                 </div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary" id="form-btn">
@@ -227,6 +239,59 @@ function moverProducto(id, dir) {
     }).then(function() { location.reload(); });
 }
 
+function cargarCamposGP() {
+    var pid = document.getElementById('form-gp-product').value;
+    if (!pid || pid == '0') { alert('Ingresa un Product ID primero'); return; }
+    var btn = document.getElementById('btn-cargar-gp');
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+    btn.disabled = true;
+    fetch('/admin/gamepoint/productos?product_id=' + pid)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            btn.innerHTML = '<i class="fas fa-download"></i> Cargar';
+            btn.disabled = false;
+            var det = data.detalle;
+            if (!det || !det.ok) { alert('Error: ' + (det ? det.error : 'Sin respuesta')); return; }
+            // Construir fields JSON para guardar
+            var fieldsArr = [];
+            if (det.fields) {
+                for (var i = 0; i < det.fields.length; i++) {
+                    var f = det.fields[i];
+                    var obj = {name: f.name, desc: f.desc, type: f.type};
+                    if (f.type === 'servervalue' && det.servers && det.servers.length > 0) {
+                        obj.options = det.servers.map(function(s) { return {value: s.value, label: s.name}; });
+                    }
+                    fieldsArr.push(obj);
+                }
+            }
+            document.getElementById('form-gp-fields').value = JSON.stringify(fieldsArr);
+            // Mostrar preview de campos
+            var fhtml = '';
+            for (var i = 0; i < fieldsArr.length; i++) {
+                fhtml += '<span style="display:inline-block; background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:0.25rem 0.75rem; margin:0.25rem; font-size:0.85rem;"><strong>' + fieldsArr[i].name + '</strong>: ' + fieldsArr[i].desc + ' (' + fieldsArr[i].type + ')';
+                if (fieldsArr[i].options) fhtml += ' [' + fieldsArr[i].options.length + ' opciones]';
+                fhtml += '</span>';
+            }
+            document.getElementById('gp-fields-list').innerHTML = fhtml;
+            document.getElementById('gp-fields-preview').style.display = fieldsArr.length > 0 ? 'block' : 'none';
+            // Mostrar paquetes
+            if (det.packages && det.packages.length > 0) {
+                var phtml = '';
+                for (var i = 0; i < det.packages.length; i++) {
+                    var pkg = det.packages[i];
+                    phtml += '<span style="display:inline-block; background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:0.25rem 0.75rem; margin:0.25rem; font-size:0.8rem; cursor:pointer;" onclick="document.getElementById(\'form-gp-package\').value=\'' + pkg.id + '\'"><strong style="color:#7c3aed;">' + pkg.id + '</strong>: ' + pkg.name + ' ($' + parseFloat(pkg.price).toFixed(2) + ')</span>';
+                }
+                document.getElementById('gp-packages-list').innerHTML = phtml;
+                document.getElementById('gp-packages-preview').style.display = 'block';
+            }
+        })
+        .catch(function(e) {
+            btn.innerHTML = '<i class="fas fa-download"></i> Cargar';
+            btn.disabled = false;
+            alert('Error de conexión: ' + e.message);
+        });
+}
+
 function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi, orden, gpProduct, gpPackage) {
     document.getElementById('form-accion').value = 'editar';
     document.getElementById('form-producto-id').value = id;
@@ -243,6 +308,7 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     document.getElementById('form-gp-package').value = gpPackage || 0;
     toggleMonto();
     toggleGamepoint();
+    if (gpProduct > 0) { cargarCamposGP(); }
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-edit"></i> Editar Producto #' + id;
     document.getElementById('form-btn-text').textContent = 'Guardar Cambios';
     document.getElementById('form-btn').querySelector('i').className = 'fas fa-save';
@@ -264,6 +330,9 @@ function resetForm() {
     document.getElementById('form-usa-gamepoint').checked = false;
     document.getElementById('form-gp-product').value = '0';
     document.getElementById('form-gp-package').value = '0';
+    document.getElementById('form-gp-fields').value = '';
+    document.getElementById('gp-fields-preview').style.display = 'none';
+    document.getElementById('gp-packages-preview').style.display = 'none';
     toggleMonto();
     toggleGamepoint();
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-plus-circle"></i> Nuevo Producto';

@@ -1,0 +1,229 @@
+{% extends 'base.html' %}
+{% block title %}GamePoint API - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-globe"></i> GamePoint Club API</h1>
+        <p>Catálogo de productos y paquetes disponibles</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="stats-grid">
+            <div class="stat-card stat-card-wallet">
+                <div class="stat-icon"><i class="fas fa-wallet"></i></div>
+                <div class="stat-info">
+                    <h3 id="gp-saldo">$--</h3>
+                    <p>Saldo GamePoint (MYR)</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-gamepad"></i></div>
+                <div class="stat-info">
+                    <h3 id="gp-total-productos">--</h3>
+                    <p>Productos disponibles</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="admin-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">
+                <h2 style="margin:0;"><i class="fas fa-list"></i> Productos GamePoint</h2>
+                <div style="display:flex; gap:0.5rem; align-items:center;">
+                    <input type="text" id="buscar-producto" placeholder="Buscar juego..." style="padding:0.5rem 1rem; border:1px solid var(--border); border-radius:8px; background:var(--bg-secondary); color:var(--text-primary); font-size:0.9rem;">
+                    <button class="btn btn-primary btn-sm" onclick="cargarProductos()"><i class="fas fa-sync"></i> Actualizar</button>
+                </div>
+            </div>
+            <div id="productos-loading" style="text-align:center; padding:2rem;">
+                <div class="spinner" style="width:40px; height:40px; border:3px solid var(--border); border-top:3px solid #7c3aed; border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 1rem;"></div>
+                <p style="color:var(--text-secondary);">Cargando productos de GamePoint...</p>
+            </div>
+            <div class="table-responsive" id="productos-tabla" style="display:none;">
+                <table class="table" id="tabla-productos">
+                    <thead>
+                        <tr><th>ID</th><th>Nombre</th><th>Acciones</th></tr>
+                    </thead>
+                    <tbody id="productos-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Modal de paquetes -->
+<div id="modal-paquetes" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:rgba(10,14,23,0.92); z-index:9999; justify-content:center; align-items:center; padding:1rem;">
+    <div style="background:var(--bg-secondary); border-radius:16px; border:1px solid var(--border); max-width:700px; width:100%; max-height:85vh; overflow-y:auto; padding:2rem;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.5rem;">
+            <h2 style="margin:0;" id="modal-titulo"><i class="fas fa-box"></i> Paquetes</h2>
+            <button onclick="cerrarModal()" style="background:none; border:none; color:var(--text-secondary); font-size:1.5rem; cursor:pointer;"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="modal-info" style="margin-bottom:1rem;"></div>
+        <div id="modal-loading" style="text-align:center; padding:2rem;">
+            <div class="spinner" style="width:40px; height:40px; border:3px solid var(--border); border-top:3px solid #3b82f6; border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 1rem;"></div>
+            <p style="color:var(--text-secondary);">Cargando paquetes...</p>
+        </div>
+        <div class="table-responsive" id="modal-tabla" style="display:none;">
+            <table class="table">
+                <thead>
+                    <tr><th>Package ID</th><th>Nombre</th><th>Precio (MYR)</th><th>Precio Original</th></tr>
+                </thead>
+                <tbody id="paquetes-body"></tbody>
+            </table>
+        </div>
+        <div id="modal-fields" style="margin-top:1rem;"></div>
+        <div id="modal-servers" style="margin-top:1rem;"></div>
+    </div>
+</div>
+
+<style>
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+#modal-paquetes .table td { font-size: 0.85rem; }
+#modal-paquetes .table th { font-size: 0.8rem; }
+.pkg-id { font-family: monospace; font-weight: bold; color: #7c3aed; cursor: pointer; }
+.pkg-id:hover { text-decoration: underline; }
+.field-badge { display: inline-block; background: var(--bg-primary); border: 1px solid var(--border); border-radius: 6px; padding: 0.25rem 0.75rem; margin: 0.25rem; font-size: 0.85rem; }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+var todosProductos = [];
+
+function cargarProductos() {
+    document.getElementById('productos-loading').style.display = 'block';
+    document.getElementById('productos-tabla').style.display = 'none';
+    fetch('/admin/gamepoint/productos')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            // Saldo
+            if (data.saldo && data.saldo.ok) {
+                document.getElementById('gp-saldo').textContent = '$' + parseFloat(data.saldo.balance).toFixed(2);
+            }
+            // Productos
+            if (data.productos && data.productos.ok) {
+                todosProductos = data.productos.productos;
+                document.getElementById('gp-total-productos').textContent = todosProductos.length;
+                renderProductos(todosProductos);
+            } else {
+                document.getElementById('productos-body').innerHTML = '<tr><td colspan="3" style="text-align:center; color:red;">Error: ' + (data.productos ? data.productos.error : 'Sin respuesta') + '</td></tr>';
+            }
+            document.getElementById('productos-loading').style.display = 'none';
+            document.getElementById('productos-tabla').style.display = 'block';
+        })
+        .catch(function(e) {
+            document.getElementById('productos-loading').innerHTML = '<p style="color:red;">Error de conexión: ' + e.message + '</p>';
+        });
+}
+
+function renderProductos(lista) {
+    var html = '';
+    for (var i = 0; i < lista.length; i++) {
+        var p = lista[i];
+        html += '<tr>';
+        html += '<td><span style="font-family:monospace; font-weight:bold; color:#7c3aed;">' + p.id + '</span></td>';
+        html += '<td>' + p.name + '</td>';
+        html += '<td><button class="btn btn-sm btn-primary" onclick="verPaquetes(' + p.id + ', \'' + p.name.replace(/'/g, "\\'") + '\')"><i class="fas fa-box-open"></i> Ver paquetes</button></td>';
+        html += '</tr>';
+    }
+    document.getElementById('productos-body').innerHTML = html;
+}
+
+function verPaquetes(productId, nombre) {
+    document.getElementById('modal-paquetes').style.display = 'flex';
+    document.getElementById('modal-titulo').innerHTML = '<i class="fas fa-box"></i> ' + nombre + ' <span style="color:var(--text-secondary); font-size:0.8rem;">(ID: ' + productId + ')</span>';
+    document.getElementById('modal-loading').style.display = 'block';
+    document.getElementById('modal-tabla').style.display = 'none';
+    document.getElementById('modal-fields').innerHTML = '';
+    document.getElementById('modal-servers').innerHTML = '';
+    document.getElementById('modal-info').innerHTML = '';
+
+    fetch('/admin/gamepoint/productos?product_id=' + productId)
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var det = data.detalle;
+            if (!det || !det.ok) {
+                document.getElementById('modal-loading').innerHTML = '<p style="color:red;">Error: ' + (det ? det.error : 'Sin respuesta') + '</p>';
+                return;
+            }
+
+            // Info
+            document.getElementById('modal-info').innerHTML = '<p style="color:var(--text-secondary); font-size:0.85rem;"><strong>Product ID:</strong> <code>' + productId + '</code> &mdash; Usa este ID en el campo "GamePoint Product ID" al crear un producto.</p>';
+
+            // Campos requeridos
+            if (det.fields && det.fields.length > 0) {
+                var fhtml = '<h3 style="font-size:0.95rem; margin-bottom:0.5rem;"><i class="fas fa-keyboard"></i> Campos requeridos del jugador</h3>';
+                for (var i = 0; i < det.fields.length; i++) {
+                    var f = det.fields[i];
+                    fhtml += '<span class="field-badge"><strong>' + f.name + '</strong>: ' + f.desc + ' (' + f.type + ')</span>';
+                }
+                document.getElementById('modal-fields').innerHTML = fhtml;
+            }
+
+            // Servers
+            if (det.servers && det.servers.length > 0) {
+                var shtml = '<h3 style="font-size:0.95rem; margin-bottom:0.5rem;"><i class="fas fa-server"></i> Servidores</h3>';
+                for (var i = 0; i < det.servers.length; i++) {
+                    var s = det.servers[i];
+                    shtml += '<span class="field-badge"><strong>' + s.value + '</strong>: ' + s.name + '</span>';
+                }
+                document.getElementById('modal-servers').innerHTML = shtml;
+            }
+
+            // Paquetes
+            if (det.packages && det.packages.length > 0) {
+                var html = '';
+                for (var i = 0; i < det.packages.length; i++) {
+                    var pkg = det.packages[i];
+                    var orig = pkg.originalprice ? '$' + parseFloat(pkg.originalprice).toFixed(2) : '-';
+                    html += '<tr>';
+                    html += '<td><span class="pkg-id" title="Copiar ID" onclick="copiarId(\'' + pkg.id + '\')">' + pkg.id + '</span></td>';
+                    html += '<td>' + pkg.name + '</td>';
+                    html += '<td style="font-weight:bold; color:#22c55e;">$' + parseFloat(pkg.price).toFixed(2) + '</td>';
+                    html += '<td style="color:var(--text-secondary); text-decoration:line-through;">' + orig + '</td>';
+                    html += '</tr>';
+                }
+                document.getElementById('paquetes-body').innerHTML = html;
+                document.getElementById('modal-tabla').style.display = 'block';
+            }
+            document.getElementById('modal-loading').style.display = 'none';
+        })
+        .catch(function(e) {
+            document.getElementById('modal-loading').innerHTML = '<p style="color:red;">Error: ' + e.message + '</p>';
+        });
+}
+
+function copiarId(id) {
+    navigator.clipboard.writeText(id).then(function() {
+        alert('Package ID ' + id + ' copiado al portapapeles');
+    });
+}
+
+function cerrarModal() {
+    document.getElementById('modal-paquetes').style.display = 'none';
+}
+
+// Cerrar modal con ESC
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') cerrarModal();
+});
+
+// Buscador
+document.getElementById('buscar-producto').addEventListener('input', function() {
+    var q = this.value.toLowerCase();
+    if (!q) { renderProductos(todosProductos); return; }
+    var filtrados = todosProductos.filter(function(p) {
+        return p.name.toLowerCase().indexOf(q) !== -1 || String(p.id).indexOf(q) !== -1;
+    });
+    renderProductos(filtrados);
+});
+
+// Cargar al iniciar
+cargarProductos();
+</script>
+{% endblock %}

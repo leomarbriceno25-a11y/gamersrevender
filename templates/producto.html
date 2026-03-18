@@ -24,14 +24,31 @@
             </div>
 
             <div class="product-detail-form">
-                <h2><i class="fas fa-shopping-cart"></i> Realizar Pedido</h2>
+                {% if current_user and current_user.rol == 'admin' %}
+                <h2><i class="fas fa-shopping-cart"></i> Realizar Pedido (Admin)</h2>
                 <form method="POST" action="{{ url_for('comprar') }}">
                     <input type="hidden" name="producto_id" value="{{ producto.id }}">
 
-                    {% if producto.gamepoint_product_id or producto.categoria_slug == 'freefire' %}
+                    {% if producto.gamepoint_product_id and producto.gamepoint_fields %}
+                    {% for field in producto.gamepoint_fields %}
                     <div class="form-group">
-                        <label><i class="fas fa-gamepad"></i> Player ID (ID del jugador) *</label>
-                        <input type="text" name="id_juego" placeholder="Ingresa tu ID de jugador" required>
+                        <label><i class="fas fa-gamepad"></i> {{ field.desc }} *</label>
+                        {% if field.type == 'servervalue' and field.options %}
+                        <select name="{{ 'id_juego' if loop.first else field.name }}" class="form-select" required>
+                            <option value="">Selecciona {{ field.desc }}</option>
+                            {% for opt in field.options %}
+                            <option value="{{ opt.value }}">{{ opt.label }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <input type="text" name="{{ 'id_juego' if loop.first else field.name }}" placeholder="{{ field.desc }}" required>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    {% elif producto.categoria_slug == 'freefire' %}
+                    <div class="form-group">
+                        <label><i class="fas fa-gamepad"></i> ID de Free Fire *</label>
+                        <input type="text" name="id_juego" placeholder="Ingresa tu ID de Free Fire" required>
                     </div>
                     {% endif %}
 
@@ -73,6 +90,26 @@
                     </a>
                     {% endif %}
                 </form>
+                {% else %}
+                <h2><i class="fas fa-code"></i> Compra vía API</h2>
+                <div style="padding:1rem; background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; margin-bottom:1rem;">
+                    <p style="color:var(--text-secondary); margin-bottom:1rem;">Las recargas se realizan únicamente a través de la API. Usa tu API Key para hacer pedidos programáticamente.</p>
+                    <div class="order-summary">
+                        <h3>Precio</h3>
+                        <div class="summary-row">
+                            <span>{{ producto.nombre }}</span>
+                            <span style="font-weight:bold; color:#22c55e;">${{ '%.2f'|format(producto.precio) }}</span>
+                        </div>
+                    </div>
+                    <div style="margin-top:1rem; padding:0.75rem; background:var(--bg-primary); border-radius:8px;">
+                        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem;"><strong><i class="fas fa-terminal"></i> Endpoint:</strong></p>
+                        <code style="display:block; padding:0.5rem; background:#1a1a2e; border-radius:6px; font-size:0.8rem; color:#a78bfa; word-break:break-all;">POST /api/comprar</code>
+                    </div>
+                    <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-block" style="margin-top:1rem;">
+                        <i class="fas fa-key"></i> Ver mi API Key
+                    </a>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>

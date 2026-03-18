@@ -2,6 +2,8 @@ from flask import Flask, render_template, request, redirect, url_for, flash, ses
 from functools import wraps
 from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 from models import (
     init_db, get_db, get_user_by_id, get_user_by_email, get_user_by_api_key,
     create_user, get_saldo, recargar_saldo, descontar_saldo
@@ -13,6 +15,23 @@ import uuid
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
+
+# Seguridad de cookies de sesión
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['PERMANENT_SESSION_LIFETIME'] = 3600 * 8  # 8 horas
+
+# Rate limiter (protección contra fuerza bruta)
+limiter = Limiter(get_remote_address, app=app, default_limits=['200 per minute'], storage_uri='memory://')
+
+
+@app.after_request
+def set_security_headers(response):
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['X-Frame-Options'] = 'DENY'
+    response.headers['X-XSS-Protection'] = '1; mode=block'
+    response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+    return response
 
 UPLOAD_FOLDER = os.path.join(app.static_folder, 'uploads')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -94,6 +113,7 @@ def index():
 
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("5 per minute", methods=["POST"])
 def login():
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
@@ -189,20 +209,36 @@ def catalogo_juego(slug):
 @app.route('/producto/<int:id>')
 @login_required
 def producto(id):
+    import json as _json
     db = get_db()
     prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.slug as categoria_slug FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (id,)).fetchone()
     db.close()
     if not prod:
         flash('Producto no encontrado', 'error')
         return redirect(url_for('catalogo'))
+    # Convertir a dict y parsear gamepoint_fields JSON
+    prod_dict = dict(prod)
+    if prod_dict.get('gamepoint_fields'):
+        try:
+            prod_dict['gamepoint_fields'] = _json.loads(prod_dict['gamepoint_fields'])
+        except Exception:
+            prod_dict['gamepoint_fields'] = []
+    else:
+        prod_dict['gamepoint_fields'] = []
     saldo = get_saldo(session['user_id'])
-    return render_template('producto.html', producto=prod, saldo=saldo)
+    return render_template('producto.html', producto=prod_dict, saldo=saldo)
 
 
 # ===== COMPRAR =====
 @app.route('/comprar', methods=['POST'])
 @login_required
 def comprar():
+    # Solo admin puede comprar desde la web
+    user = get_user_by_id(session['user_id'])
+    if not user or user['rol'] != 'admin':
+        flash('Las recargas se realizan únicamente a través de la API.', 'error')
+        return redirect(url_for('catalogo'))
+
     producto_id = int(request.form.get('producto_id', 0))
     cantidad = int(request.form.get('cantidad', 1))
     id_juego = request.form.get('id_juego', '').strip()
@@ -236,11 +272,17 @@ def comprar():
     # Si el producto usa GamePoint API (recarga directa sin PINes)
     if prod['gamepoint_product_id'] and prod['gamepoint_package_id'] and id_juego:
         try:
+            import json as _json
             from gamepoint_api import recarga_completa
             merchant_code = f"PED{pedido_id}"
+            # Construir fields dinámicamente
+            gp_fields = {"input1": id_juego}
+            input2 = request.form.get('input2', '').strip()
+            if input2:
+                gp_fields["input2"] = input2
             resultado_api = recarga_completa(
                 product_id=prod['gamepoint_product_id'],
-                fields={"input1": id_juego},
+                fields=gp_fields,
                 package_id=prod['gamepoint_package_id'],
                 merchant_code=merchant_code
             )
@@ -415,10 +457,11 @@ def admin_productos():
             monto_api = int(request.form.get('monto_api', 0))
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
+            gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
             orden = int(request.form.get('orden', 0))
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, orden) VALUES (?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, orden))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, orden) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, orden))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -432,10 +475,11 @@ def admin_productos():
             monto_api = int(request.form.get('monto_api', 0))
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
+            gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
             orden = int(request.form.get('orden', 0))
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, gamepoint_product_id=?, gamepoint_package_id=?, orden=? WHERE id=?",
-                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, orden, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, orden=? WHERE id=?",
+                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, orden, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -498,6 +542,12 @@ def admin_producto_orden():
     db.commit()
     db.close()
     return jsonify({'ok': True})
+
+
+@app.route('/admin/gamepoint')
+@admin_required
+def admin_gamepoint_catalogo():
+    return render_template('admin/gamepoint.html')
 
 
 @app.route('/admin/gamepoint/productos', methods=['GET'])
@@ -735,10 +785,25 @@ def api_saldo():
 @app.route('/api/v1/productos', methods=['GET'])
 @api_key_required
 def api_productos():
+    import json as _json
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.gamepoint_product_id, p.gamepoint_fields, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
-    return jsonify({'ok': True, 'productos': [dict(p) for p in productos]})
+    result = []
+    for p in productos:
+        d = dict(p)
+        # Parsear campos requeridos para que el revendedor sepa qué enviar
+        fields_raw = d.pop('gamepoint_fields', '') or ''
+        campos = []
+        if fields_raw:
+            try:
+                campos = _json.loads(fields_raw)
+            except Exception:
+                campos = []
+        d['campos_requeridos'] = [{'nombre': f['name'], 'descripcion': f['desc'], 'tipo': f['type'], 'opciones': f.get('options', [])} for f in campos]
+        d['usa_gamepoint'] = bool(d.pop('gamepoint_product_id', 0))
+        result.append(d)
+    return jsonify({'ok': True, 'productos': result})
 
 
 @app.route('/api/v1/comprar', methods=['POST'])
@@ -749,12 +814,18 @@ def api_comprar():
     producto_id = data.get('producto_id', 0)
     cantidad = data.get('cantidad', 1)
     id_juego = data.get('id_juego', '')
+    input2 = data.get('input2', '')
 
     db = get_db()
     prod = db.execute("SELECT * FROM productos WHERE id = ? AND activo = 1", (producto_id,)).fetchone()
     if not prod:
         db.close()
         return jsonify({'ok': False, 'error': 'Producto no encontrado'}), 404
+
+    # Validar que se envíe id_juego si el producto lo requiere
+    if (prod['gamepoint_product_id'] or prod['usa_api']) and not id_juego:
+        db.close()
+        return jsonify({'ok': False, 'error': 'Se requiere id_juego (Player ID)'}), 400
 
     total = prod['precio'] * cantidad
     resultado = descontar_saldo(user['id'], total, f"API: {prod['nombre']} x{cantidad}")
@@ -764,13 +835,62 @@ def api_comprar():
         return jsonify({'ok': False, 'error': 'Saldo insuficiente', 'saldo': saldo, 'total': total}), 400
 
     db.execute("INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, estado) VALUES (?,?,?,?,?,?)",
-               (user['id'], producto_id, cantidad, total, id_juego, 'pendiente'))
+               (user['id'], producto_id, cantidad, total, id_juego, 'procesando'))
     pedido_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
+
+    db.execute("UPDATE transacciones SET pedido_id = ? WHERE id = (SELECT id FROM transacciones WHERE usuario_id = ? AND pedido_id IS NULL ORDER BY id DESC LIMIT 1)",
+               (pedido_id, user['id']))
     db.commit()
 
-    # Si usa API (Free Fire), intentar canje automático
     nombre_jugador = ''
-    if prod['usa_api'] and id_juego:
+
+    # GamePoint API (recarga directa sin PINes)
+    if prod['gamepoint_product_id'] and prod['gamepoint_package_id'] and id_juego:
+        try:
+            from gamepoint_api import recarga_completa
+            merchant_code = f"API{pedido_id}"
+            gp_fields = {"input1": id_juego}
+            if input2:
+                gp_fields["input2"] = input2
+            resultado_api = recarga_completa(
+                product_id=prod['gamepoint_product_id'],
+                fields=gp_fields,
+                package_id=prod['gamepoint_package_id'],
+                merchant_code=merchant_code
+            )
+            if resultado_api.get('ok'):
+                nombre_jugador = resultado_api.get('ingamename', '')
+                ref = resultado_api.get('referenceno', '')
+                db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador or ref, pedido_id))
+                db.commit()
+                db.close()
+                return jsonify({
+                    'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
+                    'total': total, 'saldo_restante': get_saldo(user['id']),
+                    'nombre_jugador': nombre_jugador, 'referencia': ref,
+                    'mensaje': f'Recarga completada para {nombre_jugador or id_juego} (Ref: {ref})'
+                })
+            else:
+                db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                db.commit()
+                recargar_saldo(user['id'], total, f"Reembolso API: Error GamePoint pedido #{pedido_id}")
+                db.close()
+                return jsonify({
+                    'ok': False, 'error': resultado_api.get('error', resultado_api.get('message', 'Error desconocido')),
+                    'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user['id'])
+                }), 400
+        except Exception as e:
+            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db.commit()
+            recargar_saldo(user['id'], total, f"Reembolso API: Excepción GamePoint pedido #{pedido_id}")
+            db.close()
+            return jsonify({
+                'ok': False, 'error': str(e), 'pedido_id': pedido_id,
+                'reembolsado': True, 'saldo_restante': get_saldo(user['id'])
+            }), 500
+
+    # Hype Games API (Free Fire con PINes)
+    elif prod['usa_api'] and id_juego:
         pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
         if pin_row:
             from hype_api import canjear_pin_completo
@@ -790,11 +910,8 @@ def api_comprar():
                     recargar_saldo(user['id'], total, f"Reembolso API: Error canje pedido #{pedido_id}")
                     db.close()
                     return jsonify({
-                        'ok': False,
-                        'error': resultado_api.get('error', 'Error en canje automático'),
-                        'pedido_id': pedido_id,
-                        'reembolsado': True,
-                        'saldo_restante': get_saldo(user['id'])
+                        'ok': False, 'error': resultado_api.get('error', 'Error en canje automático'),
+                        'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user['id'])
                     }), 400
             except Exception as e:
                 db.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_row['id'],))
@@ -803,25 +920,26 @@ def api_comprar():
                 recargar_saldo(user['id'], total, f"Reembolso API: Excepción pedido #{pedido_id}")
                 db.close()
                 return jsonify({
-                    'ok': False,
-                    'error': str(e),
-                    'pedido_id': pedido_id,
-                    'reembolsado': True,
-                    'saldo_restante': get_saldo(user['id'])
+                    'ok': False, 'error': str(e), 'pedido_id': pedido_id,
+                    'reembolsado': True, 'saldo_restante': get_saldo(user['id'])
                 }), 500
         else:
-            db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
+            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
+            recargar_saldo(user['id'], total, f"Reembolso API: Sin PINes pedido #{pedido_id}")
+            db.close()
+            return jsonify({
+                'ok': False, 'error': 'No hay stock disponible para este producto',
+                'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user['id'])
+            }), 400
 
     db.close()
     nuevo_saldo = get_saldo(user['id'])
     return jsonify({
-        'ok': True,
-        'pedido_id': pedido_id,
-        'total': total,
-        'saldo_restante': nuevo_saldo,
+        'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
+        'total': total, 'saldo_restante': nuevo_saldo,
         'nombre_jugador': nombre_jugador,
-        'mensaje': f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador} (ID: {id_juego})' if nombre_jugador else f'Pedido #{pedido_id} creado exitosamente'
+        'mensaje': f'Recarga completada para {nombre_jugador} (ID: {id_juego})' if nombre_jugador else f'Pedido #{pedido_id} creado'
     })
 
 
@@ -830,9 +948,21 @@ def api_comprar():
 def api_pedidos():
     user = request.api_user
     db = get_db()
-    pedidos = db.execute("SELECT p.id, p.cantidad, p.total, p.id_juego, p.estado, p.fecha_pedido, pr.nombre as producto FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC LIMIT 50", (user['id'],)).fetchall()
+    pedidos = db.execute("SELECT p.id, p.cantidad, p.total, p.id_juego, p.nombre_jugador, p.estado, p.fecha_pedido, pr.nombre as producto FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC LIMIT 50", (user['id'],)).fetchall()
     db.close()
     return jsonify({'ok': True, 'pedidos': [dict(p) for p in pedidos]})
+
+
+@app.route('/api/v1/pedido/<int:pedido_id>', methods=['GET'])
+@api_key_required
+def api_pedido_detalle(pedido_id):
+    user = request.api_user
+    db = get_db()
+    pedido = db.execute("SELECT p.id, p.cantidad, p.total, p.id_juego, p.nombre_jugador, p.estado, p.fecha_pedido, pr.nombre as producto FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.id = ? AND p.usuario_id = ?", (pedido_id, user['id'])).fetchone()
+    db.close()
+    if not pedido:
+        return jsonify({'ok': False, 'error': 'Pedido no encontrado'}), 404
+    return jsonify({'ok': True, 'pedido': dict(pedido)})
 
 
 @app.route('/api/v1/transacciones', methods=['GET'])
