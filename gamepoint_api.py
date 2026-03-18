@@ -68,7 +68,7 @@ def obtener_token():
     resultado = _post("merchant/token", {"timestamp": ahora})
 
     if resultado.get("code") == 200:
-        token = resultado["token"].strip('"')
+        token = resultado["token"]
         _token_cache["token"] = token
         _token_cache["timestamp"] = ahora
         return token
