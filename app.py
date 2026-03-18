@@ -12,6 +12,7 @@ import config
 import secrets
 import os
 import uuid
+import sqlite3
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
