@@ -334,10 +334,15 @@ def recarga_completa(product_id, fields, package_id, merchant_code=""):
             "message": inquiry.get("message", orden.get("message", "")),
         }
 
+    # Para gift cards, consultar siempre para obtener el código
+    inquiry = consultar_orden(referenceno)
     return {
         "ok": True,
         "referenceno": referenceno,
-        "status": status,
+        "status": inquiry.get("status", status),
+        "ingamename": inquiry.get("ingamename", ""),
+        "amount": inquiry.get("amount"),
+        "item": inquiry.get("item", ""),
         "message": orden.get("message", ""),
     }
 

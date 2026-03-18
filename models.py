@@ -78,6 +78,7 @@ def init_db():
             total REAL NOT NULL,
             id_juego TEXT,
             nombre_jugador TEXT,
+            codigo_entregado TEXT DEFAULT '',
             estado TEXT DEFAULT 'pendiente' CHECK(estado IN ('pendiente', 'procesando', 'completado', 'cancelado')),
             fecha_pedido TEXT DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
@@ -124,6 +125,11 @@ def init_db():
         db.execute("SELECT gamepoint_fields FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN gamepoint_fields TEXT DEFAULT ''")
+    try:
+        db.execute("SELECT codigo_entregado FROM pedidos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE pedidos ADD COLUMN codigo_entregado TEXT DEFAULT ''")
+
 
 
     # Crear admin si no existe
