@@ -9,9 +9,10 @@ DB_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance', '
 
 def get_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
     return conn
 
 
@@ -324,7 +325,7 @@ def create_user(nombre, email, password, telefono=''):
     api_key = secrets.token_hex(32)
     try:
         db.execute(
-            "INSERT INTO usuarios (nombre, email, password, telefono, api_key) VALUES (?, ?, ?, ?, ?)",
+            "INSERT INTO usuarios (nombre, email, password, telefono, api_key, activo) VALUES (?, ?, ?, ?, ?, 0)",
             (nombre, email, generate_password_hash(password), telefono, api_key)
         )
         db.commit()
@@ -355,28 +356,43 @@ def get_saldo(usuario_id):
 
 def recargar_saldo(usuario_id, monto, descripcion='Recarga de saldo', admin_id=None):
     db = get_db()
-    saldo_actual = get_saldo(usuario_id)
-    saldo_nuevo = saldo_actual + monto
-    db.execute("UPDATE carteras SET saldo = ?, ultima_actualizacion = datetime('now','localtime') WHERE usuario_id = ?",
-               (saldo_nuevo, usuario_id))
-    db.execute("INSERT INTO transacciones (usuario_id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, admin_id) VALUES (?,?,?,?,?,?,?)",
-               (usuario_id, 'recarga', monto, saldo_actual, saldo_nuevo, descripcion, admin_id))
-    db.commit()
-    db.close()
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        c = db.execute("SELECT saldo FROM carteras WHERE usuario_id = ?", (usuario_id,)).fetchone()
+        saldo_actual = c['saldo'] if c else 0.0
+        saldo_nuevo = saldo_actual + monto
+        db.execute("UPDATE carteras SET saldo = ?, ultima_actualizacion = datetime('now','localtime') WHERE usuario_id = ?",
+                   (saldo_nuevo, usuario_id))
+        db.execute("INSERT INTO transacciones (usuario_id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, admin_id) VALUES (?,?,?,?,?,?,?)",
+                   (usuario_id, 'recarga', monto, saldo_actual, saldo_nuevo, descripcion, admin_id))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
     return saldo_nuevo
 
 
 def descontar_saldo(usuario_id, monto, descripcion='Compra', pedido_id=None):
     db = get_db()
-    saldo_actual = get_saldo(usuario_id)
-    if saldo_actual < monto:
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        c = db.execute("SELECT saldo FROM carteras WHERE usuario_id = ?", (usuario_id,)).fetchone()
+        saldo_actual = c['saldo'] if c else 0.0
+        if saldo_actual < monto:
+            db.rollback()
+            db.close()
+            return None
+        saldo_nuevo = saldo_actual - monto
+        db.execute("UPDATE carteras SET saldo = ?, ultima_actualizacion = datetime('now','localtime') WHERE usuario_id = ?",
+                   (saldo_nuevo, usuario_id))
+        db.execute("INSERT INTO transacciones (usuario_id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, pedido_id) VALUES (?,?,?,?,?,?,?)",
+                   (usuario_id, 'compra', monto, saldo_actual, saldo_nuevo, descripcion, pedido_id))
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
         db.close()
-        return None
-    saldo_nuevo = saldo_actual - monto
-    db.execute("UPDATE carteras SET saldo = ?, ultima_actualizacion = datetime('now','localtime') WHERE usuario_id = ?",
-               (saldo_nuevo, usuario_id))
-    db.execute("INSERT INTO transacciones (usuario_id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, pedido_id) VALUES (?,?,?,?,?,?,?)",
-               (usuario_id, 'compra', monto, saldo_actual, saldo_nuevo, descripcion, pedido_id))
-    db.commit()
-    db.close()
     return saldo_nuevo

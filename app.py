@@ -123,7 +123,7 @@ def login():
         user = get_user_by_email(email)
         if user and check_password_hash(user['password'], password):
             if not user['activo']:
-                flash('Cuenta desactivada. Contacta al administrador.', 'error')
+                flash('Tu cuenta está pendiente de aprobación. El administrador debe activarla antes de que puedas acceder.', 'error')
                 return render_template('login.html')
             session['user_id'] = user['id']
             session['user_nombre'] = user['nombre']
@@ -157,7 +157,7 @@ def registro():
         if not user:
             flash('El email ya está registrado', 'error')
             return render_template('registro.html')
-        flash('Registro exitoso. Inicia sesión.', 'success')
+        flash('Registro exitoso. Tu cuenta debe ser aprobada por el administrador antes de poder acceder.', 'success')
         return redirect(url_for('login'))
     return render_template('registro.html')
 
@@ -271,92 +271,103 @@ def comprar():
 
     # Si el producto usa GamePoint API (recarga directa o gift card)
     if prod['gamepoint_product_id'] and prod['gamepoint_package_id']:
+        # Guardar datos necesarios y CERRAR DB antes de llamar API externa
+        gp_product_id = prod['gamepoint_product_id']
+        gp_package_id = prod['gamepoint_package_id']
+        db.close()
         try:
-            import json as _json
             from gamepoint_api import recarga_completa
             merchant_code = f"PED{pedido_id}"
-            # Construir fields dinámicamente
             gp_fields = {"input1": id_juego} if id_juego else {}
             input2 = request.form.get('input2', '').strip()
             if input2:
                 gp_fields["input2"] = input2
             resultado_api = recarga_completa(
-                product_id=prod['gamepoint_product_id'],
+                product_id=gp_product_id,
                 fields=gp_fields,
-                package_id=prod['gamepoint_package_id'],
+                package_id=gp_package_id,
                 merchant_code=merchant_code
             )
+            # Reabrir DB para guardar resultado
+            db2 = get_db()
             if resultado_api.get('ok'):
                 nombre_jugador = resultado_api.get('ingamename', '')
                 ref = resultado_api.get('referenceno', '')
                 codigo = resultado_api.get('item', '')
-                db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ? WHERE id = ?", (nombre_jugador or ref, codigo, pedido_id))
-                db.commit()
-                db.close()
+                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ? WHERE id = ?", (nombre_jugador or ref, codigo, pedido_id))
+                db2.commit()
+                db2.close()
                 if codigo:
                     flash(f'Pedido #{pedido_id} completado. Código: {codigo}', 'success')
                 else:
                     flash(f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador or id_juego} (Ref: {ref}).', 'success')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
             else:
-                db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-                db.commit()
+                db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                db2.commit()
+                db2.close()
                 recargar_saldo(user_id, total, f"Reembolso: Error GamePoint pedido #{pedido_id}")
-                db.close()
                 error_msg = resultado_api.get('error', resultado_api.get('message', 'Error desconocido'))
                 flash(f'Error en recarga: {error_msg}. Se reembolsó ${total:.2f} a tu cartera.', 'error')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
         except Exception as e:
-            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-            db.commit()
+            db2 = get_db()
+            db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db2.commit()
+            db2.close()
             recargar_saldo(user_id, total, f"Reembolso: Excepción GamePoint pedido #{pedido_id}")
-            db.close()
             flash(f'Error inesperado en la recarga. Se reembolsó ${total:.2f} a tu cartera.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Hype Games (Free Fire), canjear PIN automáticamente
     elif prod['usa_api'] and id_juego:
+        # Reservar PIN atómicamente con BEGIN IMMEDIATE para evitar doble canje
+        db.execute("BEGIN IMMEDIATE")
         pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
         if pin_row:
             from hype_api import canjear_pin_completo
-            # Marcar PIN como usado antes de intentar canje
+            pin_id = pin_row['id']
+            pin_code = pin_row['pin']
+            monto_api = prod['monto_api']
             db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
-                       (user_id, pedido_id, pin_row['id']))
+                       (user_id, pedido_id, pin_id))
             db.commit()
+            db.close()
 
             try:
-                resultado_api = canjear_pin_completo(pin_row['pin'], id_juego, prod['monto_api'])
+                resultado_api = canjear_pin_completo(pin_code, id_juego, monto_api)
+                db2 = get_db()
                 if resultado_api.get('ok'):
                     nombre_jugador = resultado_api.get('username', '')
-                    db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador, pedido_id))
-                    db.commit()
-                    db.close()
+                    db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador, pedido_id))
+                    db2.commit()
+                    db2.close()
                     flash(f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador} (ID: {id_juego}).', 'success')
                     return redirect(url_for('pedido_detalle', id=pedido_id))
                 else:
-                    # Canje falló - marcar PIN como error, reembolsar
-                    db.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_row['id'],))
-                    db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-                    db.commit()
+                    db2.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
+                    db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                    db2.commit()
+                    db2.close()
                     recargar_saldo(user_id, total, f"Reembolso: Error canje pedido #{pedido_id}")
-                    db.close()
                     error_msg = resultado_api.get('error', 'Error desconocido en el canje')
                     flash(f'Error en canje automático: {error_msg}. Se reembolsó ${total:.2f} a tu cartera.', 'error')
                     return redirect(url_for('pedido_detalle', id=pedido_id))
             except Exception as e:
-                db.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_row['id'],))
-                db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-                db.commit()
+                db2 = get_db()
+                db2.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
+                db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                db2.commit()
+                db2.close()
                 recargar_saldo(user_id, total, f"Reembolso: Excepción canje pedido #{pedido_id}")
-                db.close()
                 flash(f'Error inesperado en el canje. Se reembolsó ${total:.2f} a tu cartera.', 'error')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
         else:
-            # No hay PINes disponibles - reembolsar
+            # No hay PINes disponibles - liberar transacción y reembolsar
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
-            recargar_saldo(user_id, total, f"Reembolso: Sin PINes disponibles pedido #{pedido_id}")
             db.close()
+            recargar_saldo(user_id, total, f"Reembolso: Sin PINes disponibles pedido #{pedido_id}")
             flash('No hay PINes disponibles para este producto. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
@@ -853,9 +864,13 @@ def api_comprar():
     db.commit()
 
     nombre_jugador = ''
+    user_id_api = user['id']
 
     # GamePoint API (recarga directa o gift card)
     if prod['gamepoint_product_id'] and prod['gamepoint_package_id']:
+        gp_product_id = prod['gamepoint_product_id']
+        gp_package_id = prod['gamepoint_package_id']
+        db.close()
         try:
             from gamepoint_api import recarga_completa
             merchant_code = f"API{pedido_id}"
@@ -863,21 +878,22 @@ def api_comprar():
             if input2:
                 gp_fields["input2"] = input2
             resultado_api = recarga_completa(
-                product_id=prod['gamepoint_product_id'],
+                product_id=gp_product_id,
                 fields=gp_fields,
-                package_id=prod['gamepoint_package_id'],
+                package_id=gp_package_id,
                 merchant_code=merchant_code
             )
+            db2 = get_db()
             if resultado_api.get('ok'):
                 nombre_jugador = resultado_api.get('ingamename', '')
                 ref = resultado_api.get('referenceno', '')
                 codigo = resultado_api.get('item', '')
-                db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ? WHERE id = ?", (nombre_jugador or ref, codigo, pedido_id))
-                db.commit()
-                db.close()
+                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ? WHERE id = ?", (nombre_jugador or ref, codigo, pedido_id))
+                db2.commit()
+                db2.close()
                 resp = {
                     'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
-                    'total': total, 'saldo_restante': get_saldo(user['id']),
+                    'total': total, 'saldo_restante': get_saldo(user_id_api),
                     'referencia': ref,
                 }
                 if codigo:
@@ -888,70 +904,80 @@ def api_comprar():
                     resp['mensaje'] = f'Recarga completada para {nombre_jugador or id_juego} (Ref: {ref})'
                 return jsonify(resp)
             else:
-                db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-                db.commit()
-                recargar_saldo(user['id'], total, f"Reembolso API: Error GamePoint pedido #{pedido_id}")
-                db.close()
+                db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                db2.commit()
+                db2.close()
+                recargar_saldo(user_id_api, total, f"Reembolso API: Error GamePoint pedido #{pedido_id}")
                 return jsonify({
                     'ok': False, 'error': resultado_api.get('error', resultado_api.get('message', 'Error desconocido')),
-                    'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user['id'])
+                    'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
                 }), 400
         except Exception as e:
-            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-            db.commit()
-            recargar_saldo(user['id'], total, f"Reembolso API: Excepción GamePoint pedido #{pedido_id}")
-            db.close()
+            db2 = get_db()
+            db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id_api, total, f"Reembolso API: Excepción GamePoint pedido #{pedido_id}")
             return jsonify({
                 'ok': False, 'error': str(e), 'pedido_id': pedido_id,
-                'reembolsado': True, 'saldo_restante': get_saldo(user['id'])
+                'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
             }), 500
 
     # Hype Games API (Free Fire con PINes)
     elif prod['usa_api'] and id_juego:
+        # Reservar PIN atómicamente con BEGIN IMMEDIATE para evitar doble canje
+        db.execute("BEGIN IMMEDIATE")
         pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
         if pin_row:
             from hype_api import canjear_pin_completo
+            pin_id = pin_row['id']
+            pin_code = pin_row['pin']
+            monto_api = prod['monto_api']
             db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
-                       (user['id'], pedido_id, pin_row['id']))
+                       (user_id_api, pedido_id, pin_id))
             db.commit()
+            db.close()
             try:
-                resultado_api = canjear_pin_completo(pin_row['pin'], id_juego, prod['monto_api'])
+                resultado_api = canjear_pin_completo(pin_code, id_juego, monto_api)
+                db2 = get_db()
                 if resultado_api.get('ok'):
                     nombre_jugador = resultado_api.get('username', '')
-                    db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador, pedido_id))
-                    db.commit()
+                    db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador, pedido_id))
+                    db2.commit()
+                    db2.close()
                 else:
-                    db.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_row['id'],))
-                    db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-                    db.commit()
-                    recargar_saldo(user['id'], total, f"Reembolso API: Error canje pedido #{pedido_id}")
-                    db.close()
+                    db2.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
+                    db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                    db2.commit()
+                    db2.close()
+                    recargar_saldo(user_id_api, total, f"Reembolso API: Error canje pedido #{pedido_id}")
                     return jsonify({
                         'ok': False, 'error': resultado_api.get('error', 'Error en canje automático'),
-                        'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user['id'])
+                        'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
                     }), 400
             except Exception as e:
-                db.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_row['id'],))
-                db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-                db.commit()
-                recargar_saldo(user['id'], total, f"Reembolso API: Excepción pedido #{pedido_id}")
-                db.close()
+                db2 = get_db()
+                db2.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
+                db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                db2.commit()
+                db2.close()
+                recargar_saldo(user_id_api, total, f"Reembolso API: Excepción pedido #{pedido_id}")
                 return jsonify({
                     'ok': False, 'error': str(e), 'pedido_id': pedido_id,
-                    'reembolsado': True, 'saldo_restante': get_saldo(user['id'])
+                    'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
                 }), 500
         else:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
-            recargar_saldo(user['id'], total, f"Reembolso API: Sin PINes pedido #{pedido_id}")
             db.close()
+            recargar_saldo(user_id_api, total, f"Reembolso API: Sin PINes pedido #{pedido_id}")
             return jsonify({
                 'ok': False, 'error': 'No hay stock disponible para este producto',
-                'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user['id'])
+                'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
             }), 400
 
     db.close()
-    nuevo_saldo = get_saldo(user['id'])
+    nuevo_saldo = get_saldo(user_id_api)
     return jsonify({
         'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
         'total': total, 'saldo_restante': nuevo_saldo,
