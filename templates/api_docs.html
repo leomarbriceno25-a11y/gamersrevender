@@ -29,6 +29,32 @@
             </div>
         </div>
 
+        <!-- Tipos de producto -->
+        <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
+            <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-info-circle"></i> Tipos de Producto</h2>
+            <p style="margin-bottom:1rem;">Hay dos tipos de productos que se comportan diferente al comprar:</p>
+            <table class="table">
+                <thead>
+                    <tr><th>Tipo</th><th>Requiere</th><th>Resultado</th><th>Ejemplo</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge badge-completado" style="font-size:0.75rem;">Recarga directa</span></td>
+                        <td><code>id_juego</code> (Player ID)</td>
+                        <td>Diamantes/créditos aplicados a la cuenta</td>
+                        <td>Mobile Legends, PUBG, Free Fire</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-procesando" style="font-size:0.75rem;">Gift Card / Código</span></td>
+                        <td>Nada</td>
+                        <td>Se entrega un <strong>código</strong></td>
+                        <td>Roblox, Steam, PlayStation, iTunes</td>
+                    </tr>
+                </tbody>
+            </table>
+            <p style="color:var(--text-secondary); font-size:0.9rem; margin-top:0.5rem;">Usa <code>/api/v1/productos</code> para ver qué campos requiere cada producto en <code>campos_requeridos</code>.</p>
+        </div>
+
         <!-- GET /saldo -->
         <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
             <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
@@ -36,10 +62,6 @@
                 <h2 style="margin:0;">/api/v1/saldo</h2>
             </div>
             <p>Consulta el saldo disponible en tu cartera.</p>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Ejemplo de petición:</h3>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-                <code style="color:#7c3aed; font-size:0.85rem;">curl -H "X-API-Key: TU_KEY" {{ request.host_url }}api/v1/saldo</code>
-            </div>
             <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
@@ -56,7 +78,7 @@
                 <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
                 <h2 style="margin:0;">/api/v1/productos</h2>
             </div>
-            <p>Lista todos los productos disponibles con sus precios.</p>
+            <p>Lista todos los productos disponibles con precios y campos requeridos.</p>
             <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
@@ -64,13 +86,47 @@
   "productos": [
     {
       "id": 1,
-      "nombre": "100+10 Diamantes",
-      "descripcion": "Recarga de 110 diamantes Free Fire",
+      "nombre": "Mobile Legends 86 Diamonds",
+      "descripcion": "Recarga directa de diamantes",
       "precio": 1.50,
-      "categoria": "Free Fire"
+      "categoria": "Mobile Legends",
+      "usa_gamepoint": true,
+      "campos_requeridos": [
+        {
+          "nombre": "input1",
+          "descripcion": "User ID",
+          "tipo": "string",
+          "opciones": []
+        },
+        {
+          "nombre": "input2",
+          "descripcion": "Zone",
+          "tipo": "servervalue",
+          "opciones": [
+            {"value": "10521", "label": "ASIA"},
+            {"value": "10531", "label": "NORTH-AMERICA"}
+          ]
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "nombre": "Roblox 10 USD Card",
+      "descripcion": "Gift card de Roblox",
+      "precio": 12.00,
+      "categoria": "Gift Cards",
+      "usa_gamepoint": true,
+      "campos_requeridos": []
     }
   ]
 }</pre>
+            </div>
+            <div style="margin-top:1rem; padding:0.75rem; background:rgba(124,58,237,0.1); border:1px solid rgba(124,58,237,0.3); border-radius:8px;">
+                <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
+                    <strong style="color:#7c3aed;"><i class="fas fa-lightbulb"></i> Importante:</strong>
+                    Si <code>campos_requeridos</code> está vacío, el producto es una <strong>gift card</strong> y no necesitas enviar <code>id_juego</code>.
+                    Si tiene campos, debes enviar <code>id_juego</code> (primer campo) y opcionalmente <code>input2</code> (segundo campo).
+                </p>
             </div>
         </div>
 
@@ -80,7 +136,7 @@
                 <span class="badge badge-pendiente" style="font-size:0.8rem;">POST</span>
                 <h2 style="margin:0;">/api/v1/comprar</h2>
             </div>
-            <p>Realiza una compra. Para recargas de Free Fire, el canje se ejecuta automáticamente.</p>
+            <p>Realiza una compra. La recarga o entrega del código se ejecuta automáticamente.</p>
             <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Parámetros (JSON Body):</h3>
             <table class="table" style="margin-bottom:1rem;">
                 <thead>
@@ -89,35 +145,95 @@
                 <tbody>
                     <tr><td><code>producto_id</code></td><td>integer</td><td>Sí</td><td>ID del producto a comprar</td></tr>
                     <tr><td><code>cantidad</code></td><td>integer</td><td>No</td><td>Cantidad (default: 1)</td></tr>
-                    <tr><td><code>id_juego</code></td><td>string</td><td>Free Fire</td><td>ID del jugador en el juego</td></tr>
+                    <tr><td><code>id_juego</code></td><td>string</td><td>Recargas</td><td>Player ID / User ID del jugador. Corresponde al primer campo de <code>campos_requeridos</code></td></tr>
+                    <tr><td><code>input2</code></td><td>string</td><td>Según juego</td><td>Zona / Servidor. Corresponde al segundo campo de <code>campos_requeridos</code> (si existe)</td></tr>
                 </tbody>
             </table>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Ejemplo de petición:</h3>
+
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-gamepad"></i> Ejemplo: Recarga directa (Mobile Legends)</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
   -H "X-API-Key: TU_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"producto_id": 1, "id_juego": "123456789"}' \
+  -d '{"producto_id": 1, "id_juego": "123456789", "input2": "10521"}' \
   {{ request.host_url }}api/v1/comprar</pre>
             </div>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (Free Fire):</h3>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (recarga):</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
   "ok": true,
   "pedido_id": 42,
+  "estado": "completado",
   "total": 1.50,
   "saldo_restante": 148.50,
-  "nombre_jugador": "homer0.27",
-  "mensaje": "Pedido #42 completado. Recarga aplicada a homer0.27 (ID: 123456789)"
+  "nombre_jugador": "ProGamer123",
+  "referencia": "GP-20260318-001",
+  "mensaje": "Recarga completada para ProGamer123 (Ref: GP-20260318-001)"
 }</pre>
             </div>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta error (saldo insuficiente):</h3>
+
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-gift"></i> Ejemplo: Gift Card (Roblox)</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
+  -H "X-API-Key: TU_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"producto_id": 5}' \
+  {{ request.host_url }}api/v1/comprar</pre>
+            </div>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (código):</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
+  "ok": true,
+  "pedido_id": 55,
+  "estado": "completado",
+  "total": 12.00,
+  "saldo_restante": 138.00,
+  "codigo": "XXXX-XXXX-XXXX-XXXX",
+  "referencia": "GP-20260318-002",
+  "mensaje": "Código entregado: XXXX-XXXX-XXXX-XXXX"
+}</pre>
+            </div>
+
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-times-circle" style="color:#ff6b6b;"></i> Respuesta error (con reembolso automático):</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#ff6b6b; margin:0; font-size:0.85rem;">{
   "ok": false,
-  "error": "Saldo insuficiente",
-  "saldo": 0.50,
-  "total": 1.50
+  "error": "Player ID inválido",
+  "pedido_id": 43,
+  "reembolsado": true,
+  "saldo_restante": 150.00
+}</pre>
+            </div>
+            <div style="margin-top:1rem; padding:0.75rem; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:8px;">
+                <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
+                    <strong style="color:#22c55e;"><i class="fas fa-shield-alt"></i> Reembolso automático:</strong>
+                    Si la recarga falla, el saldo se devuelve automáticamente a tu cartera. El campo <code>reembolsado: true</code> confirma el reembolso.
+                </p>
+            </div>
+        </div>
+
+        <!-- GET /pedido/:id -->
+        <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+                <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
+                <h2 style="margin:0;">/api/v1/pedido/:id</h2>
+            </div>
+            <p>Consulta el detalle de un pedido específico por su ID.</p>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta:</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
+  "ok": true,
+  "pedido": {
+    "id": 55,
+    "producto": "Roblox 10 USD Card",
+    "cantidad": 1,
+    "total": 12.00,
+    "id_juego": "",
+    "nombre_jugador": "GP-20260318-002",
+    "codigo_entregado": "XXXX-XXXX-XXXX-XXXX",
+    "estado": "completado",
+    "fecha_pedido": "2026-03-18 03:30:00"
+  }
 }</pre>
             </div>
         </div>
@@ -128,7 +244,7 @@
                 <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
                 <h2 style="margin:0;">/api/v1/pedidos</h2>
             </div>
-            <p>Lista tus últimos 50 pedidos.</p>
+            <p>Lista tus últimos 50 pedidos con estado y código entregado.</p>
             <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
@@ -136,12 +252,25 @@
   "pedidos": [
     {
       "id": 42,
-      "producto": "100+10 Diamantes",
+      "producto": "ML 86 Diamonds",
       "cantidad": 1,
       "total": 1.50,
       "id_juego": "123456789",
+      "nombre_jugador": "ProGamer123",
+      "codigo_entregado": "",
       "estado": "completado",
-      "fecha_pedido": "2026-03-16 00:30:00"
+      "fecha_pedido": "2026-03-18 03:00:00"
+    },
+    {
+      "id": 55,
+      "producto": "Roblox 10 USD Card",
+      "cantidad": 1,
+      "total": 12.00,
+      "id_juego": "",
+      "nombre_jugador": "",
+      "codigo_entregado": "XXXX-XXXX-XXXX-XXXX",
+      "estado": "completado",
+      "fecha_pedido": "2026-03-18 03:30:00"
     }
   ]
 }</pre>
@@ -166,29 +295,61 @@
       "monto": 1.50,
       "saldo_anterior": 150.00,
       "saldo_nuevo": 148.50,
-      "descripcion": "100+10 Diamantes x1",
-      "fecha": "2026-03-16 00:30:00"
+      "descripcion": "API: ML 86 Diamonds x1",
+      "fecha": "2026-03-18 03:00:00"
     }
   ]
 }</pre>
             </div>
         </div>
 
+        <!-- Resumen de endpoints -->
+        <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
+            <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-list"></i> Resumen de Endpoints</h2>
+            <table class="table">
+                <thead>
+                    <tr><th>Método</th><th>Endpoint</th><th>Descripción</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/saldo</code></td><td>Ver saldo disponible</td></tr>
+                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/productos</code></td><td>Catálogo con precios y campos requeridos</td></tr>
+                    <tr><td><span class="badge badge-pendiente" style="font-size:0.7rem;">POST</span></td><td><code>/api/v1/comprar</code></td><td>Realizar una compra / recarga</td></tr>
+                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/pedido/:id</code></td><td>Detalle de un pedido</td></tr>
+                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/pedidos</code></td><td>Últimos 50 pedidos</td></tr>
+                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/transacciones</code></td><td>Últimas 50 transacciones</td></tr>
+                </tbody>
+            </table>
+        </div>
+
         <!-- Códigos de error -->
         <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
-            <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-exclamation-circle"></i> Códigos de Estado</h2>
+            <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-exclamation-circle"></i> Códigos HTTP</h2>
             <table class="table">
                 <thead>
                     <tr><th>Código</th><th>Significado</th></tr>
                 </thead>
                 <tbody>
                     <tr><td><code>200</code></td><td>Petición exitosa</td></tr>
-                    <tr><td><code>400</code></td><td>Error en la petición (saldo insuficiente, error de canje)</td></tr>
+                    <tr><td><code>400</code></td><td>Error en la petición (saldo insuficiente, error de recarga, campo faltante)</td></tr>
                     <tr><td><code>401</code></td><td>API Key faltante o inválida</td></tr>
-                    <tr><td><code>404</code></td><td>Producto no encontrado</td></tr>
+                    <tr><td><code>404</code></td><td>Producto o pedido no encontrado</td></tr>
+                    <tr><td><code>429</code></td><td>Demasiadas peticiones (rate limit)</td></tr>
                     <tr><td><code>500</code></td><td>Error interno del servidor</td></tr>
                 </tbody>
             </table>
+        </div>
+
+        <!-- Flujo recomendado -->
+        <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
+            <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-route"></i> Flujo Recomendado</h2>
+            <ol style="color:var(--text-secondary); font-size:0.95rem; line-height:2;">
+                <li>Consulta <code>/api/v1/productos</code> para ver el catálogo y los campos requeridos por producto</li>
+                <li>Consulta <code>/api/v1/saldo</code> para verificar que tienes saldo suficiente</li>
+                <li>Envía <code>POST /api/v1/comprar</code> con el <code>producto_id</code> y campos correspondientes</li>
+                <li>Si la respuesta tiene <code>"codigo"</code>, entrégalo a tu cliente</li>
+                <li>Si tiene <code>"nombre_jugador"</code>, la recarga ya fue aplicada</li>
+                <li>Puedes consultar el estado en cualquier momento con <code>/api/v1/pedido/:id</code></li>
+            </ol>
         </div>
 
         <div style="text-align:center; margin-top:2rem;">
