@@ -520,9 +520,15 @@ def admin_productos():
         elif accion == 'eliminar':
             prod_id = int(request.form.get('producto_id', 0))
             if prod_id > 0:
-                db.execute("DELETE FROM productos WHERE id = ?", (prod_id,))
-                db.commit()
-                flash('Producto eliminado', 'success')
+                try:
+                    db.execute("DELETE FROM productos WHERE id = ?", (prod_id,))
+                    db.commit()
+                    flash('Producto eliminado', 'success')
+                except sqlite3.IntegrityError:
+                    db.rollback()
+                    db.execute("UPDATE productos SET activo = 0 WHERE id = ?", (prod_id,))
+                    db.commit()
+                    flash('No se puede eliminar porque tiene pedidos asociados. Se desactivó en su lugar.', 'error')
         return redirect(url_for('admin_productos'))
 
     productos = db.execute("SELECT p.*, c.nombre as categoria_nombre FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id ORDER BY c.orden, p.orden, p.nombre").fetchall()
@@ -538,12 +544,18 @@ def admin_productos_eliminar_lote():
     ids = data.get('ids', [])
     db = get_db()
     eliminados = 0
+    desactivados = 0
     for prod_id in ids:
-        db.execute("DELETE FROM productos WHERE id = ?", (prod_id,))
-        eliminados += 1
+        try:
+            db.execute("DELETE FROM productos WHERE id = ?", (prod_id,))
+            eliminados += 1
+        except sqlite3.IntegrityError:
+            db.rollback()
+            db.execute("UPDATE productos SET activo = 0 WHERE id = ?", (prod_id,))
+            desactivados += 1
     db.commit()
     db.close()
-    return jsonify({'ok': True, 'eliminados': eliminados})
+    return jsonify({'ok': True, 'eliminados': eliminados, 'desactivados': desactivados})
 
 
 @app.route('/admin/productos/orden', methods=['POST'])
