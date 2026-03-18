@@ -431,6 +431,26 @@ def admin_usuarios():
     return render_template('admin/usuarios.html', usuarios=usuarios)
 
 
+@app.route('/admin/usuario/<int:id>/toggle', methods=['POST'])
+@admin_required
+def admin_toggle_usuario(id):
+    db = get_db()
+    user = db.execute("SELECT id, activo, rol FROM usuarios WHERE id = ?", (id,)).fetchone()
+    if not user or user['rol'] == 'admin':
+        db.close()
+        flash('No se puede modificar este usuario.', 'error')
+        return redirect(url_for('admin_usuarios'))
+    nuevo_estado = 0 if user['activo'] else 1
+    db.execute("UPDATE usuarios SET activo = ? WHERE id = ?", (nuevo_estado, id))
+    db.commit()
+    db.close()
+    if nuevo_estado:
+        flash('Usuario aprobado y activado.', 'success')
+    else:
+        flash('Usuario desactivado.', 'success')
+    return redirect(url_for('admin_usuarios'))
+
+
 @app.route('/admin/recargas', methods=['GET', 'POST'])
 @admin_required
 def admin_recargas():

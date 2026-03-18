@@ -10,10 +10,43 @@
 
 <section class="section">
     <div class="container">
+
+        {% set pendientes = usuarios|selectattr('activo', 'equalto', 0)|list %}
+        {% if pendientes|length > 0 %}
+        <div class="card" style="padding:1.5rem; margin-bottom:1.5rem; border-left:4px solid #f59e0b; background:rgba(245,158,11,0.08);">
+            <h3 style="margin:0 0 1rem; color:#f59e0b;"><i class="fas fa-user-clock"></i> Solicitudes Pendientes ({{ pendientes|length }})</h3>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Registro</th><th>Acción</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for u in pendientes %}
+                        <tr>
+                            <td>{{ u.id }}</td>
+                            <td>{{ u.nombre }}</td>
+                            <td>{{ u.email }}</td>
+                            <td>{{ u.telefono or '-' }}</td>
+                            <td>{{ u.fecha_registro or '-' }}</td>
+                            <td>
+                                <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-primary" style="padding:0.4rem 1rem; font-size:0.85rem;" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')">
+                                        <i class="fas fa-check"></i> Aprobar
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
         <div class="table-responsive">
             <table class="table">
                 <thead>
-                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Activo</th><th>Registro</th><th>Último Login</th></tr>
+                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Estado</th><th>Registro</th><th>Último Login</th><th>Acciones</th></tr>
                 </thead>
                 <tbody>
                     {% for u in usuarios %}
@@ -23,9 +56,32 @@
                         <td>{{ u.email }}</td>
                         <td><span class="badge badge-{{ 'completado' if u.rol == 'admin' else 'procesando' }}">{{ u.rol|capitalize }}</span></td>
                         <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.2f'|format(u.saldo) }}</td>
-                        <td>{{ 'Sí' if u.activo else 'No' }}</td>
+                        <td>
+                            {% if u.activo %}
+                                <span class="badge badge-completado">Activo</span>
+                            {% else %}
+                                <span class="badge badge-cancelado">Pendiente</span>
+                            {% endif %}
+                        </td>
                         <td>{{ u.fecha_registro or '-' }}</td>
                         <td>{{ u.ultimo_login or 'Nunca' }}</td>
+                        <td>
+                            {% if u.rol != 'admin' %}
+                            <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="display:inline;">
+                                {% if u.activo %}
+                                    <button type="submit" class="btn" style="padding:0.3rem 0.8rem; font-size:0.8rem; background:#ef4444; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="return confirm('¿Desactivar a {{ u.nombre }}?')">
+                                        <i class="fas fa-ban"></i> Desactivar
+                                    </button>
+                                {% else %}
+                                    <button type="submit" class="btn btn-primary" style="padding:0.3rem 0.8rem; font-size:0.8rem;" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')">
+                                        <i class="fas fa-check"></i> Aprobar
+                                    </button>
+                                {% endif %}
+                            </form>
+                            {% else %}
+                                <span style="color:var(--text-secondary); font-size:0.8rem;">-</span>
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
