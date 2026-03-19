@@ -295,7 +295,7 @@ def comprar():
                 nombre_jugador = resultado_api.get('ingamename', '')
                 ref = resultado_api.get('referenceno', '')
                 codigo = resultado_api.get('item', '')
-                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ? WHERE id = ?", (nombre_jugador or ref, codigo, pedido_id))
+                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ? WHERE id = ?", (nombre_jugador or ref, codigo, ref, pedido_id))
                 db2.commit()
                 db2.close()
                 if codigo:
@@ -615,6 +615,77 @@ def admin_gamepoint_productos():
     return jsonify({'saldo': saldo, 'productos': productos})
 
 
+@app.route('/admin/verificar-gamepoint', methods=['POST'])
+@admin_required
+def admin_verificar_gamepoint():
+    """Verificar pedidos GamePoint completados para detectar FAIL del proveedor"""
+    from gamepoint_api import consultar_orden
+    db = get_db()
+    pedidos = db.execute(
+        "SELECT p.id, p.usuario_id, p.total, p.referencia_externa, p.nombre_jugador "
+        "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
+        "WHERE p.estado = 'completado' AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
+        "AND pr.gamepoint_product_id > 0 "
+        "AND p.fecha_pedido >= datetime('now', '-48 hours', 'localtime')"
+    ).fetchall()
+    db.close()
+    verificados = 0
+    fallidos = 0
+    for ped in pedidos:
+        try:
+            inquiry = consultar_orden(ped['referencia_externa'])
+            if inquiry.get('status') == 'failed':
+                db2 = get_db()
+                db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (ped['id'],))
+                db2.commit()
+                db2.close()
+                recargar_saldo(ped['usuario_id'], ped['total'],
+                               f"Reembolso: GamePoint FAIL pedido #{ped['id']} ({inquiry.get('reason', 'Sin razón')})")
+                fallidos += 1
+        except Exception:
+            pass
+        verificados += 1
+    flash(f'Verificación completada: {verificados} pedidos revisados, {fallidos} fallidos reembolsados.', 'success')
+    return redirect(url_for('admin_pedidos'))
+
+
+@app.route('/cron/verificar-gamepoint', methods=['GET'])
+def cron_verificar_gamepoint():
+    """Endpoint para cron job - verifica pedidos GamePoint"""
+    cron_key = request.args.get('key', '')
+    if cron_key != app.secret_key:
+        return jsonify({'ok': False, 'error': 'No autorizado'}), 403
+    from gamepoint_api import consultar_orden
+    db = get_db()
+    pedidos = db.execute(
+        "SELECT p.id, p.usuario_id, p.total, p.referencia_externa "
+        "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
+        "WHERE p.estado = 'completado' AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
+        "AND pr.gamepoint_product_id > 0 "
+        "AND p.fecha_pedido >= datetime('now', '-48 hours', 'localtime')"
+    ).fetchall()
+    db.close()
+    verificados = 0
+    fallidos = 0
+    detalles = []
+    for ped in pedidos:
+        try:
+            inquiry = consultar_orden(ped['referencia_externa'])
+            if inquiry.get('status') == 'failed':
+                db2 = get_db()
+                db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (ped['id'],))
+                db2.commit()
+                db2.close()
+                recargar_saldo(ped['usuario_id'], ped['total'],
+                               f"Reembolso auto: GamePoint FAIL pedido #{ped['id']} ({inquiry.get('reason', '')})")
+                fallidos += 1
+                detalles.append({'pedido': ped['id'], 'ref': ped['referencia_externa'], 'reason': inquiry.get('reason', '')})
+        except Exception as e:
+            detalles.append({'pedido': ped['id'], 'error': str(e)})
+        verificados += 1
+    return jsonify({'ok': True, 'verificados': verificados, 'fallidos': fallidos, 'detalles': detalles})
+
+
 @app.route('/admin/categorias/orden', methods=['POST'])
 @admin_required
 def admin_categoria_orden():
@@ -931,7 +1002,7 @@ def api_comprar():
                 nombre_jugador = resultado_api.get('ingamename', '')
                 ref = resultado_api.get('referenceno', '')
                 codigo = resultado_api.get('item', '')
-                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ? WHERE id = ?", (nombre_jugador or ref, codigo, pedido_id))
+                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ? WHERE id = ?", (nombre_jugador or ref, codigo, ref, pedido_id))
                 db2.commit()
                 db2.close()
                 resp = {

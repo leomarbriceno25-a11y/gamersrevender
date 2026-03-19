@@ -130,7 +130,10 @@ def init_db():
         db.execute("SELECT codigo_entregado FROM pedidos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE pedidos ADD COLUMN codigo_entregado TEXT DEFAULT ''")
-
+    try:
+        db.execute("SELECT referencia_externa FROM pedidos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE pedidos ADD COLUMN referencia_externa TEXT DEFAULT ''")
 
 
     # Crear admin si no existe

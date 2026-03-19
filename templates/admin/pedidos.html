@@ -10,6 +10,11 @@
 
 <section class="section">
     <div class="container">
+        <div style="margin-bottom:1rem; display:flex; gap:0.5rem;">
+            <form method="POST" action="{{ url_for('admin_verificar_gamepoint') }}" style="display:inline;">
+                <button type="submit" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> Verificar GamePoint (últimas 48h)</button>
+            </form>
+        </div>
         {% if pedidos %}
         <div class="table-responsive">
             <table class="table">
