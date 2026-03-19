@@ -69,6 +69,11 @@
                     </label>
                 </div>
                 <div id="gamepoint-group" style="display:none;">
+                    <div class="form-group">
+                        <label class="checkbox-label">
+                            <input type="checkbox" name="recarga_manual" id="form-recarga-manual" value="1"> <i class="fas fa-clock" style="color:#f59e0b;"></i> Recarga manual (proveedor procesa después, queda en "procesando" hasta confirmar)
+                        </label>
+                    </div>
                     <input type="hidden" name="gamepoint_fields" id="form-gp-fields" value="">
                     <div class="form-grid-2">
                         <div class="form-group">
@@ -154,7 +159,7 @@
                         </td>
                         <td>
                             <div class="action-btns">
-                                <button class="btn btn-sm btn-secondary" onclick="editarProducto({{ p.id }}, '{{ p.nombre|e }}', {{ p.precio }}, {{ p.categoria_id }}, '{{ p.icono }}', '{{ p.descripcion|e }}', {{ p.activo }}, {{ p.usa_api }}, {{ p.monto_api }}, {{ p.orden }}, {{ p.gamepoint_product_id }}, {{ p.gamepoint_package_id }})">
+                                <button class="btn btn-sm btn-secondary" onclick="editarProducto({{ p.id }}, '{{ p.nombre|e }}', {{ p.precio }}, {{ p.categoria_id }}, '{{ p.icono }}', '{{ p.descripcion|e }}', {{ p.activo }}, {{ p.usa_api }}, {{ p.monto_api }}, {{ p.orden }}, {{ p.gamepoint_product_id }}, {{ p.gamepoint_package_id }}, {{ p.recarga_manual|default(0) }})">
                                     <i class="fas fa-edit"></i> Editar
                                 </button>
                                 <form method="POST" style="display:inline;">
@@ -292,7 +297,7 @@ function cargarCamposGP() {
         });
 }
 
-function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi, orden, gpProduct, gpPackage) {
+function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi, orden, gpProduct, gpPackage, recargaManual) {
     document.getElementById('form-accion').value = 'editar';
     document.getElementById('form-producto-id').value = id;
     document.getElementById('form-nombre').value = nombre;
@@ -306,6 +311,7 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     document.getElementById('form-usa-gamepoint').checked = (gpProduct > 0);
     document.getElementById('form-gp-product').value = gpProduct || 0;
     document.getElementById('form-gp-package').value = gpPackage || 0;
+    document.getElementById('form-recarga-manual').checked = recargaManual == 1;
     toggleMonto();
     toggleGamepoint();
     if (gpProduct > 0) { cargarCamposGP(); }
@@ -328,6 +334,7 @@ function resetForm() {
     document.getElementById('form-usa-api').checked = false;
     document.getElementById('form-monto-api').value = '0';
     document.getElementById('form-usa-gamepoint').checked = false;
+    document.getElementById('form-recarga-manual').checked = false;
     document.getElementById('form-gp-product').value = '0';
     document.getElementById('form-gp-package').value = '0';
     document.getElementById('form-gp-fields').value = '';

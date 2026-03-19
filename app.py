@@ -275,6 +275,7 @@ def comprar():
         # Guardar datos necesarios y CERRAR DB antes de llamar API externa
         gp_product_id = prod['gamepoint_product_id']
         gp_package_id = prod['gamepoint_package_id']
+        es_manual = prod['recarga_manual'] if 'recarga_manual' in prod.keys() else 0
         db.close()
         try:
             from gamepoint_api import recarga_completa
@@ -295,10 +296,13 @@ def comprar():
                 nombre_jugador = resultado_api.get('ingamename', '')
                 ref = resultado_api.get('referenceno', '')
                 codigo = resultado_api.get('item', '')
-                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ? WHERE id = ?", (nombre_jugador or ref, codigo, ref, pedido_id))
+                estado_final = 'procesando' if es_manual else 'completado'
+                db2.execute("UPDATE pedidos SET estado = ?, nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ? WHERE id = ?", (estado_final, nombre_jugador or ref, codigo, ref, pedido_id))
                 db2.commit()
                 db2.close()
-                if codigo:
+                if es_manual:
+                    flash(f'Pedido #{pedido_id} enviado al proveedor (Ref: {ref}). Se confirmará automáticamente cuando el proveedor lo procese.', 'success')
+                elif codigo:
                     flash(f'Pedido #{pedido_id} completado. Código: {codigo}', 'success')
                 else:
                     flash(f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador or id_juego} (Ref: {ref}).', 'success')
@@ -498,10 +502,11 @@ def admin_productos():
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
+            recarga_manual = 1 if request.form.get('recarga_manual') else 0
             orden = int(request.form.get('orden', 0))
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, orden) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, orden))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -516,10 +521,11 @@ def admin_productos():
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
+            recarga_manual = 1 if request.form.get('recarga_manual') else 0
             orden = int(request.form.get('orden', 0))
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, orden=? WHERE id=?",
-                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, orden, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=? WHERE id=?",
+                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -618,23 +624,25 @@ def admin_gamepoint_productos():
 @app.route('/admin/verificar-gamepoint', methods=['POST'])
 @admin_required
 def admin_verificar_gamepoint():
-    """Verificar pedidos GamePoint completados para detectar FAIL del proveedor"""
+    """Verificar pedidos GamePoint: procesando->completado/cancelado, completado->cancelado si FAIL"""
     from gamepoint_api import consultar_orden
     db = get_db()
     pedidos = db.execute(
-        "SELECT p.id, p.usuario_id, p.total, p.referencia_externa, p.nombre_jugador "
+        "SELECT p.id, p.usuario_id, p.total, p.estado, p.referencia_externa, p.nombre_jugador "
         "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
-        "WHERE p.estado = 'completado' AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
+        "WHERE p.estado IN ('completado', 'procesando') AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
         "AND pr.gamepoint_product_id > 0 "
         "AND p.fecha_pedido >= datetime('now', '-48 hours', 'localtime')"
     ).fetchall()
     db.close()
     verificados = 0
+    confirmados = 0
     fallidos = 0
     for ped in pedidos:
         try:
             inquiry = consultar_orden(ped['referencia_externa'])
-            if inquiry.get('status') == 'failed':
+            gp_status = inquiry.get('status', '')
+            if gp_status == 'failed':
                 db2 = get_db()
                 db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (ped['id'],))
                 db2.commit()
@@ -642,10 +650,17 @@ def admin_verificar_gamepoint():
                 recargar_saldo(ped['usuario_id'], ped['total'],
                                f"Reembolso: GamePoint FAIL pedido #{ped['id']} ({inquiry.get('reason', 'Sin razón')})")
                 fallidos += 1
+            elif gp_status == 'success' and ped['estado'] == 'procesando':
+                db2 = get_db()
+                nombre = inquiry.get('ingamename', ped['nombre_jugador'] or '')
+                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre or ped['nombre_jugador'], ped['id']))
+                db2.commit()
+                db2.close()
+                confirmados += 1
         except Exception:
             pass
         verificados += 1
-    flash(f'Verificación completada: {verificados} pedidos revisados, {fallidos} fallidos reembolsados.', 'success')
+    flash(f'Verificación: {verificados} revisados, {confirmados} confirmados, {fallidos} fallidos reembolsados.', 'success')
     return redirect(url_for('admin_pedidos'))
 
 
@@ -658,20 +673,22 @@ def cron_verificar_gamepoint():
     from gamepoint_api import consultar_orden
     db = get_db()
     pedidos = db.execute(
-        "SELECT p.id, p.usuario_id, p.total, p.referencia_externa "
+        "SELECT p.id, p.usuario_id, p.total, p.estado, p.referencia_externa, p.nombre_jugador "
         "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
-        "WHERE p.estado = 'completado' AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
+        "WHERE p.estado IN ('completado', 'procesando') AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
         "AND pr.gamepoint_product_id > 0 "
         "AND p.fecha_pedido >= datetime('now', '-48 hours', 'localtime')"
     ).fetchall()
     db.close()
     verificados = 0
+    confirmados = 0
     fallidos = 0
     detalles = []
     for ped in pedidos:
         try:
             inquiry = consultar_orden(ped['referencia_externa'])
-            if inquiry.get('status') == 'failed':
+            gp_status = inquiry.get('status', '')
+            if gp_status == 'failed':
                 db2 = get_db()
                 db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (ped['id'],))
                 db2.commit()
@@ -679,11 +696,19 @@ def cron_verificar_gamepoint():
                 recargar_saldo(ped['usuario_id'], ped['total'],
                                f"Reembolso auto: GamePoint FAIL pedido #{ped['id']} ({inquiry.get('reason', '')})")
                 fallidos += 1
-                detalles.append({'pedido': ped['id'], 'ref': ped['referencia_externa'], 'reason': inquiry.get('reason', '')})
+                detalles.append({'pedido': ped['id'], 'ref': ped['referencia_externa'], 'accion': 'reembolsado', 'reason': inquiry.get('reason', '')})
+            elif gp_status == 'success' and ped['estado'] == 'procesando':
+                db2 = get_db()
+                nombre = inquiry.get('ingamename', ped['nombre_jugador'] or '')
+                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre or ped['nombre_jugador'], ped['id']))
+                db2.commit()
+                db2.close()
+                confirmados += 1
+                detalles.append({'pedido': ped['id'], 'ref': ped['referencia_externa'], 'accion': 'confirmado'})
         except Exception as e:
             detalles.append({'pedido': ped['id'], 'error': str(e)})
         verificados += 1
-    return jsonify({'ok': True, 'verificados': verificados, 'fallidos': fallidos, 'detalles': detalles})
+    return jsonify({'ok': True, 'verificados': verificados, 'confirmados': confirmados, 'fallidos': fallidos, 'detalles': detalles})
 
 
 @app.route('/admin/categorias/orden', methods=['POST'])
@@ -984,6 +1009,7 @@ def api_comprar():
     if prod['gamepoint_product_id'] and prod['gamepoint_package_id']:
         gp_product_id = prod['gamepoint_product_id']
         gp_package_id = prod['gamepoint_package_id']
+        es_manual = prod['recarga_manual'] if 'recarga_manual' in prod.keys() else 0
         db.close()
         try:
             from gamepoint_api import recarga_completa
@@ -1002,15 +1028,18 @@ def api_comprar():
                 nombre_jugador = resultado_api.get('ingamename', '')
                 ref = resultado_api.get('referenceno', '')
                 codigo = resultado_api.get('item', '')
-                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ? WHERE id = ?", (nombre_jugador or ref, codigo, ref, pedido_id))
+                estado_final = 'procesando' if es_manual else 'completado'
+                db2.execute("UPDATE pedidos SET estado = ?, nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ? WHERE id = ?", (estado_final, nombre_jugador or ref, codigo, ref, pedido_id))
                 db2.commit()
                 db2.close()
                 resp = {
-                    'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
+                    'ok': True, 'pedido_id': pedido_id, 'estado': estado_final,
                     'total': total, 'saldo_restante': get_saldo(user_id_api),
                     'referencia': ref,
                 }
-                if codigo:
+                if es_manual:
+                    resp['mensaje'] = f'Pedido enviado al proveedor (Ref: {ref}). Se confirmará automáticamente.'
+                elif codigo:
                     resp['codigo'] = codigo
                     resp['mensaje'] = f'Código entregado: {codigo}'
                 else:
