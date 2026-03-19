@@ -569,6 +569,28 @@ def admin_productos_eliminar_lote():
     return jsonify({'ok': True, 'eliminados': eliminados, 'desactivados': desactivados})
 
 
+@app.route('/admin/productos/editar-masivo', methods=['POST'])
+@admin_required
+def admin_productos_editar_masivo():
+    data = request.get_json()
+    productos = data.get('productos', [])
+    db = get_db()
+    actualizados = 0
+    for p in productos:
+        try:
+            db.execute(
+                "UPDATE productos SET nombre=?, precio=?, activo=?, recarga_manual=?, gamepoint_product_id=?, gamepoint_package_id=? WHERE id=?",
+                (p['nombre'], float(p['precio']), int(p['activo']), int(p.get('recarga_manual', 0)),
+                 int(p.get('gamepoint_product_id', 0)), int(p.get('gamepoint_package_id', 0)), int(p['id']))
+            )
+            actualizados += 1
+        except Exception:
+            pass
+    db.commit()
+    db.close()
+    return jsonify({'ok': True, 'actualizados': actualizados})
+
+
 @app.route('/admin/productos/orden', methods=['POST'])
 @admin_required
 def admin_producto_orden():
