@@ -53,16 +53,22 @@ def _post(endpoint, payload_data):
         return {"code": -1, "message": str(e)}
 
 
-def obtener_token():
+def invalidar_token():
+    """Invalida el token cacheado para forzar renovación."""
+    global _token_cache
+    _token_cache = {"token": None, "timestamp": 0}
+
+
+def obtener_token(forzar=False):
     """
     Obtiene token de acceso del merchant.
-    Cachea el token y lo renueva si tiene más de 12 horas.
+    Cachea el token y lo renueva si tiene más de 12 horas o si se fuerza.
     """
     global _token_cache
     ahora = int(time.time())
 
-    # Usar cache si tiene menos de 12 horas
-    if _token_cache["token"] and (ahora - _token_cache["timestamp"]) < 43200:
+    # Usar cache si tiene menos de 12 horas y no se fuerza
+    if not forzar and _token_cache["token"] and (ahora - _token_cache["timestamp"]) < 43200:
         return _token_cache["token"]
 
     resultado = _post("merchant/token", {"timestamp": ahora})
@@ -77,6 +83,12 @@ def obtener_token():
         return None
 
 
+def _es_token_expirado(resultado):
+    """Verifica si el error es por token expirado/incorrecto."""
+    msg = str(resultado.get("message", "")).lower()
+    return "incorrect token" in msg or "refresh token" in msg or "token expired" in msg
+
+
 def obtener_saldo():
     """Consulta el saldo disponible del merchant."""
     token = obtener_token()
@@ -87,6 +99,12 @@ def obtener_saldo():
         "timestamp": int(time.time()),
         "token": token,
     })
+
+    if _es_token_expirado(resultado):
+        token = obtener_token(forzar=True)
+        if not token:
+            return {"ok": False, "error": "No se pudo renovar token"}
+        resultado = _post("merchant/balance", {"timestamp": int(time.time()), "token": token})
 
     if resultado.get("code") == 200:
         return {"ok": True, "balance": resultado.get("balance", 0)}
@@ -104,6 +122,12 @@ def listar_productos():
         "timestamp": int(time.time()),
         "token": token,
     })
+
+    if _es_token_expirado(resultado):
+        token = obtener_token(forzar=True)
+        if not token:
+            return {"ok": False, "error": "No se pudo renovar token"}
+        resultado = _post("product/list", {"timestamp": int(time.time()), "token": token})
 
     if resultado.get("code") == 200:
         return {"ok": True, "productos": resultado.get("detail", [])}
@@ -125,6 +149,12 @@ def detalle_producto(product_id):
         "token": token,
         "productid": int(product_id),
     })
+
+    if _es_token_expirado(resultado):
+        token = obtener_token(forzar=True)
+        if not token:
+            return {"ok": False, "error": "No se pudo renovar token"}
+        resultado = _post("product/detail", {"timestamp": int(time.time()), "token": token, "productid": int(product_id)})
 
     if resultado.get("code") == 200:
         return {
@@ -159,6 +189,12 @@ def validar_orden(product_id, fields):
         "productid": int(product_id),
         "fields": fields,
     })
+
+    if _es_token_expirado(resultado):
+        token = obtener_token(forzar=True)
+        if not token:
+            return {"ok": False, "error": "No se pudo renovar token"}
+        resultado = _post("order/validate", {"timestamp": int(time.time()), "token": token, "productid": int(product_id), "fields": fields})
 
     if resultado.get("code") == 200:
         return {
@@ -195,6 +231,15 @@ def crear_orden(package_id, validation_token, merchant_code=""):
         payload["merchantcode"] = merchant_code
 
     resultado = _post("order/create", payload)
+
+    if _es_token_expirado(resultado):
+        token = obtener_token(forzar=True)
+        if not token:
+            return {"ok": False, "error": "No se pudo renovar token"}
+        payload["token"] = token
+        payload["timestamp"] = int(time.time())
+        resultado = _post("order/create", payload)
+
     code = resultado.get("code")
 
     if code == 100:
@@ -244,6 +289,13 @@ def consultar_orden(referenceno):
         "token": token,
         "referenceno": referenceno,
     })
+
+    if _es_token_expirado(resultado):
+        token = obtener_token(forzar=True)
+        if not token:
+            return {"ok": False, "error": "No se pudo renovar token"}
+        resultado = _post("order/inquiry", {"timestamp": int(time.time()), "token": token, "referenceno": referenceno})
+
     code = resultado.get("code")
 
     if code == 100:
