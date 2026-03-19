@@ -346,7 +346,11 @@ def comprar():
                     flash(f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador} (ID: {id_juego}).', 'success')
                     return redirect(url_for('pedido_detalle', id=pedido_id))
                 else:
-                    db2.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
+                    paso_error = resultado_api.get('paso', 0)
+                    if paso_error < 3:
+                        db2.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_id,))
+                    else:
+                        db2.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
                     db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
                     db2.commit()
                     db2.close()
@@ -356,7 +360,7 @@ def comprar():
                     return redirect(url_for('pedido_detalle', id=pedido_id))
             except Exception as e:
                 db2 = get_db()
-                db2.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
+                db2.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_id,))
                 db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
                 db2.commit()
                 db2.close()
@@ -985,7 +989,11 @@ def api_comprar():
                     db2.commit()
                     db2.close()
                 else:
-                    db2.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
+                    paso_error = resultado_api.get('paso', 0)
+                    if paso_error < 3:
+                        db2.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_id,))
+                    else:
+                        db2.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
                     db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
                     db2.commit()
                     db2.close()
@@ -996,7 +1004,7 @@ def api_comprar():
                     }), 400
             except Exception as e:
                 db2 = get_db()
-                db2.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
+                db2.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_id,))
                 db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
                 db2.commit()
                 db2.close()
