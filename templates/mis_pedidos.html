@@ -11,16 +11,20 @@
 <section class="section">
     <div class="container">
         {% if pedidos %}
+        <div style="margin-bottom:1rem;">
+            <input type="text" id="filtroPedidos" class="form-input" placeholder="Buscar por #, producto, ID jugador, estado..." style="max-width:400px;" oninput="filtrarPedidos()">
+        </div>
         <div class="table-responsive">
-            <table class="table">
+            <table class="table" id="tablaPedidos">
                 <thead>
-                    <tr><th>#</th><th>Producto</th><th>Cant.</th><th>Total</th><th>Estado</th><th>Fecha</th></tr>
+                    <tr><th>#</th><th>Producto</th><th>ID Jugador</th><th>Cant.</th><th>Total</th><th>Estado</th><th>Fecha</th></tr>
                 </thead>
                 <tbody>
                     {% for p in pedidos %}
                     <tr>
                         <td>{{ p.id }}</td>
                         <td>{{ p.producto_nombre }}</td>
+                        <td>{{ p.id_juego or '-' }}</td>
                         <td>x{{ p.cantidad }}</td>
                         <td>${{ '%.4f'|format(p.total) }}</td>
                         <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
@@ -30,6 +34,15 @@
                 </tbody>
             </table>
         </div>
+        <script>
+        function filtrarPedidos(){
+            var texto = document.getElementById('filtroPedidos').value.toLowerCase();
+            var filas = document.querySelectorAll('#tablaPedidos tbody tr');
+            filas.forEach(function(fila){
+                fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
+            });
+        }
+        </script>
         {% else %}
         <div class="empty-state">
             <i class="fas fa-shopping-bag"></i>

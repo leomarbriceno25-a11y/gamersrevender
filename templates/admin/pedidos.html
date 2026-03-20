@@ -16,8 +16,11 @@
             </form>
         </div>
         {% if pedidos %}
+        <div style="margin-bottom:1rem;">
+            <input type="text" id="filtroPedidos" class="form-input" placeholder="Buscar por #, usuario, email, producto, ID juego, estado..." style="max-width:500px;" oninput="filtrarPedidos()">
+        </div>
         <div class="table-responsive">
-            <table class="table">
+            <table class="table" id="tablaPedidos">
                 <thead>
                     <tr><th>#</th><th>Usuario</th><th>Email</th><th>Producto</th><th>Cant.</th><th>Total</th><th>ID Juego</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr>
                 </thead>
@@ -49,6 +52,15 @@
                 </tbody>
             </table>
         </div>
+        <script>
+        function filtrarPedidos(){
+            var texto = document.getElementById('filtroPedidos').value.toLowerCase();
+            var filas = document.querySelectorAll('#tablaPedidos tbody tr');
+            filas.forEach(function(fila){
+                fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
+            });
+        }
+        </script>
         {% else %}
         <div class="empty-state">
             <i class="fas fa-shopping-bag"></i>
