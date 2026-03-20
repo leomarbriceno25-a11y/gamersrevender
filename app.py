@@ -983,7 +983,7 @@ def api_saldo():
 def api_productos():
     import json as _json
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.gamepoint_product_id, p.gamepoint_fields, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.gamepoint_product_id, p.gamepoint_fields, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
@@ -1004,6 +1004,7 @@ def api_productos():
         else:
             d['campos_requeridos'] = []
         d['usa_gamepoint'] = bool(d.pop('gamepoint_product_id', 0))
+        d['procesamiento_manual'] = bool(d.pop('recarga_manual', 0))
         result.append(d)
     return jsonify({'ok': True, 'productos': result})
 

@@ -91,6 +91,7 @@
       "precio": 1.50,
       "categoria": "Mobile Legends",
       "usa_gamepoint": true,
+      "procesamiento_manual": true,
       "campos_requeridos": [
         {
           "nombre": "input1",
@@ -116,6 +117,7 @@
       "precio": 12.00,
       "categoria": "Gift Cards",
       "usa_gamepoint": true,
+      "procesamiento_manual": false,
       "campos_requeridos": []
     }
   ]
@@ -126,6 +128,7 @@
                     <strong style="color:#7c3aed;"><i class="fas fa-lightbulb"></i> Importante:</strong>
                     Si <code>campos_requeridos</code> está vacío, el producto es una <strong>gift card</strong> y no necesitas enviar <code>id_juego</code>.
                     Si tiene campos, debes enviar <code>id_juego</code> (primer campo) y opcionalmente <code>input2</code> (segundo campo).
+                    Si <code>procesamiento_manual</code> es <code>true</code>, el pedido quedará en estado <strong>"procesando"</strong> hasta que el proveedor confirme. Recibirás notificación vía webhook cuando cambie.
                 </p>
             </div>
         </div>
