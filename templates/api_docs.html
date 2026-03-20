@@ -194,6 +194,27 @@
 }</pre>
             </div>
 
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-clock" style="color:#f59e0b;"></i> Respuesta: Pedido en procesamiento (recarga manual)</h3>
+            <p style="font-size:0.9rem; color:var(--text-secondary);">Algunos productos requieren procesamiento manual por el proveedor. En estos casos el pedido queda en estado <code>procesando</code> hasta que el proveedor confirme.</p>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#f59e0b; margin:0; font-size:0.85rem;">{
+  "ok": true,
+  "pedido_id": 46,
+  "estado": "procesando",
+  "total": 2.50,
+  "saldo_restante": 147.50,
+  "referencia": "GP-20260319-003",
+  "mensaje": "Pedido enviado al proveedor (Ref: GP-20260319-003). Se confirmará automáticamente."
+}</pre>
+            </div>
+            <div style="margin-top:1rem; padding:0.75rem; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px;">
+                <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
+                    <strong style="color:#f59e0b;"><i class="fas fa-clock"></i> Pedido en procesamiento:</strong>
+                    El estado cambiará automáticamente a <code>completado</code> o <code>cancelado</code> cuando el proveedor responda (generalmente en minutos).
+                    Si se cancela, el saldo se reembolsa automáticamente. Puedes consultar el estado con <code>/api/v1/pedido/:id</code> o recibir notificación vía <strong>Webhook</strong>.
+                </p>
+            </div>
+
             <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-times-circle" style="color:#ff6b6b;"></i> Respuesta error (con reembolso automático):</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#ff6b6b; margin:0; font-size:0.85rem;">{
@@ -303,6 +324,109 @@
             </div>
         </div>
 
+        <!-- Webhooks -->
+        <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
+            <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-bell"></i> Webhooks (Notificaciones automáticas)</h2>
+            <p>Registra una URL de webhook para recibir notificaciones automáticas cuando un pedido cambie de estado (de <code>procesando</code> a <code>completado</code> o <code>cancelado</code>). Así no necesitas consultar periódicamente.</p>
+
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Registrar / Actualizar webhook:</h3>
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+                <span class="badge badge-pendiente" style="font-size:0.8rem;">POST</span>
+                <code>/api/v1/webhook</code>
+            </div>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
+  -H "X-API-Key: TU_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://tu-pagina.com/callback"}' \
+  {{ request.host_url }}api/v1/webhook</pre>
+            </div>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; margin-top:0.5rem; overflow-x:auto;">
+<pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
+  "ok": true,
+  "mensaje": "Webhook registrado: https://tu-pagina.com/callback"
+}</pre>
+            </div>
+
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Consultar webhook actual:</h3>
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
+                <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
+                <code>/api/v1/webhook</code>
+            </div>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
+  "ok": true,
+  "webhook_url": "https://tu-pagina.com/callback"
+}</pre>
+            </div>
+
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Eliminar webhook:</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">POST /api/v1/webhook
+Body: {"url": ""}</pre>
+            </div>
+
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-check-circle" style="color:#22c55e;"></i> Notificación: Pedido completado</h3>
+            <p style="font-size:0.9rem; color:var(--text-secondary);">Tu sistema recibirá un <code>POST</code> con este JSON cuando el proveedor confirme la recarga:</p>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#22c55e; margin:0; font-size:0.85rem;">{
+  "evento": "pedido_actualizado",
+  "pedido_id": 46,
+  "estado": "completado",
+  "referencia": "GP-20260319-003",
+  "nombre_jugador": "ProGamer123"
+}</pre>
+            </div>
+
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-times-circle" style="color:#ff6b6b;"></i> Notificación: Pedido cancelado (con reembolso)</h3>
+            <p style="font-size:0.9rem; color:var(--text-secondary);">Si el proveedor rechaza la recarga, recibirás esta notificación y el saldo se reembolsa automáticamente:</p>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#ff6b6b; margin:0; font-size:0.85rem;">{
+  "evento": "pedido_actualizado",
+  "pedido_id": 46,
+  "estado": "cancelado",
+  "referencia": "GP-20260319-003",
+  "razon": "Invalid player ID",
+  "reembolso": 2.50
+}</pre>
+            </div>
+
+            <div style="margin-top:1rem; padding:0.75rem; background:rgba(124,58,237,0.1); border:1px solid rgba(124,58,237,0.3); border-radius:8px;">
+                <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
+                    <strong style="color:#7c3aed;"><i class="fas fa-info-circle"></i> Nota:</strong>
+                    El webhook es opcional. Si no registras una URL, puedes consultar manualmente el estado con <code>GET /api/v1/pedido/:id</code>.
+                    Tu endpoint debe responder con HTTP 200 para confirmar la recepción.
+                </p>
+            </div>
+        </div>
+
+        <!-- Estados de pedido -->
+        <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
+            <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-info-circle"></i> Estados de Pedido</h2>
+            <table class="table">
+                <thead>
+                    <tr><th>Estado</th><th>Descripción</th><th>Acción</th></tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td><span class="badge badge-completado">completado</span></td>
+                        <td>Recarga aplicada o código entregado exitosamente</td>
+                        <td>Entregar al cliente</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-procesando">procesando</span></td>
+                        <td>Enviado al proveedor, esperando confirmación</td>
+                        <td>Esperar webhook o consultar <code>/api/v1/pedido/:id</code></td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-cancelado">cancelado</span></td>
+                        <td>Rechazado por el proveedor. Saldo reembolsado automáticamente</td>
+                        <td>Informar al cliente que la recarga no fue posible</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
         <!-- Resumen de endpoints -->
         <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
             <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-list"></i> Resumen de Endpoints</h2>
@@ -317,6 +441,8 @@
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/pedido/:id</code></td><td>Detalle de un pedido</td></tr>
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/pedidos</code></td><td>Últimos 50 pedidos</td></tr>
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/transacciones</code></td><td>Últimas 50 transacciones</td></tr>
+                    <tr><td><span class="badge badge-pendiente" style="font-size:0.7rem;">POST</span></td><td><code>/api/v1/webhook</code></td><td>Registrar / eliminar URL de webhook</td></tr>
+                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/webhook</code></td><td>Ver webhook actual</td></tr>
                 </tbody>
             </table>
         </div>
@@ -343,12 +469,15 @@
         <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
             <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-route"></i> Flujo Recomendado</h2>
             <ol style="color:var(--text-secondary); font-size:0.95rem; line-height:2;">
+                <li>Registra tu webhook con <code>POST /api/v1/webhook</code> <strong>(una sola vez)</strong></li>
                 <li>Consulta <code>/api/v1/productos</code> para ver el catálogo y los campos requeridos por producto</li>
                 <li>Consulta <code>/api/v1/saldo</code> para verificar que tienes saldo suficiente</li>
                 <li>Envía <code>POST /api/v1/comprar</code> con el <code>producto_id</code> y campos correspondientes</li>
-                <li>Si la respuesta tiene <code>"codigo"</code>, entrégalo a tu cliente</li>
-                <li>Si tiene <code>"nombre_jugador"</code>, la recarga ya fue aplicada</li>
-                <li>Puedes consultar el estado en cualquier momento con <code>/api/v1/pedido/:id</code></li>
+                <li>Si <code>estado</code> es <code>"completado"</code>: la recarga ya fue aplicada o el código fue entregado</li>
+                <li>Si <code>estado</code> es <code>"procesando"</code>: espera la notificación en tu webhook</li>
+                <li>Cuando recibas el webhook con <code>"estado": "completado"</code>, entrega al cliente</li>
+                <li>Si recibes <code>"estado": "cancelado"</code>, el saldo ya fue reembolsado. Informa al cliente</li>
+                <li>También puedes consultar el estado manualmente con <code>/api/v1/pedido/:id</code></li>
             </ol>
         </div>
 
