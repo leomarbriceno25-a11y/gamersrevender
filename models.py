@@ -138,6 +138,10 @@ def init_db():
         db.execute("SELECT recarga_manual FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN recarga_manual INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT webhook_url FROM usuarios LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE usuarios ADD COLUMN webhook_url TEXT DEFAULT ''")
 
 
     # Crear admin si no existe

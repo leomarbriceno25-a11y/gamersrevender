@@ -672,6 +672,12 @@ def admin_verificar_gamepoint():
                 recargar_saldo(ped['usuario_id'], ped['total'],
                                f"Reembolso: GamePoint FAIL pedido #{ped['id']} ({inquiry.get('reason', 'Sin razón')})")
                 fallidos += 1
+                enviar_webhook(ped['usuario_id'], {
+                    'evento': 'pedido_actualizado', 'pedido_id': ped['id'],
+                    'estado': 'cancelado', 'referencia': ped['referencia_externa'],
+                    'razon': inquiry.get('reason', 'Proveedor rechazó la recarga'),
+                    'reembolso': float(ped['total']),
+                })
             elif gp_status == 'success' and ped['estado'] == 'procesando':
                 db2 = get_db()
                 nombre = inquiry.get('ingamename', ped['nombre_jugador'] or '')
@@ -679,6 +685,11 @@ def admin_verificar_gamepoint():
                 db2.commit()
                 db2.close()
                 confirmados += 1
+                enviar_webhook(ped['usuario_id'], {
+                    'evento': 'pedido_actualizado', 'pedido_id': ped['id'],
+                    'estado': 'completado', 'referencia': ped['referencia_externa'],
+                    'nombre_jugador': nombre or ped['nombre_jugador'],
+                })
         except Exception:
             pass
         verificados += 1
@@ -719,6 +730,14 @@ def cron_verificar_gamepoint():
                                f"Reembolso auto: GamePoint FAIL pedido #{ped['id']} ({inquiry.get('reason', '')})")
                 fallidos += 1
                 detalles.append({'pedido': ped['id'], 'ref': ped['referencia_externa'], 'accion': 'reembolsado', 'reason': inquiry.get('reason', '')})
+                enviar_webhook(ped['usuario_id'], {
+                    'evento': 'pedido_actualizado',
+                    'pedido_id': ped['id'],
+                    'estado': 'cancelado',
+                    'referencia': ped['referencia_externa'],
+                    'razon': inquiry.get('reason', 'Proveedor rechazó la recarga'),
+                    'reembolso': float(ped['total']),
+                })
             elif gp_status == 'success' and ped['estado'] == 'procesando':
                 db2 = get_db()
                 nombre = inquiry.get('ingamename', ped['nombre_jugador'] or '')
@@ -727,6 +746,13 @@ def cron_verificar_gamepoint():
                 db2.close()
                 confirmados += 1
                 detalles.append({'pedido': ped['id'], 'ref': ped['referencia_externa'], 'accion': 'confirmado'})
+                enviar_webhook(ped['usuario_id'], {
+                    'evento': 'pedido_actualizado',
+                    'pedido_id': ped['id'],
+                    'estado': 'completado',
+                    'referencia': ped['referencia_externa'],
+                    'nombre_jugador': nombre or ped['nombre_jugador'],
+                })
         except Exception as e:
             detalles.append({'pedido': ped['id'], 'error': str(e)})
         verificados += 1
@@ -1185,6 +1211,40 @@ def api_transacciones():
     trans = db.execute("SELECT id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, fecha FROM transacciones WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 50", (user['id'],)).fetchall()
     db.close()
     return jsonify({'ok': True, 'transacciones': [dict(t) for t in trans]})
+
+
+@app.route('/api/v1/webhook', methods=['GET', 'POST'])
+@api_key_required
+def api_webhook():
+    user = request.api_user
+    if request.method == 'GET':
+        return jsonify({'ok': True, 'webhook_url': user.get('webhook_url', '') or ''})
+    data = request.get_json() or {}
+    url = (data.get('url') or '').strip()
+    if url and not url.startswith('http'):
+        return jsonify({'ok': False, 'error': 'La URL debe empezar con http:// o https://'}), 400
+    db = get_db()
+    db.execute("UPDATE usuarios SET webhook_url = ? WHERE id = ?", (url, user['id']))
+    db.commit()
+    db.close()
+    if url:
+        return jsonify({'ok': True, 'mensaje': f'Webhook registrado: {url}'})
+    return jsonify({'ok': True, 'mensaje': 'Webhook eliminado'})
+
+
+def enviar_webhook(usuario_id, pedido_data):
+    """Envía notificación webhook al revendedor si tiene URL configurada."""
+    try:
+        db = get_db()
+        user = db.execute("SELECT webhook_url FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
+        db.close()
+        webhook_url = (user['webhook_url'] or '') if user else ''
+        if not webhook_url:
+            return
+        import requests as req
+        req.post(webhook_url, json=pedido_data, timeout=10)
+    except Exception:
+        pass
 
 
 if __name__ == '__main__':
