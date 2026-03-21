@@ -382,23 +382,27 @@ def comprar():
 
     # Producto de categoría Gift Card — verificar si tiene pines en almacén para entregar
     if prod['categoria_tipo'] == 'giftcards':
-        pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
-        if pin_row:
-            pin_id = pin_row['id']
-            pin_code = pin_row['pin']
-            db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
-                       (user_id, pedido_id, pin_id))
-            db.execute("UPDATE pedidos SET estado = 'completado', codigo_entregado = ? WHERE id = ?", (pin_code, pedido_id))
+        cant_pines = min(cantidad, 50)
+        pines_disponibles = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT ?", (producto_id, cant_pines)).fetchall()
+        if len(pines_disponibles) >= cant_pines:
+            codigos = []
+            for pin_row in pines_disponibles:
+                db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
+                           (user_id, pedido_id, pin_row['id']))
+                codigos.append(pin_row['pin'])
+            todos_codigos = '\n'.join(codigos)
+            db.execute("UPDATE pedidos SET estado = 'completado', codigo_entregado = ? WHERE id = ?", (todos_codigos, pedido_id))
             db.commit()
             db.close()
-            flash(f'Pedido #{pedido_id} completado. Código: {pin_code}', 'success')
+            flash(f'Pedido #{pedido_id} completado. {len(codigos)} código(s) entregado(s).', 'success')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         else:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
             db.close()
             recargar_saldo(user_id, total, f"Reembolso: Sin stock gift card pedido #{pedido_id}")
-            flash('No hay códigos disponibles para este producto. Se reembolsó tu saldo.', 'error')
+            disponibles = len(pines_disponibles)
+            flash(f'Stock insuficiente. Se necesitan {cant_pines} códigos pero solo hay {disponibles}. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
     db.close()
@@ -1195,28 +1199,33 @@ def api_comprar():
 
     # Producto de categoría Gift Card — verificar si tiene pines en almacén para entregar
     if prod['categoria_tipo'] == 'giftcards':
-        pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
-        if pin_row:
-            pin_id = pin_row['id']
-            pin_code = pin_row['pin']
-            db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
-                       (user_id_api, pedido_id, pin_id))
-            db.execute("UPDATE pedidos SET estado = 'completado', codigo_entregado = ? WHERE id = ?", (pin_code, pedido_id))
+        cant_pines = min(cantidad, 50)
+        pines_disponibles = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT ?", (producto_id, cant_pines)).fetchall()
+        if len(pines_disponibles) >= cant_pines:
+            codigos = []
+            for pin_row in pines_disponibles:
+                db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
+                           (user_id_api, pedido_id, pin_row['id']))
+                codigos.append(pin_row['pin'])
+            todos_codigos = '\n'.join(codigos)
+            db.execute("UPDATE pedidos SET estado = 'completado', codigo_entregado = ? WHERE id = ?", (todos_codigos, pedido_id))
             db.commit()
             db.close()
             return jsonify({
                 'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
                 'total': total, 'saldo_restante': get_saldo(user_id_api),
-                'codigo': pin_code,
-                'mensaje': f'Código entregado: {pin_code}'
+                'codigos': codigos,
+                'cantidad_entregada': len(codigos),
+                'mensaje': f'{len(codigos)} código(s) entregado(s)'
             })
         else:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
             db.close()
             recargar_saldo(user_id_api, total, f"Reembolso API: Sin stock gift card pedido #{pedido_id}")
+            disponibles = len(pines_disponibles)
             return jsonify({
-                'ok': False, 'error': 'No hay códigos disponibles para este producto',
+                'ok': False, 'error': f'Stock insuficiente. Se necesitan {cant_pines} códigos pero solo hay {disponibles}',
                 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
             }), 400
 
