@@ -34,11 +34,22 @@
                         <td>x{{ p.cantidad }}</td>
                         <td>${{ '%.4f'|format(p.total) }}</td>
                         <td>{{ p.id_juego or '-' }}</td>
-                        <td>
+                        <td style="max-width:200px;">
                             {% if p.codigo_entregado %}
-                            {% for cod in p.codigo_entregado.split('\n') %}
-                            <div><code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.75rem;word-break:break-all;">{{ cod }}</code></div>
-                            {% endfor %}
+                            {% set codigos = p.codigo_entregado.split('\n') %}
+                            {% if codigos|length <= 3 %}
+                                {% for cod in codigos %}
+                                <div><code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.75rem;word-break:break-all;">{{ cod }}</code></div>
+                                {% endfor %}
+                            {% else %}
+                                <div><code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.75rem;">{{ codigos[0][:20] }}...</code></div>
+                                <span class="badge badge-completado" style="font-size:0.7rem;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'; this.textContent=this.nextElementSibling.style.display==='none'?'{{ codigos|length }} códigos ▼':'Ocultar ▲'">{{ codigos|length }} códigos ▼</span>
+                                <div style="display:none;max-height:150px;overflow-y:auto;margin-top:0.3rem;">
+                                    {% for cod in codigos %}
+                                    <div><code style="background:var(--bg-primary);padding:0.1rem 0.3rem;border-radius:4px;font-size:0.7rem;word-break:break-all;">{{ cod }}</code></div>
+                                    {% endfor %}
+                                </div>
+                            {% endif %}
                             {% else %}-{% endif %}
                         </td>
                         <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
