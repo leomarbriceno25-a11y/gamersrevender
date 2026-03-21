@@ -155,6 +155,11 @@ def init_db():
         db.execute("SELECT stock_objetivo FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN stock_objetivo INTEGER DEFAULT 0")
+    # Multi-canje: cuántos pines consumir por compra Hype (ej: 2 para 200 diamantes = 2x100)
+    try:
+        db.execute("SELECT canjes_por_compra FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN canjes_por_compra INTEGER DEFAULT 1")
 
 
     # Crear admin si no existe
