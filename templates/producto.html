@@ -131,7 +131,18 @@
         <p style="color:var(--text-secondary); font-size:0.85rem;">Esto puede tardar unos segundos...</p>
     </div>
 </div>
-<style>@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }</style>
+<div id="toast-container" style="position:fixed;top:1rem;right:1rem;z-index:99999;display:flex;flex-direction:column;gap:0.5rem;"></div>
+<style>
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+@keyframes toast-in { from { transform: translateX(120%); opacity:0; } to { transform: translateX(0); opacity:1; } }
+@keyframes toast-out { from { transform: translateX(0); opacity:1; } to { transform: translateX(120%); opacity:0; } }
+@keyframes pulse-btn { 0%,100% { transform:scale(1); } 50% { transform:scale(1.05); box-shadow:0 0 15px rgba(124,58,237,0.5); } }
+.toast-msg { padding:0.85rem 1.2rem; border-radius:10px; color:#fff; font-size:0.9rem; font-weight:500; display:flex; align-items:center; gap:0.6rem; animation:toast-in 0.3s ease; min-width:280px; max-width:420px; box-shadow:0 8px 24px rgba(0,0,0,0.3); backdrop-filter:blur(10px); }
+.toast-msg.warning { background:linear-gradient(135deg, rgba(251,191,36,0.95), rgba(245,158,11,0.95)); color:#1a1a2e; }
+.toast-msg.error { background:linear-gradient(135deg, rgba(239,68,68,0.95), rgba(220,38,38,0.95)); }
+.toast-msg.success { background:linear-gradient(135deg, rgba(34,197,94,0.95), rgba(22,163,74,0.95)); }
+.toast-msg.info { background:linear-gradient(135deg, rgba(99,102,241,0.95), rgba(124,58,237,0.95)); }
+</style>
 {% endblock %}
 
 {% block scripts %}
@@ -141,6 +152,20 @@ var saldoActual = {{ saldo }};
 var productoId = {{ producto.id }};
 var requiereVerificacion = {{ 'true' if producto.verificar_nombre else 'false' }};
 var nombreVerificado = false;
+
+function showToast(msg, type) {
+    type = type || 'info';
+    var icons = { warning: 'fa-exclamation-triangle', error: 'fa-times-circle', success: 'fa-check-circle', info: 'fa-info-circle' };
+    var container = document.getElementById('toast-container');
+    var toast = document.createElement('div');
+    toast.className = 'toast-msg ' + type;
+    toast.innerHTML = '<i class="fas ' + (icons[type] || icons.info) + '"></i> ' + msg;
+    container.appendChild(toast);
+    setTimeout(function() {
+        toast.style.animation = 'toast-out 0.3s ease forwards';
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 3500);
+}
 
 function actualizarTotal() {
     var cantInput = document.getElementById('input-cantidad');
@@ -160,7 +185,8 @@ function actualizarTotal() {
 function verificarNombre() {
     var idJuego = document.getElementById('input-id-juego');
     if (!idJuego || !idJuego.value.trim()) {
-        alert('Ingresa el ID del juego primero');
+        showToast('Ingresa el ID del juego primero', 'warning');
+        idJuego.focus();
         return;
     }
     var zoneId = document.getElementById('input-zone-id');
@@ -210,7 +236,9 @@ document.getElementById('form-comprar').addEventListener('submit', function(e) {
     if (btn.disabled) { e.preventDefault(); return; }
     if (requiereVerificacion && !nombreVerificado) {
         e.preventDefault();
-        alert('Debes verificar el nombre del jugador antes de comprar.');
+        showToast('Debes verificar el nombre del jugador antes de comprar.', 'warning');
+        var btnV = document.getElementById('btn-verificar');
+        if (btnV) { btnV.style.animation = 'pulse-btn 0.5s ease 2'; setTimeout(function(){ btnV.style.animation = ''; }, 1100); }
         return;
     }
     btn.disabled = true;
