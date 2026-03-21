@@ -279,12 +279,6 @@ def producto(id):
 @app.route('/comprar', methods=['POST'])
 @login_required
 def comprar():
-    # Solo admin puede comprar desde la web
-    user = get_user_by_id(session['user_id'])
-    if not user or user['rol'] != 'admin':
-        flash('Las recargas se realizan únicamente a través de la API.', 'error')
-        return redirect(url_for('catalogo'))
-
     producto_id = int(request.form.get('producto_id', 0))
     cantidad = int(request.form.get('cantidad', 1))
     id_juego = request.form.get('id_juego', '').strip()
