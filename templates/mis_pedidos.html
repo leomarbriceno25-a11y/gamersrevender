@@ -14,7 +14,8 @@
         <div style="margin-bottom:1rem;">
             <input type="text" id="filtroPedidos" class="form-input" placeholder="Buscar por #, producto, ID jugador, estado..." style="max-width:400px;" oninput="filtrarPedidos()">
         </div>
-        <div class="table-responsive">
+        <!-- Desktop table -->
+        <div class="table-responsive d-none-mobile">
             <table class="table" id="tablaPedidos">
                 <thead>
                     <tr><th>#</th><th>Producto</th><th>ID Jugador</th><th>Cant.</th><th>Total</th><th>Estado</th><th>Fecha</th></tr>
@@ -34,12 +35,35 @@
                 </tbody>
             </table>
         </div>
+        <!-- Mobile cards -->
+        <div class="d-only-mobile pedidos-cards">
+            {% for p in pedidos %}
+            <div class="pedido-card pedido-card-item">
+                <div class="pedido-card-header">
+                    <span class="pedido-card-id">#{{ p.id }}</span>
+                    <span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span>
+                </div>
+                <div class="pedido-card-body">
+                    <div class="pedido-card-producto">{{ p.producto_nombre }}</div>
+                    <div class="pedido-card-total">${{ '%.4f'|format(p.total) }}</div>
+                </div>
+                {% if p.id_juego %}
+                <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.3rem;"><i class="fas fa-gamepad"></i> ID: {{ p.id_juego }} &nbsp; x{{ p.cantidad }}</div>
+                {% endif %}
+                <div class="pedido-card-fecha"><i class="fas fa-clock"></i> {{ p.fecha_pedido }}</div>
+            </div>
+            {% endfor %}
+        </div>
         <script>
         function filtrarPedidos(){
             var texto = document.getElementById('filtroPedidos').value.toLowerCase();
             var filas = document.querySelectorAll('#tablaPedidos tbody tr');
             filas.forEach(function(fila){
                 fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
+            });
+            var cards = document.querySelectorAll('.pedido-card-item');
+            cards.forEach(function(card){
+                card.style.display = card.textContent.toLowerCase().includes(texto) ? '' : 'none';
             });
         }
         </script>
