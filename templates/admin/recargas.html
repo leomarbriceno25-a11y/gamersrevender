@@ -15,14 +15,23 @@
             <h2><i class="fas fa-plus-circle"></i> Recargar Saldo</h2>
             <form method="POST">
                 <div class="form-grid-2">
-                    <div class="form-group">
+                    <div class="form-group" style="position:relative;">
                         <label><i class="fas fa-user"></i> Usuario</label>
-                        <select name="usuario_id" id="usuario_id" class="form-select" required>
-                            <option value="">Seleccionar usuario...</option>
+                        <input type="hidden" name="usuario_id" id="usuario_id" required>
+                        <input type="text" id="usuario_search" class="form-control" placeholder="Buscar usuario por nombre o email..." autocomplete="off" onclick="toggleDropdown(true)" onkeyup="filtrarUsuarios()">
+                        <div id="usuario_dropdown" style="display:none; position:absolute; z-index:100; width:100%; max-height:250px; overflow-y:auto; background:var(--bg-secondary); border:1px solid var(--border); border-radius:8px; margin-top:2px; box-shadow:0 8px 24px rgba(0,0,0,0.4);">
                             {% for u in usuarios %}
-                            <option value="{{ u.id }}">{{ u.nombre }} ({{ u.email }}) - Saldo: ${{ '%.4f'|format(u.saldo) }}</option>
+                            <div class="usuario-option" data-id="{{ u.id }}" data-nombre="{{ u.nombre }}" data-email="{{ u.email }}" data-saldo="{{ '%.4f'|format(u.saldo) }}"
+                                 onclick="seleccionarUsuario(this)"
+                                 style="padding:0.7rem 1rem; cursor:pointer; border-bottom:1px solid var(--border); transition:background 0.15s;">
+                                <div style="font-weight:600; color:var(--text-primary); font-size:0.9rem;">{{ u.nombre }}</div>
+                                <div style="font-size:0.8rem; color:var(--text-secondary);">{{ u.email }} — Saldo: ${{ '%.4f'|format(u.saldo) }}</div>
+                            </div>
                             {% endfor %}
-                        </select>
+                            <div id="usuario_no_results" style="display:none; padding:0.7rem 1rem; color:var(--text-secondary); font-size:0.85rem; text-align:center;">
+                                No se encontraron usuarios
+                            </div>
+                        </div>
                     </div>
                     <div class="form-group">
                         <label><i class="fas fa-dollar-sign"></i> Monto</label>
@@ -144,4 +153,70 @@
     </div>
 </section>
 {% endif %}
+
+<script>
+function toggleDropdown(show) {
+    document.getElementById('usuario_dropdown').style.display = show ? 'block' : 'none';
+    if (show) filtrarUsuarios();
+}
+
+function filtrarUsuarios() {
+    const q = document.getElementById('usuario_search').value.toLowerCase();
+    const opts = document.querySelectorAll('.usuario-option');
+    let visible = 0;
+    opts.forEach(o => {
+        const nombre = o.dataset.nombre.toLowerCase();
+        const email = o.dataset.email.toLowerCase();
+        const match = nombre.includes(q) || email.includes(q);
+        o.style.display = match ? '' : 'none';
+        if (match) visible++;
+    });
+    document.getElementById('usuario_no_results').style.display = visible === 0 ? 'block' : 'none';
+    document.getElementById('usuario_dropdown').style.display = 'block';
+}
+
+function seleccionarUsuario(el) {
+    document.getElementById('usuario_id').value = el.dataset.id;
+    document.getElementById('usuario_search').value = el.dataset.nombre + ' (' + el.dataset.email + ')';
+    toggleDropdown(false);
+    document.getElementById('monto').focus();
+}
+
+// Close dropdown when clicking outside
+document.addEventListener('click', function(e) {
+    const wrap = document.querySelector('.form-group[style*="position:relative"]');
+    if (wrap && !wrap.contains(e.target)) toggleDropdown(false);
+});
+
+// Hover effect
+document.querySelectorAll('.usuario-option').forEach(o => {
+    o.addEventListener('mouseenter', () => o.style.background = 'var(--bg-primary)');
+    o.addEventListener('mouseleave', () => o.style.background = 'transparent');
+});
+
+// Support "Recargar" buttons from the table setting the user
+const _origSetValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+const hiddenInput = document.getElementById('usuario_id');
+const searchInput = document.getElementById('usuario_search');
+const observer = new MutationObserver(() => {
+    const id = hiddenInput.value;
+    if (id) {
+        const opt = document.querySelector('.usuario-option[data-id="' + id + '"]');
+        if (opt) searchInput.value = opt.dataset.nombre + ' (' + opt.dataset.email + ')';
+    }
+});
+observer.observe(hiddenInput, { attributes: true, attributeFilter: ['value'] });
+// Also intercept direct .value = assignment from onclick handlers
+const origValDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+Object.defineProperty(hiddenInput, 'value', {
+    get() { return origValDesc.get.call(this); },
+    set(v) {
+        origValDesc.set.call(this, v);
+        if (v) {
+            const opt = document.querySelector('.usuario-option[data-id="' + v + '"]');
+            if (opt) searchInput.value = opt.dataset.nombre + ' (' + opt.dataset.email + ')';
+        }
+    }
+});
+</script>
 {% endblock %}
