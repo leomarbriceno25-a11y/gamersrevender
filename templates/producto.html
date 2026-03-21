@@ -52,7 +52,14 @@
                     </div>
                     {% endif %}
 
+                    {% if producto.categoria_tipo == 'giftcards' %}
+                    <div class="form-group">
+                        <label><i class="fas fa-layer-group"></i> Cantidad (máx. 50)</label>
+                        <input type="number" name="cantidad" id="input-cantidad" value="1" min="1" max="50" class="form-input" style="max-width:120px;" oninput="actualizarTotal()">
+                    </div>
+                    {% else %}
                     <input type="hidden" name="cantidad" value="1">
+                    {% endif %}
 
                     <div class="wallet-payment-box">
                         <div class="wallet-payment-info">
@@ -128,6 +135,24 @@
 
 {% block scripts %}
 <script>
+var precioUnitario = {{ producto.precio }};
+var saldoActual = {{ saldo }};
+
+function actualizarTotal() {
+    var cantInput = document.getElementById('input-cantidad');
+    if (!cantInput) return;
+    var cant = parseInt(cantInput.value) || 1;
+    if (cant < 1) cant = 1;
+    if (cant > 50) cant = 50;
+    var total = precioUnitario * cant;
+    var priceEl = document.getElementById('summary-price');
+    var totalEl = document.getElementById('summary-total');
+    var btn = document.getElementById('btn-comprar');
+    if (priceEl) priceEl.textContent = '$' + total.toFixed(4);
+    if (totalEl) totalEl.textContent = '$' + total.toFixed(4);
+    if (btn) btn.disabled = saldoActual < total;
+}
+
 document.querySelector('form[action="{{ url_for("comprar") }}"]').addEventListener('submit', function(e) {
     var btn = document.getElementById('btn-comprar');
     if (btn.disabled) { e.preventDefault(); return; }

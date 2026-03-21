@@ -212,7 +212,7 @@ def catalogo_juego(slug):
 def producto(id):
     import json as _json
     db = get_db()
-    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.slug as categoria_slug FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (id,)).fetchone()
+    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.slug as categoria_slug, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (id,)).fetchone()
     db.close()
     if not prod:
         flash('Producto no encontrado', 'error')
