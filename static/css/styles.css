@@ -588,10 +588,11 @@ button:disabled, button[disabled] { opacity: 0.5; cursor: not-allowed; }
 @media (max-width: 576px) {
     .d-none-mobile { display: none !important; }
     .d-only-mobile { display: block !important; }
+    .d-only-mobile.pedidos-cards { display: flex !important; }
 }
 
 /* ===== PEDIDO CARDS (Mobile) ===== */
-.pedidos-cards { display: flex; flex-direction: column; gap: 0.6rem; }
+.pedidos-cards { flex-direction: column; gap: 0.6rem; }
 .pedido-card {
     background: var(--bg-secondary);
     border: 1px solid var(--border);
