@@ -429,7 +429,9 @@ def mis_pines():
     pines = db.execute(
         "SELECT p.id as pedido_id, p.codigo_entregado, p.cantidad, p.total, p.estado, p.fecha_pedido, pr.nombre as producto_nombre "
         "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
+        "JOIN categorias c ON pr.categoria_id = c.id "
         "WHERE p.usuario_id = ? AND p.codigo_entregado IS NOT NULL AND p.codigo_entregado != '' "
+        "AND c.tipo = 'giftcards' "
         "ORDER BY p.fecha_pedido DESC", (session['user_id'],)
     ).fetchall()
     db.close()
@@ -440,7 +442,13 @@ def mis_pines():
 @login_required
 def mis_pedidos():
     db = get_db()
-    pedidos = db.execute("SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? AND (p.codigo_entregado IS NULL OR p.codigo_entregado = '') ORDER BY p.fecha_pedido DESC", (session['user_id'],)).fetchall()
+    pedidos = db.execute(
+        "SELECT p.*, pr.nombre as producto_nombre FROM pedidos p "
+        "JOIN productos pr ON p.producto_id = pr.id "
+        "JOIN categorias c ON pr.categoria_id = c.id "
+        "WHERE p.usuario_id = ? AND c.tipo != 'giftcards' "
+        "ORDER BY p.fecha_pedido DESC", (session['user_id'],)
+    ).fetchall()
     db.close()
     return render_template('mis_pedidos.html', pedidos=pedidos)
 
