@@ -1,5 +1,5 @@
 import sqlite3
-conn = sqlite3.connect('tienda.db')
+conn = sqlite3.connect('instance/tienda.db')
 conn.row_factory = sqlite3.Row
 c = conn.cursor()
 print("=== CATEGORIAS ===")
