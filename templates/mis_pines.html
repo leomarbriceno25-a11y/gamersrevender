@@ -15,7 +15,8 @@
             <input type="text" id="filtroPines" class="form-input" placeholder="Buscar por producto, código, pedido..." style="max-width:400px;" oninput="filtrarPines()">
             <button type="button" class="btn btn-secondary btn-sm" onclick="copiarTodosGlobal()"><i class="fas fa-copy"></i> Copiar todos los códigos</button>
         </div>
-        <div class="table-responsive">
+        <!-- Desktop table -->
+        <div class="table-responsive d-none-mobile">
             <table class="table" id="tablaPines">
                 <thead>
                     <tr><th>Pedido</th><th>Producto</th><th>Código(s)</th><th>Cant.</th><th>Total</th><th>Estado</th><th>Fecha</th></tr>
@@ -46,12 +47,55 @@
                 </tbody>
             </table>
         </div>
+        <!-- Mobile cards -->
+        <div class="d-only-mobile pedidos-cards" id="pinesCards">
+            {% for p in pines %}
+            <div class="pedido-card pin-card-item" data-search="{{ p.producto_nombre }} {{ p.codigo_entregado }} {{ p.pedido_id }}">
+                <div class="pedido-card-header">
+                    <span class="pedido-card-id">#{{ p.pedido_id }}</span>
+                    <span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span>
+                </div>
+                <div class="pedido-card-body">
+                    <div class="pedido-card-producto">{{ p.producto_nombre }}</div>
+                    <div class="pedido-card-total">${{ '%.4f'|format(p.total) }} <span style="font-size:0.75rem;color:var(--text-secondary);font-weight:400;">x{{ p.cantidad }}</span></div>
+                </div>
+                {% set codigos = p.codigo_entregado.split('\n') %}
+                <div style="margin-top:0.5rem;" class="celda-codigos" data-codigos="{{ p.codigo_entregado|replace('\n', '|||') }}">
+                    {% if codigos|length > 2 %}
+                    <button type="button" class="btn btn-sm btn-secondary" style="width:100%;font-size:0.75rem;margin-bottom:0.4rem;" onclick="copiarTodosFila(this)"><i class="fas fa-copy"></i> Copiar {{ codigos|length }} códigos</button>
+                    <div style="display:none;" class="pin-codes-expand">
+                    {% for cod in codigos %}
+                        <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.25rem;">
+                            <code style="flex:1;background:var(--bg-primary);padding:0.25rem 0.5rem;border-radius:4px;font-size:0.7rem;word-break:break-all;">{{ cod }}</code>
+                            <button type="button" class="btn btn-sm" style="padding:0.1rem 0.3rem;font-size:0.65rem;" onclick="copiar('{{ cod }}', this)"><i class="fas fa-copy"></i></button>
+                        </div>
+                    {% endfor %}
+                    </div>
+                    <button type="button" class="btn btn-sm btn-secondary" style="width:100%;font-size:0.7rem;" onclick="var d=this.previousElementSibling;d.style.display=d.style.display==='none'?'block':'none';this.textContent=d.style.display==='none'?'Ver códigos ▼':'Ocultar ▲'">Ver códigos ▼</button>
+                    {% else %}
+                    {% for cod in codigos %}
+                        <div style="display:flex;align-items:center;gap:0.4rem;margin-bottom:0.25rem;">
+                            <code style="flex:1;background:var(--bg-primary);padding:0.25rem 0.5rem;border-radius:4px;font-size:0.7rem;word-break:break-all;">{{ cod }}</code>
+                            <button type="button" class="btn btn-sm" style="padding:0.1rem 0.3rem;font-size:0.65rem;" onclick="copiar('{{ cod }}', this)"><i class="fas fa-copy"></i></button>
+                        </div>
+                    {% endfor %}
+                    {% endif %}
+                </div>
+                <div class="pedido-card-fecha"><i class="fas fa-clock"></i> {{ p.fecha_pedido }}</div>
+            </div>
+            {% endfor %}
+        </div>
         <script>
         function filtrarPines(){
             var texto = document.getElementById('filtroPines').value.toLowerCase();
             var filas = document.querySelectorAll('#tablaPines tbody tr');
             filas.forEach(function(fila){
                 fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
+            });
+            var cards = document.querySelectorAll('.pin-card-item');
+            cards.forEach(function(card){
+                var data = (card.getAttribute('data-search') || '').toLowerCase();
+                card.style.display = data.includes(texto) || card.textContent.toLowerCase().includes(texto) ? '' : 'none';
             });
         }
         function copiar(texto, btn) {
