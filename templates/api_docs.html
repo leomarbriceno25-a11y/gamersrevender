@@ -4,21 +4,87 @@
 <section class="page-header">
     <div class="container">
         <h1><i class="fas fa-book"></i> Documentación API v1</h1>
-        <p>Integra tu sistema con nuestra plataforma de recargas</p>
+        <p>Integra tu sistema con nuestra plataforma de recargas y gift cards</p>
     </div>
 </section>
 
 <section class="section">
     <div class="container" style="max-width:900px;">
 
+        <!-- QUICK START -->
+        <div class="card" style="padding:2rem; margin-bottom:1.5rem; border-left:4px solid #22c55e; background:rgba(34,197,94,0.05);">
+            <h2 style="margin-bottom:1rem; color:#22c55e;"><i class="fas fa-rocket"></i> Inicio Rápido — Tu primera compra en 3 pasos</h2>
+            <p style="margin-bottom:1rem; color:var(--text-secondary);">Sigue estos 3 pasos para hacer tu primera recarga o compra de gift card por API:</p>
+
+            <div style="display:flex; align-items:flex-start; gap:0.8rem; margin-bottom:1.2rem; padding:1rem; background:var(--bg-primary); border-radius:8px;">
+                <span style="background:#7c3aed; color:#fff; font-weight:700; width:28px; height:28px; min-width:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.85rem;">1</span>
+                <div style="flex:1;">
+                    <strong style="color:var(--text-primary);">Obtén tu API Key</strong>
+                    <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">Ve a <a href="/mi-api">Mi API</a> y copia tu clave. Esa clave va en todas las peticiones.</p>
+                </div>
+            </div>
+
+            <div style="display:flex; align-items:flex-start; gap:0.8rem; margin-bottom:1.2rem; padding:1rem; background:var(--bg-primary); border-radius:8px;">
+                <span style="background:#7c3aed; color:#fff; font-weight:700; width:28px; height:28px; min-width:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.85rem;">2</span>
+                <div style="flex:1;">
+                    <strong style="color:var(--text-primary);">Consulta los productos</strong>
+                    <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">Llama a <code>GET /api/v1/productos</code> para ver qué se vende, los precios y qué datos necesita cada producto.</p>
+                </div>
+            </div>
+
+            <div style="display:flex; align-items:flex-start; gap:0.8rem; margin-bottom:1.2rem; padding:1rem; background:var(--bg-primary); border-radius:8px;">
+                <span style="background:#7c3aed; color:#fff; font-weight:700; width:28px; height:28px; min-width:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.85rem;">3</span>
+                <div style="flex:1;">
+                    <strong style="color:var(--text-primary);">Compra</strong>
+                    <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">Llama a <code>POST /api/v1/comprar</code> con el <code>producto_id</code> y listo. Si es recarga, envía también el <code>id_juego</code> del cliente. Si es gift card, recibes los códigos en la respuesta.</p>
+                </div>
+            </div>
+
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Ejemplo rápido — Comprar gift card en PHP:</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#f1f5f9; margin:0; font-size:0.82rem;"><span style="color:#7c3aed;">// Comprar una gift card de Roblox</span>
+$ch = curl_init('{{ request.host_url }}api/v1/comprar');
+curl_setopt_array($ch, [
+    CURLOPT_POST => true,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER => [
+        'X-API-Key: TU_API_KEY',
+        'Content-Type: application/json'
+    ],
+    CURLOPT_POSTFIELDS => json_encode([
+        'producto_id' => 5,
+        'cantidad' => 1
+    ])
+]);
+$resp = json_decode(curl_exec($ch), true);
+curl_close($ch);
+
+if ($resp['ok']) {
+    <span style="color:#7c3aed;">// Entrega estos códigos a tu cliente</span>
+    foreach ($resp['codigos'] as $codigo) {
+        echo "Código: $codigo\n";
+    }
+} else {
+    echo "Error: " . $resp['error'];
+}</pre>
+            </div>
+        </div>
+
         <!-- Autenticación -->
         <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
             <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-lock"></i> Autenticación</h2>
-            <p>Todas las peticiones requieren tu <strong>API Key</strong> en el header:</p>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; margin:1rem 0; overflow-x:auto;">
-                <code style="color:#7c3aed;">X-API-Key: TU_API_KEY_AQUI</code>
+            <p>Todas las peticiones requieren tu <strong>API Key</strong>. Puedes enviarla de dos formas:</p>
+            <div style="margin:1rem 0;">
+                <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; margin-bottom:0.5rem; overflow-x:auto;">
+                    <strong style="color:var(--text-secondary); font-size:0.8rem;">Opción 1 — Header (recomendado):</strong><br>
+                    <code style="color:#7c3aed;">X-API-Key: TU_API_KEY_AQUI</code>
+                </div>
+                <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+                    <strong style="color:var(--text-secondary); font-size:0.8rem;">Opción 2 — Query param:</strong><br>
+                    <code style="color:#7c3aed;">{{ request.host_url }}api/v1/saldo?api_key=TU_API_KEY_AQUI</code>
+                </div>
             </div>
-            <p style="color:var(--text-secondary); font-size:0.9rem;">Obtén tu API Key en <a href="/mi-api">Mi API</a>. También puedes enviarla como parámetro <code>?api_key=TU_KEY</code></p>
+            <p style="color:var(--text-secondary); font-size:0.9rem;">Obtén tu API Key en <a href="/mi-api">Mi API</a>.</p>
         </div>
 
         <!-- Base URL -->
@@ -27,38 +93,44 @@
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
                 <code style="color:#51cf66; font-size:1.1rem;">{{ request.host_url }}api/v1/</code>
             </div>
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin-top:0.5rem;">Todas las respuestas son JSON. Envía <code>Content-Type: application/json</code> en las peticiones POST.</p>
         </div>
 
         <!-- Tipos de producto -->
         <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
             <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-info-circle"></i> Tipos de Producto</h2>
-            <p style="margin-bottom:1rem;">Hay dos tipos de productos que se comportan diferente al comprar:</p>
+            <p style="margin-bottom:1rem;">Hay <strong>3 tipos</strong> de productos. Cada uno funciona diferente al comprar:</p>
             <table class="table">
                 <thead>
-                    <tr><th>Tipo</th><th>Requiere</th><th>Resultado</th><th>Ejemplo</th></tr>
+                    <tr><th>Tipo</th><th>Qué enviar</th><th>Qué recibes</th><th>Juegos</th></tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td><span class="badge badge-completado" style="font-size:0.75rem;">Recarga directa</span></td>
-                        <td><code>id_juego</code> (Player ID)</td>
-                        <td>Diamantes/créditos aplicados a la cuenta</td>
-                        <td>Mobile Legends, PUBG, Blood Strike</td>
+                        <td><code>id_juego</code> + <code>input2</code> (si aplica)</td>
+                        <td>Los diamantes/créditos se aplican directo a la cuenta del jugador</td>
+                        <td>Mobile Legends, PUBG, Blood Strike, Genshin</td>
                     </tr>
                     <tr>
-                        <td><span class="badge badge-pendiente" style="font-size:0.75rem;">Recarga PIN</span></td>
-                        <td><code>id_juego</code> (Player ID)</td>
-                        <td>Se consumen PINes internos y se aplica recarga (puede ser multi-canje)</td>
+                        <td><span class="badge badge-pendiente" style="font-size:0.75rem;">Recarga con PIN</span></td>
+                        <td><code>id_juego</code> del jugador</td>
+                        <td>Se aplica la recarga usando PINes internos (puede ser multi-canje)</td>
                         <td>Free Fire</td>
                     </tr>
                     <tr>
                         <td><span class="badge badge-procesando" style="font-size:0.75rem;">Gift Card / Código</span></td>
-                        <td>Solo <code>cantidad</code> (opcional)</td>
-                        <td>Se entrega un array de <strong>códigos</strong></td>
+                        <td>Solo <code>producto_id</code> y opcionalmente <code>cantidad</code></td>
+                        <td>Recibes un array <code>codigos</code> con los códigos para entregar a tus clientes</td>
                         <td>Roblox, Steam, PlayStation, iTunes</td>
                     </tr>
                 </tbody>
             </table>
-            <p style="color:var(--text-secondary); font-size:0.9rem; margin-top:0.5rem;">Usa <code>/api/v1/productos</code> para ver qué campos requiere cada producto en <code>campos_requeridos</code>.</p>
+            <div style="margin-top:1rem; padding:0.75rem; background:rgba(124,58,237,0.1); border:1px solid rgba(124,58,237,0.3); border-radius:8px;">
+                <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
+                    <strong style="color:#7c3aed;"><i class="fas fa-lightbulb"></i> Tip:</strong>
+                    ¿Cómo saber qué tipo es? Consulta <code>/api/v1/productos</code>. Si <code>campos_requeridos</code> está vacío = <strong>gift card</strong>. Si tiene campos = <strong>recarga</strong> (debes enviar <code>id_juego</code>).
+                </p>
+            </div>
         </div>
 
         <!-- GET /saldo -->
@@ -67,7 +139,7 @@
                 <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
                 <h2 style="margin:0;">/api/v1/saldo</h2>
             </div>
-            <p>Consulta el saldo disponible en tu cartera.</p>
+            <p>Consulta cuánto saldo tienes. Úsalo antes de comprar para verificar que te alcanza.</p>
             <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
@@ -84,7 +156,7 @@
                 <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
                 <h2 style="margin:0;">/api/v1/productos</h2>
             </div>
-            <p>Lista todos los productos disponibles con precios y campos requeridos.</p>
+            <p>Lista todos los productos con precios y los campos que necesitas enviar al comprar. <strong>Consulta este endpoint primero</strong> para armar tu catálogo.</p>
             <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
@@ -122,7 +194,7 @@
       "descripcion": "Gift card de Roblox",
       "precio": 12.00,
       "categoria": "Gift Cards",
-      "usa_gamepoint": true,
+      "usa_gamepoint": false,
       "procesamiento_manual": false,
       "campos_requeridos": []
     }
@@ -131,10 +203,11 @@
             </div>
             <div style="margin-top:1rem; padding:0.75rem; background:rgba(124,58,237,0.1); border:1px solid rgba(124,58,237,0.3); border-radius:8px;">
                 <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
-                    <strong style="color:#7c3aed;"><i class="fas fa-lightbulb"></i> Importante:</strong>
-                    Si <code>campos_requeridos</code> está vacío, el producto es una <strong>gift card</strong> y no necesitas enviar <code>id_juego</code>.
-                    Si tiene campos, debes enviar <code>id_juego</code> (primer campo) y opcionalmente <code>input2</code> (segundo campo).
-                    Si <code>procesamiento_manual</code> es <code>true</code>, el pedido quedará en estado <strong>"procesando"</strong> hasta que el proveedor confirme. Recibirás notificación vía webhook cuando cambie.
+                    <strong style="color:#7c3aed;"><i class="fas fa-lightbulb"></i> ¿Cómo leer campos_requeridos?</strong><br>
+                    - El primer campo (<code>input1</code>) es el <strong>Player ID</strong> del cliente. Envíalo como <code>id_juego</code>.<br>
+                    - Si hay segundo campo (<code>input2</code>) con <code>opciones</code>, envía el <code>value</code> correspondiente como <code>input2</code> (ej: zona del servidor).<br>
+                    - Si <code>campos_requeridos</code> está vacío = es gift card, no necesitas <code>id_juego</code>.<br>
+                    - Si <code>procesamiento_manual</code> es <code>true</code>, el pedido queda en <code>"procesando"</code> hasta que el proveedor confirme.
                 </p>
             </div>
         </div>
@@ -145,29 +218,99 @@
                 <span class="badge badge-pendiente" style="font-size:0.8rem;">POST</span>
                 <h2 style="margin:0;">/api/v1/comprar</h2>
             </div>
-            <p>Realiza una compra. La recarga o entrega del código se ejecuta automáticamente.</p>
+            <p>Realiza una compra. La recarga o entrega del código es <strong>automática</strong>. El costo se descuenta de tu saldo.</p>
             <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Parámetros (JSON Body):</h3>
             <table class="table" style="margin-bottom:1rem;">
                 <thead>
                     <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td><code>producto_id</code></td><td>integer</td><td>Sí</td><td>ID del producto a comprar</td></tr>
-                    <tr><td><code>cantidad</code></td><td>integer</td><td>No</td><td>Cantidad (default: 1)</td></tr>
-                    <tr><td><code>id_juego</code></td><td>string</td><td>Recargas</td><td>Player ID / User ID del jugador. Corresponde al primer campo de <code>campos_requeridos</code></td></tr>
-                    <tr><td><code>input2</code></td><td>string</td><td>Según juego</td><td>Zona / Servidor. Corresponde al segundo campo de <code>campos_requeridos</code> (si existe)</td></tr>
+                    <tr><td><code>producto_id</code></td><td>integer</td><td>Siempre</td><td>ID del producto (obtenido de <code>/productos</code>)</td></tr>
+                    <tr><td><code>cantidad</code></td><td>integer</td><td>No</td><td>Cantidad de códigos (solo gift cards, default 1, máx 50). Para recargas siempre es 1.</td></tr>
+                    <tr><td><code>id_juego</code></td><td>string</td><td>Solo recargas</td><td>El Player ID / User ID del cliente (primer campo de <code>campos_requeridos</code>)</td></tr>
+                    <tr><td><code>input2</code></td><td>string</td><td>Según juego</td><td>Zona o servidor (segundo campo de <code>campos_requeridos</code>, si existe)</td></tr>
                 </tbody>
             </table>
 
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-gamepad"></i> Ejemplo: Recarga directa (Mobile Legends)</h3>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
+            <!-- Ejemplo 1: Recarga directa -->
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-gamepad"></i> Ejemplo 1: Recarga directa (Mobile Legends)</h3>
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem;">Tu cliente te pide 86 diamantes de ML. Le pides su User ID y zona:</p>
+
+            <!-- Tabs Ejemplo 1 -->
+            <div style="display:flex; gap:0.3rem; margin-bottom:0;">
+                <button class="tab-btn active" onclick="showTab(this, 'ej1')" data-lang="curl" style="padding:0.3rem 0.8rem; font-size:0.75rem; border:1px solid var(--border); border-bottom:none; border-radius:6px 6px 0 0; background:var(--bg-primary); color:var(--text-primary); cursor:pointer;">cURL</button>
+                <button class="tab-btn" onclick="showTab(this, 'ej1')" data-lang="php" style="padding:0.3rem 0.8rem; font-size:0.75rem; border:1px solid var(--border); border-bottom:none; border-radius:6px 6px 0 0; background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer;">PHP</button>
+                <button class="tab-btn" onclick="showTab(this, 'ej1')" data-lang="python" style="padding:0.3rem 0.8rem; font-size:0.75rem; border:1px solid var(--border); border-bottom:none; border-radius:6px 6px 0 0; background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer;">Python</button>
+                <button class="tab-btn" onclick="showTab(this, 'ej1')" data-lang="js" style="padding:0.3rem 0.8rem; font-size:0.75rem; border:1px solid var(--border); border-bottom:none; border-radius:6px 6px 0 0; background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer;">JavaScript</button>
+            </div>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:0 8px 8px 8px; padding:1rem; overflow-x:auto;">
+<pre class="tab-content ej1-curl" style="color:#f1f5f9; margin:0; font-size:0.82rem;">curl -X POST \
   -H "X-API-Key: TU_KEY" \
   -H "Content-Type: application/json" \
   -d '{"producto_id": 1, "id_juego": "123456789", "input2": "10521"}' \
   {{ request.host_url }}api/v1/comprar</pre>
+<pre class="tab-content ej1-php" style="color:#f1f5f9; margin:0; font-size:0.82rem; display:none;">$ch = curl_init('{{ request.host_url }}api/v1/comprar');
+curl_setopt_array($ch, [
+    CURLOPT_POST => true,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER => ['X-API-Key: TU_KEY', 'Content-Type: application/json'],
+    CURLOPT_POSTFIELDS => json_encode([
+        'producto_id' => 1,
+        'id_juego' => '123456789',  // Player ID de tu cliente
+        'input2' => '10521'          // Zona (ASIA)
+    ])
+]);
+$resp = json_decode(curl_exec($ch), true);
+curl_close($ch);
+
+if ($resp['ok'] && $resp['estado'] === 'completado') {
+    echo "Recarga exitosa para: " . $resp['nombre_jugador'];
+} elseif ($resp['ok'] && $resp['estado'] === 'procesando') {
+    echo "Pedido en proceso. Ref: " . $resp['referencia'];
+} else {
+    echo "Error: " . $resp['error'];
+    // Si reembolsado=true, tu saldo ya fue devuelto
+}</pre>
+<pre class="tab-content ej1-python" style="color:#f1f5f9; margin:0; font-size:0.82rem; display:none;">import requests
+
+resp = requests.post(
+    '{{ request.host_url }}api/v1/comprar',
+    headers={'X-API-Key': 'TU_KEY'},
+    json={
+        'producto_id': 1,
+        'id_juego': '123456789',  # Player ID de tu cliente
+        'input2': '10521'          # Zona (ASIA)
+    }
+).json()
+
+if resp['ok'] and resp['estado'] == 'completado':
+    print(f"Recarga exitosa para: {resp['nombre_jugador']}")
+elif resp['ok'] and resp['estado'] == 'procesando':
+    print(f"Pedido en proceso. Ref: {resp['referencia']}")
+else:
+    print(f"Error: {resp['error']}")
+    # Si reembolsado=True, tu saldo ya fue devuelto</pre>
+<pre class="tab-content ej1-js" style="color:#f1f5f9; margin:0; font-size:0.82rem; display:none;">const resp = await fetch('{{ request.host_url }}api/v1/comprar', {
+    method: 'POST',
+    headers: { 'X-API-Key': 'TU_KEY', 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+        producto_id: 1,
+        id_juego: '123456789',  // Player ID de tu cliente
+        input2: '10521'          // Zona (ASIA)
+    })
+});
+const data = await resp.json();
+
+if (data.ok && data.estado === 'completado') {
+    console.log('Recarga exitosa para:', data.nombre_jugador);
+} else if (data.ok && data.estado === 'procesando') {
+    console.log('Pedido en proceso. Ref:', data.referencia);
+} else {
+    console.log('Error:', data.error);
+    // Si reembolsado=true, tu saldo ya fue devuelto
+}</pre>
             </div>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (recarga GamePoint):</h3>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
   "ok": true,
@@ -181,53 +324,86 @@
 }</pre>
             </div>
 
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-fire" style="color:#ff6b00;"></i> Ejemplo: Recarga Free Fire (multi-canje)</h3>
-            <p style="font-size:0.9rem; color:var(--text-secondary);">Algunos productos de Free Fire consumen múltiples PINes internamente. El sistema lo maneja automáticamente. Si un canje parcial ocurre, se reembolsa la parte no completada.</p>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
-  -H "X-API-Key: TU_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"producto_id": 8, "id_juego": "987654321"}' \
-  {{ request.host_url }}api/v1/comprar</pre>
-            </div>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (multi-canje completo):</h3>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-<pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
-  "ok": true,
-  "pedido_id": 60,
-  "estado": "completado",
-  "total": 3.00,
-  "saldo_restante": 147.00,
-  "nombre_jugador": "FirePlayer99",
-  "canjes_realizados": 3,
-  "mensaje": "3 recarga(s) aplicada(s) a FirePlayer99 (ID: 987654321)"
-}</pre>
-            </div>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta: canje parcial (reembolso automático):</h3>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-<pre style="color:#f59e0b; margin:0; font-size:0.85rem;">{
-  "ok": true,
-  "pedido_id": 61,
-  "estado": "completado",
-  "total": 3.00,
-  "saldo_restante": 148.00,
-  "nombre_jugador": "FirePlayer99",
-  "canjes_realizados": 2,
-  "canjes_esperados": 3,
-  "reembolso_parcial": 1.00,
-  "mensaje": "2/3 recargas completadas. Reembolso parcial: $1.0000"
-}</pre>
-            </div>
+            <!-- Ejemplo 2: Gift Card -->
+            <h3 style="margin:2rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-gift"></i> Ejemplo 2: Gift Card (Roblox)</h3>
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem;">Tu cliente te pide una gift card. No necesitas Player ID, solo el producto. Puedes pedir varias a la vez con <code>cantidad</code>.</p>
 
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-gift"></i> Ejemplo: Gift Card (Roblox) — 1 código</h3>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
+            <!-- Tabs Ejemplo 2 -->
+            <div style="display:flex; gap:0.3rem; margin-bottom:0;">
+                <button class="tab-btn active" onclick="showTab(this, 'ej2')" data-lang="curl" style="padding:0.3rem 0.8rem; font-size:0.75rem; border:1px solid var(--border); border-bottom:none; border-radius:6px 6px 0 0; background:var(--bg-primary); color:var(--text-primary); cursor:pointer;">cURL</button>
+                <button class="tab-btn" onclick="showTab(this, 'ej2')" data-lang="php" style="padding:0.3rem 0.8rem; font-size:0.75rem; border:1px solid var(--border); border-bottom:none; border-radius:6px 6px 0 0; background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer;">PHP</button>
+                <button class="tab-btn" onclick="showTab(this, 'ej2')" data-lang="python" style="padding:0.3rem 0.8rem; font-size:0.75rem; border:1px solid var(--border); border-bottom:none; border-radius:6px 6px 0 0; background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer;">Python</button>
+                <button class="tab-btn" onclick="showTab(this, 'ej2')" data-lang="js" style="padding:0.3rem 0.8rem; font-size:0.75rem; border:1px solid var(--border); border-bottom:none; border-radius:6px 6px 0 0; background:var(--bg-secondary); color:var(--text-secondary); cursor:pointer;">JavaScript</button>
+            </div>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:0 8px 8px 8px; padding:1rem; overflow-x:auto;">
+<pre class="tab-content ej2-curl" style="color:#f1f5f9; margin:0; font-size:0.82rem;"># 1 código
+curl -X POST \
   -H "X-API-Key: TU_KEY" \
   -H "Content-Type: application/json" \
   -d '{"producto_id": 5}' \
+  {{ request.host_url }}api/v1/comprar
+
+# 3 códigos a la vez
+curl -X POST \
+  -H "X-API-Key: TU_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"producto_id": 5, "cantidad": 3}' \
   {{ request.host_url }}api/v1/comprar</pre>
+<pre class="tab-content ej2-php" style="color:#f1f5f9; margin:0; font-size:0.82rem; display:none;">$ch = curl_init('{{ request.host_url }}api/v1/comprar');
+curl_setopt_array($ch, [
+    CURLOPT_POST => true,
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HTTPHEADER => ['X-API-Key: TU_KEY', 'Content-Type: application/json'],
+    CURLOPT_POSTFIELDS => json_encode([
+        'producto_id' => 5,
+        'cantidad' => 3  // Pedir 3 códigos a la vez (máx 50)
+    ])
+]);
+$resp = json_decode(curl_exec($ch), true);
+curl_close($ch);
+
+if ($resp['ok']) {
+    // Cada código es para un cliente diferente
+    foreach ($resp['codigos'] as $codigo) {
+        echo "Código para entregar: $codigo\n";
+    }
+    echo "Total entregados: " . $resp['cantidad_entregada'];
+} else {
+    echo "Error: " . $resp['error'];
+    // Si reembolsado=true, tu saldo ya fue devuelto
+}</pre>
+<pre class="tab-content ej2-python" style="color:#f1f5f9; margin:0; font-size:0.82rem; display:none;">import requests
+
+resp = requests.post(
+    '{{ request.host_url }}api/v1/comprar',
+    headers={'X-API-Key': 'TU_KEY'},
+    json={'producto_id': 5, 'cantidad': 3}  # Pedir 3 códigos (máx 50)
+).json()
+
+if resp['ok']:
+    # Cada código es para un cliente diferente
+    for codigo in resp['codigos']:
+        print(f"Código para entregar: {codigo}")
+    print(f"Total entregados: {resp['cantidad_entregada']}")
+else:
+    print(f"Error: {resp['error']}")</pre>
+<pre class="tab-content ej2-js" style="color:#f1f5f9; margin:0; font-size:0.82rem; display:none;">const resp = await fetch('{{ request.host_url }}api/v1/comprar', {
+    method: 'POST',
+    headers: { 'X-API-Key': 'TU_KEY', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ producto_id: 5, cantidad: 3 }) // máx 50
+});
+const data = await resp.json();
+
+if (data.ok) {
+    // Cada código es para un cliente diferente
+    data.codigos.forEach(c => console.log('Código:', c));
+    console.log('Total entregados:', data.cantidad_entregada);
+} else {
+    console.log('Error:', data.error);
+}</pre>
             </div>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (1 código):</h3>
+
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta (1 código):</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
   "ok": true,
@@ -241,15 +417,7 @@
 }</pre>
             </div>
 
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-gift"></i> Ejemplo: Gift Card — múltiples códigos</h3>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
-  -H "X-API-Key: TU_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"producto_id": 5, "cantidad": 3}' \
-  {{ request.host_url }}api/v1/comprar</pre>
-            </div>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (3 códigos):</h3>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta (3 códigos con <code>"cantidad": 3</code>):</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
   "ok": true,
@@ -268,13 +436,41 @@
             </div>
             <div style="margin-top:1rem; padding:0.75rem; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:8px;">
                 <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
-                    <strong style="color:#22c55e;"><i class="fas fa-box"></i> Gift Cards / Pines:</strong>
-                    Cuando compras gift cards, la respuesta devuelve un array <code>codigos</code> con todos los códigos entregados y <code>cantidad_entregada</code> con el número total. Si el stock es insuficiente, el pedido se cancela y el saldo se reembolsa automáticamente.
+                    <strong style="color:#22c55e;"><i class="fas fa-box"></i> Sobre los códigos:</strong>
+                    Cada código del array <code>codigos</code> es individual. Si pediste <code>cantidad: 3</code>, recibes 3 códigos diferentes — uno para cada cliente. Si no hay stock suficiente, se cancela y reembolsa todo automáticamente. Máximo 50 códigos por petición.
                 </p>
             </div>
 
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-clock" style="color:#f59e0b;"></i> Respuesta: Pedido en procesamiento (recarga manual)</h3>
-            <p style="font-size:0.9rem; color:var(--text-secondary);">Algunos productos requieren procesamiento manual por el proveedor. En estos casos el pedido queda en estado <code>procesando</code> hasta que el proveedor confirme.</p>
+            <!-- Ejemplo 3: Free Fire -->
+            <h3 style="margin:2rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-fire" style="color:#ff6b00;"></i> Ejemplo 3: Recarga Free Fire</h3>
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem;">Algunos productos de Free Fire usan multi-canje (consumen varios PINes internos). Tú solo envías el ID, el sistema hace todo:</p>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#7c3aed; margin:0; font-size:0.82rem;">POST /api/v1/comprar
+Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
+            </div>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa:</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
+  "ok": true,
+  "pedido_id": 60,
+  "estado": "completado",
+  "total": 3.00,
+  "saldo_restante": 147.00,
+  "nombre_jugador": "FirePlayer99",
+  "canjes_realizados": 3,
+  "mensaje": "3 recarga(s) aplicada(s) a FirePlayer99 (ID: 987654321)"
+}</pre>
+            </div>
+            <div style="margin-top:0.5rem; padding:0.75rem; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px;">
+                <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
+                    <strong style="color:#f59e0b;"><i class="fas fa-info-circle"></i> Canje parcial:</strong>
+                    Si un producto necesita 3 canjes y solo 2 funcionan, recibes <code>"canjes_realizados": 2, "canjes_esperados": 3, "reembolso_parcial": 1.00</code>. La parte no completada se reembolsa automáticamente.
+                </p>
+            </div>
+
+            <!-- Pedido en procesamiento -->
+            <h3 style="margin:2rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-clock" style="color:#f59e0b;"></i> Respuesta: Pedido en procesamiento</h3>
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem;">Algunos productos requieren confirmación del proveedor (segundos a minutos). Tu saldo ya fue descontado, pero el pedido no está listo aún.</p>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f59e0b; margin:0; font-size:0.85rem;">{
   "ok": true,
@@ -286,16 +482,28 @@
   "mensaje": "Pedido enviado al proveedor (Ref: GP-20260319-003). Se confirmará automáticamente."
 }</pre>
             </div>
-            <div style="margin-top:1rem; padding:0.75rem; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px;">
+            <div style="margin-top:0.5rem; padding:0.75rem; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px;">
                 <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
-                    <strong style="color:#f59e0b;"><i class="fas fa-clock"></i> Pedido en procesamiento:</strong>
-                    El estado cambiará automáticamente a <code>completado</code> o <code>cancelado</code> cuando el proveedor responda (generalmente en minutos).
-                    Si se cancela, el saldo se reembolsa automáticamente. Puedes consultar el estado con <code>/api/v1/pedido/:id</code> o recibir notificación vía <strong>Webhook</strong>.
+                    <strong style="color:#f59e0b;"><i class="fas fa-clock"></i> ¿Qué hacer?</strong>
+                    Espera el webhook o consulta <code>GET /api/v1/pedido/46</code> después de unos minutos. Si se confirma cambia a <code>"completado"</code>. Si falla, cambia a <code>"cancelado"</code> y tu saldo se reembolsa.
                 </p>
             </div>
 
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-times-circle" style="color:#ff6b6b;"></i> Respuesta error (con reembolso automático):</h3>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+            <!-- Errores comunes -->
+            <h3 style="margin:2rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-times-circle" style="color:#ff6b6b;"></i> Errores comunes</h3>
+
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin:0.8rem 0 0.3rem;"><strong>Saldo insuficiente:</strong></p>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto; margin-bottom:0.8rem;">
+<pre style="color:#ff6b6b; margin:0; font-size:0.85rem;">{
+  "ok": false,
+  "error": "Saldo insuficiente",
+  "saldo": 5.00,
+  "total": 12.00
+}</pre>
+            </div>
+
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin:0.5rem 0 0.3rem;"><strong>Player ID inválido (reembolso automático):</strong></p>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto; margin-bottom:0.8rem;">
 <pre style="color:#ff6b6b; margin:0; font-size:0.85rem;">{
   "ok": false,
   "error": "Player ID inválido",
@@ -304,10 +512,21 @@
   "saldo_restante": 150.00
 }</pre>
             </div>
+
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin:0.5rem 0 0.3rem;"><strong>Sin stock de gift cards (reembolso automático):</strong></p>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#ff6b6b; margin:0; font-size:0.85rem;">{
+  "ok": false,
+  "error": "Stock insuficiente. Se necesitan 3 códigos pero solo hay 1",
+  "pedido_id": 57,
+  "reembolsado": true,
+  "saldo_restante": 150.00
+}</pre>
+            </div>
             <div style="margin-top:1rem; padding:0.75rem; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:8px;">
                 <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
                     <strong style="color:#22c55e;"><i class="fas fa-shield-alt"></i> Reembolso automático:</strong>
-                    Si la recarga falla, el saldo se devuelve automáticamente a tu cartera. El campo <code>reembolsado: true</code> confirma el reembolso.
+                    Si <code>"reembolsado": true</code> aparece en la respuesta, tu saldo ya fue devuelto. No tienes que hacer nada extra.
                 </p>
             </div>
         </div>
@@ -318,7 +537,7 @@
                 <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
                 <h2 style="margin:0;">/api/v1/pedido/:id</h2>
             </div>
-            <p>Consulta el detalle de un pedido específico por su ID.</p>
+            <p>Consulta el detalle de un pedido. Útil para ver si un pedido <code>"procesando"</code> ya cambió de estado.</p>
             <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
@@ -329,12 +548,18 @@
     "cantidad": 1,
     "total": 12.00,
     "id_juego": "",
-    "nombre_jugador": "GP-20260318-002",
+    "nombre_jugador": "",
     "codigo_entregado": "XXXX-XXXX-XXXX-XXXX",
     "estado": "completado",
-    "fecha_pedido": "2026-03-18 03:30:00"
+    "fecha_pedido": "2026-03-18 15:30:00"
   }
 }</pre>
+            </div>
+            <div style="margin-top:0.5rem; padding:0.75rem; background:rgba(124,58,237,0.1); border:1px solid rgba(124,58,237,0.3); border-radius:8px;">
+                <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
+                    <strong style="color:#7c3aed;"><i class="fas fa-info-circle"></i> Nota:</strong>
+                    Si compraste varias gift cards, los códigos aparecen separados por salto de línea (<code>\n</code>) en <code>codigo_entregado</code>. Usa <code>split("\n")</code> para obtener cada código individual.
+                </p>
             </div>
         </div>
 
@@ -344,7 +569,7 @@
                 <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
                 <h2 style="margin:0;">/api/v1/pedidos</h2>
             </div>
-            <p>Lista tus últimos 50 pedidos con estado y código entregado.</p>
+            <p>Lista tus últimos 50 pedidos. Útil para historial o sincronizar tu sistema.</p>
             <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
@@ -359,18 +584,18 @@
       "nombre_jugador": "ProGamer123",
       "codigo_entregado": "",
       "estado": "completado",
-      "fecha_pedido": "2026-03-18 03:00:00"
+      "fecha_pedido": "2026-03-18 15:00:00"
     },
     {
-      "id": 55,
+      "id": 56,
       "producto": "Roblox 10 USD Card",
-      "cantidad": 1,
-      "total": 12.00,
+      "cantidad": 3,
+      "total": 36.00,
       "id_juego": "",
       "nombre_jugador": "",
-      "codigo_entregado": "XXXX-XXXX-XXXX-XXXX",
+      "codigo_entregado": "AAAA-BBBB\nCCCC-DDDD\nEEEE-FFFF",
       "estado": "completado",
-      "fecha_pedido": "2026-03-18 03:30:00"
+      "fecha_pedido": "2026-03-18 15:30:00"
     }
   ]
 }</pre>
@@ -383,7 +608,7 @@
                 <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
                 <h2 style="margin:0;">/api/v1/transacciones</h2>
             </div>
-            <p>Lista tus últimas 50 transacciones (recargas, compras, reembolsos).</p>
+            <p>Historial de tus últimas 50 transacciones: recargas de saldo, compras y reembolsos.</p>
             <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
@@ -391,12 +616,21 @@
   "transacciones": [
     {
       "id": 1,
+      "tipo": "recarga",
+      "monto": 100.00,
+      "saldo_anterior": 50.00,
+      "saldo_nuevo": 150.00,
+      "descripcion": "Recarga de saldo",
+      "fecha": "2026-03-18 10:00:00"
+    },
+    {
+      "id": 2,
       "tipo": "compra",
       "monto": 1.50,
       "saldo_anterior": 150.00,
       "saldo_nuevo": 148.50,
       "descripcion": "API: ML 86 Diamonds x1",
-      "fecha": "2026-03-18 03:00:00"
+      "fecha": "2026-03-18 15:00:00"
     }
   ]
 }</pre>
@@ -406,47 +640,27 @@
         <!-- Webhooks -->
         <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
             <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-bell"></i> Webhooks (Notificaciones automáticas)</h2>
-            <p>Registra una URL de webhook para recibir notificaciones automáticas cuando un pedido cambie de estado (de <code>procesando</code> a <code>completado</code> o <code>cancelado</code>). Así no necesitas consultar periódicamente.</p>
+            <p>Registra una URL para recibir notificaciones automáticas cuando un pedido <code>"procesando"</code> cambie de estado. Así no necesitas consultar manualmente.</p>
 
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Registrar / Actualizar webhook:</h3>
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Registrar webhook:</h3>
             <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
                 <span class="badge badge-pendiente" style="font-size:0.8rem;">POST</span>
                 <code>/api/v1/webhook</code>
             </div>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
-  -H "X-API-Key: TU_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{"url": "https://tu-pagina.com/callback"}' \
-  {{ request.host_url }}api/v1/webhook</pre>
+<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">Body: {"url": "https://tu-sistema.com/callback"}</pre>
             </div>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; margin-top:0.5rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
   "ok": true,
-  "mensaje": "Webhook registrado: https://tu-pagina.com/callback"
+  "mensaje": "Webhook registrado: https://tu-sistema.com/callback"
 }</pre>
             </div>
 
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Consultar webhook actual:</h3>
-            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:0.5rem;">
-                <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
-                <code>/api/v1/webhook</code>
-            </div>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-<pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
-  "ok": true,
-  "webhook_url": "https://tu-pagina.com/callback"
-}</pre>
-            </div>
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Ver / Eliminar webhook:</h3>
+            <p style="font-size:0.85rem; color:var(--text-secondary);"><code>GET /api/v1/webhook</code> para ver tu URL actual. Para eliminar, envía <code>POST</code> con <code>{"url": ""}</code>.</p>
 
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Eliminar webhook:</h3>
-            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">POST /api/v1/webhook
-Body: {"url": ""}</pre>
-            </div>
-
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-check-circle" style="color:#22c55e;"></i> Notificación: Pedido completado</h3>
-            <p style="font-size:0.9rem; color:var(--text-secondary);">Tu sistema recibirá un <code>POST</code> con este JSON cuando el proveedor confirme la recarga:</p>
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-check-circle" style="color:#22c55e;"></i> Tu sistema recibe esto cuando se completa:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#22c55e; margin:0; font-size:0.85rem;">{
   "evento": "pedido_actualizado",
@@ -457,8 +671,7 @@ Body: {"url": ""}</pre>
 }</pre>
             </div>
 
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-times-circle" style="color:#ff6b6b;"></i> Notificación: Pedido cancelado (con reembolso)</h3>
-            <p style="font-size:0.9rem; color:var(--text-secondary);">Si el proveedor rechaza la recarga, recibirás esta notificación y el saldo se reembolsa automáticamente:</p>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-times-circle" style="color:#ff6b6b;"></i> Tu sistema recibe esto si se cancela:</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#ff6b6b; margin:0; font-size:0.85rem;">{
   "evento": "pedido_actualizado",
@@ -473,8 +686,8 @@ Body: {"url": ""}</pre>
             <div style="margin-top:1rem; padding:0.75rem; background:rgba(124,58,237,0.1); border:1px solid rgba(124,58,237,0.3); border-radius:8px;">
                 <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
                     <strong style="color:#7c3aed;"><i class="fas fa-info-circle"></i> Nota:</strong>
-                    El webhook es opcional. Si no registras una URL, puedes consultar manualmente el estado con <code>GET /api/v1/pedido/:id</code>.
-                    Tu endpoint debe responder con HTTP 200 para confirmar la recepción.
+                    El webhook es <strong>opcional</strong>. Si no lo configuras, consulta el estado con <code>GET /api/v1/pedido/:id</code>.
+                    Tu endpoint debe responder HTTP 200 para confirmar recepción.
                 </p>
             </div>
         </div>
@@ -484,23 +697,23 @@ Body: {"url": ""}</pre>
             <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-info-circle"></i> Estados de Pedido</h2>
             <table class="table">
                 <thead>
-                    <tr><th>Estado</th><th>Descripción</th><th>Acción</th></tr>
+                    <tr><th>Estado</th><th>Significado</th><th>¿Qué hacer?</th></tr>
                 </thead>
                 <tbody>
                     <tr>
                         <td><span class="badge badge-completado">completado</span></td>
-                        <td>Recarga aplicada o código entregado exitosamente</td>
-                        <td>Entregar al cliente</td>
+                        <td>Recarga aplicada o códigos entregados</td>
+                        <td>Entrega al cliente. Revisa <code>codigos</code> o <code>nombre_jugador</code>.</td>
                     </tr>
                     <tr>
                         <td><span class="badge badge-procesando">procesando</span></td>
-                        <td>Enviado al proveedor, esperando confirmación</td>
-                        <td>Esperar webhook o consultar <code>/api/v1/pedido/:id</code></td>
+                        <td>Enviado al proveedor, esperando</td>
+                        <td>Espera webhook o consulta <code>/pedido/:id</code> cada 30 seg.</td>
                     </tr>
                     <tr>
                         <td><span class="badge badge-cancelado">cancelado</span></td>
-                        <td>Rechazado por el proveedor. Saldo reembolsado automáticamente</td>
-                        <td>Informar al cliente que la recarga no fue posible</td>
+                        <td>Rechazado. Saldo reembolsado.</td>
+                        <td>Informa al cliente. Tu dinero ya está de vuelta.</td>
                     </tr>
                 </tbody>
             </table>
@@ -514,19 +727,19 @@ Body: {"url": ""}</pre>
                     <tr><th>Método</th><th>Endpoint</th><th>Descripción</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/saldo</code></td><td>Ver saldo disponible</td></tr>
+                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/saldo</code></td><td>Tu saldo disponible</td></tr>
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/productos</code></td><td>Catálogo con precios y campos requeridos</td></tr>
-                    <tr><td><span class="badge badge-pendiente" style="font-size:0.7rem;">POST</span></td><td><code>/api/v1/comprar</code></td><td>Realizar una compra / recarga</td></tr>
-                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/pedido/:id</code></td><td>Detalle de un pedido</td></tr>
+                    <tr><td><span class="badge badge-pendiente" style="font-size:0.7rem;">POST</span></td><td><code>/api/v1/comprar</code></td><td>Comprar recarga o gift card</td></tr>
+                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/pedido/:id</code></td><td>Detalle y estado de un pedido</td></tr>
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/pedidos</code></td><td>Últimos 50 pedidos</td></tr>
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/transacciones</code></td><td>Últimas 50 transacciones</td></tr>
-                    <tr><td><span class="badge badge-pendiente" style="font-size:0.7rem;">POST</span></td><td><code>/api/v1/webhook</code></td><td>Registrar / eliminar URL de webhook</td></tr>
+                    <tr><td><span class="badge badge-pendiente" style="font-size:0.7rem;">POST</span></td><td><code>/api/v1/webhook</code></td><td>Registrar / eliminar webhook</td></tr>
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/webhook</code></td><td>Ver webhook actual</td></tr>
                 </tbody>
             </table>
         </div>
 
-        <!-- Códigos de error -->
+        <!-- Códigos HTTP -->
         <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
             <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-exclamation-circle"></i> Códigos HTTP</h2>
             <table class="table">
@@ -534,30 +747,62 @@ Body: {"url": ""}</pre>
                     <tr><th>Código</th><th>Significado</th></tr>
                 </thead>
                 <tbody>
-                    <tr><td><code>200</code></td><td>Petición exitosa</td></tr>
-                    <tr><td><code>400</code></td><td>Error en la petición (saldo insuficiente, error de recarga, campo faltante)</td></tr>
-                    <tr><td><code>401</code></td><td>API Key faltante o inválida</td></tr>
-                    <tr><td><code>404</code></td><td>Producto o pedido no encontrado</td></tr>
-                    <tr><td><code>429</code></td><td>Demasiadas peticiones (rate limit)</td></tr>
-                    <tr><td><code>500</code></td><td>Error interno del servidor</td></tr>
+                    <tr><td><code>200</code></td><td>Petición exitosa. Revisa <code>"ok"</code> en el JSON para saber si la operación fue exitosa.</td></tr>
+                    <tr><td><code>400</code></td><td>Error en tu petición: saldo insuficiente, stock agotado, Player ID inválido, campo faltante.</td></tr>
+                    <tr><td><code>401</code></td><td>API Key faltante o inválida.</td></tr>
+                    <tr><td><code>404</code></td><td>Producto o pedido no encontrado.</td></tr>
+                    <tr><td><code>500</code></td><td>Error interno del servidor. Si persiste, contacta soporte.</td></tr>
                 </tbody>
             </table>
         </div>
 
         <!-- Flujo recomendado -->
         <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
-            <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-route"></i> Flujo Recomendado</h2>
-            <ol style="color:var(--text-secondary); font-size:0.95rem; line-height:2;">
-                <li>Registra tu webhook con <code>POST /api/v1/webhook</code> <strong>(una sola vez)</strong></li>
-                <li>Consulta <code>/api/v1/productos</code> para ver el catálogo y los campos requeridos por producto</li>
-                <li>Consulta <code>/api/v1/saldo</code> para verificar que tienes saldo suficiente</li>
-                <li>Envía <code>POST /api/v1/comprar</code> con el <code>producto_id</code> y campos correspondientes</li>
-                <li>Si <code>estado</code> es <code>"completado"</code>: la recarga ya fue aplicada o el código fue entregado</li>
-                <li>Si <code>estado</code> es <code>"procesando"</code>: espera la notificación en tu webhook</li>
-                <li>Cuando recibas el webhook con <code>"estado": "completado"</code>, entrega al cliente</li>
-                <li>Si recibes <code>"estado": "cancelado"</code>, el saldo ya fue reembolsado. Informa al cliente</li>
-                <li>También puedes consultar el estado manualmente con <code>/api/v1/pedido/:id</code></li>
+            <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-route"></i> Flujo Recomendado para tu Sistema</h2>
+            <ol style="color:var(--text-secondary); font-size:0.95rem; line-height:2.2;">
+                <li><strong>Configuración inicial (una vez):</strong> Obtén tu API Key y registra tu webhook si quieres notificaciones automáticas.</li>
+                <li><strong>Sincroniza catálogo:</strong> Consulta <code>/api/v1/productos</code> para mostrar los productos a tus clientes.</li>
+                <li><strong>Antes de comprar:</strong> Verifica saldo con <code>/api/v1/saldo</code>.</li>
+                <li><strong>Compra:</strong> Tu cliente elige producto y te da su Player ID (si aplica). Envías <code>POST /api/v1/comprar</code>.</li>
+                <li><strong>Si <code>estado = "completado"</code>:</strong> Entrega al cliente los códigos o confirma la recarga.</li>
+                <li><strong>Si <code>estado = "procesando"</code>:</strong> Dile al cliente que espere. El webhook te avisará cuando esté listo.</li>
+                <li><strong>Si hay error con <code>reembolsado = true</code>:</strong> Tu saldo ya fue devuelto. Informa al cliente.</li>
             </ol>
+        </div>
+
+        <!-- FAQ -->
+        <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
+            <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-question-circle"></i> Preguntas Frecuentes</h2>
+
+            <div style="margin-bottom:1.2rem;">
+                <strong style="color:var(--text-primary);">¿Cómo recargo mi saldo?</strong>
+                <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">Contacta al administrador. El saldo se acredita manualmente a tu cuenta.</p>
+            </div>
+
+            <div style="margin-bottom:1.2rem;">
+                <strong style="color:var(--text-primary);">¿Qué pasa si mando un Player ID incorrecto?</strong>
+                <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">Si el proveedor rechaza la recarga, tu saldo se reembolsa automáticamente. Verás <code>"reembolsado": true</code> en la respuesta.</p>
+            </div>
+
+            <div style="margin-bottom:1.2rem;">
+                <strong style="color:var(--text-primary);">¿Puedo comprar varias gift cards a la vez?</strong>
+                <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">Sí. Envía <code>"cantidad": 5</code> para recibir 5 códigos en una sola petición (máximo 50). Cada código es independiente.</p>
+            </div>
+
+            <div style="margin-bottom:1.2rem;">
+                <strong style="color:var(--text-primary);">¿Qué es "procesando"?</strong>
+                <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">Significa que el proveedor está procesando tu pedido. Generalmente toma segundos a minutos. Configura un webhook para recibir la notificación automáticamente.</p>
+            </div>
+
+            <div style="margin-bottom:1.2rem;">
+                <strong style="color:var(--text-primary);">¿Necesito webhook obligatoriamente?</strong>
+                <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">No. Es opcional pero recomendado. Sin webhook puedes consultar el estado de cada pedido con <code>GET /api/v1/pedido/:id</code>.</p>
+            </div>
+
+            <div style="margin-bottom:0;">
+                <strong style="color:var(--text-primary);">¿Cuál es el límite de peticiones?</strong>
+                <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">No hay un límite estricto, pero evita hacer más de 60 peticiones por minuto. Si recibes error 429, espera unos segundos y reintenta.</p>
+            </div>
         </div>
 
         <div style="text-align:center; margin-top:2rem;">
@@ -565,4 +810,25 @@ Body: {"url": ""}</pre>
         </div>
     </div>
 </section>
+
+<script>
+function showTab(btn, prefix) {
+    const lang = btn.dataset.lang;
+    const parent = btn.closest('.card');
+    // Hide all tabs with this prefix
+    parent.querySelectorAll('[class*="' + prefix + '-"]').forEach(el => el.style.display = 'none');
+    // Show selected
+    parent.querySelectorAll('.' + prefix + '-' + lang).forEach(el => el.style.display = 'block');
+    // Update button styles
+    const siblings = btn.parentElement.querySelectorAll('.tab-btn');
+    siblings.forEach(s => {
+        s.style.background = 'var(--bg-secondary)';
+        s.style.color = 'var(--text-secondary)';
+        s.classList.remove('active');
+    });
+    btn.style.background = 'var(--bg-primary)';
+    btn.style.color = 'var(--text-primary)';
+    btn.classList.add('active');
+}
+</script>
 {% endblock %}
