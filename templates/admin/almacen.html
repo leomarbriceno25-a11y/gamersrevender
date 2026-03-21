@@ -5,7 +5,7 @@
     <div class="container">
         <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
         <h1><i class="fas fa-warehouse"></i> Almacén de PINes</h1>
-        <p>Gestiona los PINes de Free Fire para canje automático vía API</p>
+        <p>Gestiona códigos y PINes para entrega automática al comprar</p>
     </div>
 </section>
 
@@ -14,7 +14,7 @@
         <!-- Stock resumen -->
         <h2 class="section-title"><i class="fas fa-boxes-stacked"></i> Stock Disponible</h2>
         <div class="stats-grid">
-            {% for p in productos_api %}
+            {% for p in productos_api if stock.get(p.id, 0) > 0 %}
             <div class="stat-card">
                 <div class="stat-icon"><i class="fas fa-gem"></i></div>
                 <div class="stat-info">
@@ -23,12 +23,13 @@
                 </div>
             </div>
             {% endfor %}
-            {% if not productos_api %}
+            {% set total_stock = stock.values()|sum %}
+            {% if total_stock == 0 %}
             <div class="stat-card">
                 <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
                 <div class="stat-info">
                     <h3>0</h3>
-                    <p>No hay productos con API activa. Actívalo en Productos.</p>
+                    <p>No hay PINes en stock. Agrega pines abajo.</p>
                 </div>
             </div>
             {% endif %}

@@ -380,6 +380,19 @@ def comprar():
             flash('No hay PINes disponibles para este producto. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
+    # Producto sin API — verificar si tiene pines en almacén para entregar
+    pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
+    if pin_row:
+        pin_id = pin_row['id']
+        pin_code = pin_row['pin']
+        db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
+                   (user_id, pedido_id, pin_id))
+        db.execute("UPDATE pedidos SET estado = 'completado', codigo_entregado = ? WHERE id = ?", (pin_code, pedido_id))
+        db.commit()
+        db.close()
+        flash(f'Pedido #{pedido_id} completado. Código: {pin_code}', 'success')
+        return redirect(url_for('pedido_detalle', id=pedido_id))
+
     db.close()
     flash(f'Pedido #{pedido_id} registrado. Se descontaron ${total:.4f} de tu cartera.', 'success')
     return redirect(url_for('pedido_detalle', id=pedido_id))
@@ -910,8 +923,8 @@ def admin_almacen():
                 flash('PINes disponibles eliminados', 'success')
         return redirect(url_for('admin_almacen'))
 
-    # Productos que usan API (Free Fire)
-    productos_api = db.execute("SELECT * FROM productos WHERE usa_api = 1 ORDER BY nombre").fetchall()
+    # Todos los productos activos (para poder cargar pines de cualquiera)
+    productos_api = db.execute("SELECT * FROM productos WHERE activo = 1 ORDER BY nombre").fetchall()
     # Stock por producto
     stock = {}
     for p in productos_api:
@@ -1171,6 +1184,23 @@ def api_comprar():
                 'ok': False, 'error': 'No hay stock disponible para este producto',
                 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
             }), 400
+
+    # Producto sin API — verificar si tiene pines en almacén para entregar
+    pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
+    if pin_row:
+        pin_id = pin_row['id']
+        pin_code = pin_row['pin']
+        db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
+                   (user_id_api, pedido_id, pin_id))
+        db.execute("UPDATE pedidos SET estado = 'completado', codigo_entregado = ? WHERE id = ?", (pin_code, pedido_id))
+        db.commit()
+        db.close()
+        return jsonify({
+            'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
+            'total': total, 'saldo_restante': get_saldo(user_id_api),
+            'codigo': pin_code,
+            'mensaje': f'Código entregado: {pin_code}'
+        })
 
     db.close()
     nuevo_saldo = get_saldo(user_id_api)
