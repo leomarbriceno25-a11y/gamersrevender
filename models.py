@@ -28,7 +28,7 @@ def init_db():
             rol TEXT DEFAULT 'revendedor' CHECK(rol IN ('admin', 'revendedor')),
             activo INTEGER DEFAULT 1,
             api_key TEXT UNIQUE,
-            fecha_registro TEXT DEFAULT (datetime('now','-4 hours')),
+            fecha_registro TEXT DEFAULT (datetime('now','localtime')),
             ultimo_login TEXT
         );
 
@@ -58,7 +58,7 @@ def init_db():
             gamepoint_package_id INTEGER DEFAULT 0,
             gamepoint_fields TEXT DEFAULT '',
             orden INTEGER DEFAULT 0,
-            fecha_creacion TEXT DEFAULT (datetime('now','-4 hours')),
+            fecha_creacion TEXT DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (categoria_id) REFERENCES categorias(id)
         );
 
@@ -66,8 +66,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             usuario_id INTEGER NOT NULL UNIQUE,
             saldo REAL DEFAULT 0.0,
-            fecha_creacion TEXT DEFAULT (datetime('now','-4 hours')),
-            ultima_actualizacion TEXT DEFAULT (datetime('now','-4 hours')),
+            fecha_creacion TEXT DEFAULT (datetime('now','localtime')),
+            ultima_actualizacion TEXT DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
         );
 
@@ -81,7 +81,7 @@ def init_db():
             nombre_jugador TEXT,
             codigo_entregado TEXT DEFAULT '',
             estado TEXT DEFAULT 'pendiente' CHECK(estado IN ('pendiente', 'procesando', 'completado', 'cancelado')),
-            fecha_pedido TEXT DEFAULT (datetime('now','-4 hours')),
+            fecha_pedido TEXT DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
             FOREIGN KEY (producto_id) REFERENCES productos(id)
         );
@@ -96,7 +96,7 @@ def init_db():
             descripcion TEXT,
             pedido_id INTEGER,
             admin_id INTEGER,
-            fecha TEXT DEFAULT (datetime('now','-4 hours')),
+            fecha TEXT DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
             FOREIGN KEY (admin_id) REFERENCES usuarios(id)
         );
@@ -109,7 +109,7 @@ def init_db():
             usado_por INTEGER,
             pedido_id INTEGER,
             nombre_juego TEXT,
-            fecha_agregado TEXT DEFAULT (datetime('now','-4 hours')),
+            fecha_agregado TEXT DEFAULT (datetime('now','localtime')),
             fecha_usado TEXT,
             FOREIGN KEY (producto_id) REFERENCES productos(id),
             FOREIGN KEY (usado_por) REFERENCES usuarios(id)
@@ -399,7 +399,7 @@ def recargar_saldo(usuario_id, monto, descripcion='Recarga de saldo', admin_id=N
         c = db.execute("SELECT saldo FROM carteras WHERE usuario_id = ?", (usuario_id,)).fetchone()
         saldo_actual = c['saldo'] if c else 0.0
         saldo_nuevo = saldo_actual + monto
-        db.execute("UPDATE carteras SET saldo = ?, ultima_actualizacion = datetime('now','-4 hours') WHERE usuario_id = ?",
+        db.execute("UPDATE carteras SET saldo = ?, ultima_actualizacion = datetime('now','localtime') WHERE usuario_id = ?",
                    (saldo_nuevo, usuario_id))
         db.execute("INSERT INTO transacciones (usuario_id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, admin_id) VALUES (?,?,?,?,?,?,?)",
                    (usuario_id, 'recarga', monto, saldo_actual, saldo_nuevo, descripcion, admin_id))
@@ -423,7 +423,7 @@ def descontar_saldo(usuario_id, monto, descripcion='Compra', pedido_id=None):
             db.close()
             return None
         saldo_nuevo = saldo_actual - monto
-        db.execute("UPDATE carteras SET saldo = ?, ultima_actualizacion = datetime('now','-4 hours') WHERE usuario_id = ?",
+        db.execute("UPDATE carteras SET saldo = ?, ultima_actualizacion = datetime('now','localtime') WHERE usuario_id = ?",
                    (saldo_nuevo, usuario_id))
         db.execute("INSERT INTO transacciones (usuario_id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, pedido_id) VALUES (?,?,?,?,?,?,?)",
                    (usuario_id, 'compra', monto, saldo_actual, saldo_nuevo, descripcion, pedido_id))

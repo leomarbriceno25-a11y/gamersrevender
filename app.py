@@ -217,7 +217,7 @@ def login():
             session['user_nombre'] = user['nombre']
             session['user_rol'] = user['rol']
             db = get_db()
-            db.execute("UPDATE usuarios SET ultimo_login = datetime('now','-4 hours') WHERE id = ?", (user['id'],))
+            db.execute("UPDATE usuarios SET ultimo_login = datetime('now','localtime') WHERE id = ?", (user['id'],))
             db.commit()
             db.close()
             flash(f'Bienvenido, {user["nombre"]}!', 'success')
@@ -477,7 +477,7 @@ def comprar():
         for pr in pin_rows:
             pin_ids.append(pr['id'])
             pin_codes.append(pr['pin'])
-            db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','-4 hours') WHERE id = ?",
+            db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
                        (user_id, pedido_id, pr['id']))
         db.commit()
         db.close()
@@ -555,7 +555,7 @@ def comprar():
         if len(pines_disponibles) >= cant_pines:
             codigos = []
             for pin_row in pines_disponibles:
-                db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','-4 hours') WHERE id = ?",
+                db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
                            (user_id, pedido_id, pin_row['id']))
                 codigos.append(pin_row['pin'])
             todos_codigos = '\n'.join(codigos)
@@ -956,7 +956,7 @@ def admin_verificar_gamepoint():
         "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
         "WHERE p.estado IN ('completado', 'procesando') AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
         "AND pr.gamepoint_product_id > 0 "
-        "AND p.fecha_pedido >= datetime('now', '-52 hours')"
+        "AND p.fecha_pedido >= datetime('now', 'localtime', '-48 hours')"
     ).fetchall()
     db.close()
     verificados = 0
@@ -1012,7 +1012,7 @@ def cron_verificar_gamepoint():
         "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
         "WHERE p.estado IN ('completado', 'procesando') AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
         "AND pr.gamepoint_product_id > 0 "
-        "AND p.fecha_pedido >= datetime('now', '-52 hours')"
+        "AND p.fecha_pedido >= datetime('now', 'localtime', '-48 hours')"
     ).fetchall()
     db.close()
     verificados = 0
@@ -1485,7 +1485,7 @@ def api_comprar():
         for pr in pin_rows:
             pin_ids.append(pr['id'])
             pin_codes.append(pr['pin'])
-            db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','-4 hours') WHERE id = ?",
+            db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
                        (user_id_api, pedido_id, pr['id']))
         db.commit()
         db.close()
@@ -1571,7 +1571,7 @@ def api_comprar():
         if len(pines_disponibles) >= cant_pines:
             codigos = []
             for pin_row in pines_disponibles:
-                db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','-4 hours') WHERE id = ?",
+                db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
                            (user_id_api, pedido_id, pin_row['id']))
                 codigos.append(pin_row['pin'])
             todos_codigos = '\n'.join(codigos)
