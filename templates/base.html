@@ -33,6 +33,7 @@
                 <a href="{{ url_for('catalogo') }}"><i class="fas fa-store"></i> Catálogo</a>
                 <a href="{{ url_for('cartera') }}"><i class="fas fa-wallet"></i> ${{ '%.4f'|format(saldo) }}</a>
                 <a href="{{ url_for('mis_pedidos') }}"><i class="fas fa-shopping-bag"></i> Pedidos</a>
+                <a href="{{ url_for('mis_pines') }}"><i class="fas fa-key"></i> Mis Pines</a>
                 {% if current_user.rol == 'admin' %}
                 <a href="{{ url_for('admin_panel') }}"><i class="fas fa-cog"></i> Admin</a>
                 {% endif %}

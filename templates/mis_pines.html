@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+{% block title %}Mis Pines - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1><i class="fas fa-key"></i> Mis Pines</h1>
+        <p>Historial de códigos y pines comprados</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        {% if pines %}
+        <div style="margin-bottom:1rem;">
+            <input type="text" id="filtroPines" class="form-input" placeholder="Buscar por producto, código, pedido..." style="max-width:400px;" oninput="filtrarPines()">
+        </div>
+        <div class="table-responsive">
+            <table class="table" id="tablaPines">
+                <thead>
+                    <tr><th>Pedido</th><th>Producto</th><th>Código(s)</th><th>Cant.</th><th>Total</th><th>Estado</th><th>Fecha</th></tr>
+                </thead>
+                <tbody>
+                    {% for p in pines %}
+                    <tr>
+                        <td>#{{ p.pedido_id }}</td>
+                        <td>{{ p.producto_nombre }}</td>
+                        <td>
+                            {% set codigos = p.codigo_entregado.split('\n') %}
+                            {% for cod in codigos %}
+                            <div style="margin-bottom:0.2rem;">
+                                <code style="background:var(--bg-primary);padding:0.3rem 0.6rem;border-radius:4px;font-size:0.8rem;word-break:break-all;display:inline-block;">{{ cod }}</code>
+                                <button type="button" class="btn btn-sm" style="padding:0.15rem 0.4rem;font-size:0.7rem;" onclick="copiar('{{ cod }}', this)" title="Copiar"><i class="fas fa-copy"></i></button>
+                            </div>
+                            {% endfor %}
+                        </td>
+                        <td>x{{ p.cantidad }}</td>
+                        <td>${{ '%.4f'|format(p.total) }}</td>
+                        <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
+                        <td>{{ p.fecha_pedido }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <script>
+        function filtrarPines(){
+            var texto = document.getElementById('filtroPines').value.toLowerCase();
+            var filas = document.querySelectorAll('#tablaPines tbody tr');
+            filas.forEach(function(fila){
+                fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
+            });
+        }
+        function copiar(texto, btn) {
+            navigator.clipboard.writeText(texto).then(function(){
+                var orig = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i>';
+                btn.style.color = '#22c55e';
+                setTimeout(function(){ btn.innerHTML = orig; btn.style.color = ''; }, 1500);
+            });
+        }
+        </script>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-key"></i>
+            <h2>Sin códigos</h2>
+            <p>Aún no has comprado ningún código o pin</p>
+            <div class="empty-buttons">
+                <a href="{{ url_for('catalogo') }}" class="btn btn-primary"><i class="fas fa-store"></i> Ver Catálogo</a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

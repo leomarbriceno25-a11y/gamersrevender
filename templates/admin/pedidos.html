@@ -22,7 +22,7 @@
         <div class="table-responsive">
             <table class="table" id="tablaPedidos">
                 <thead>
-                    <tr><th>#</th><th>Usuario</th><th>Email</th><th>Producto</th><th>Cant.</th><th>Total</th><th>ID Juego</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr>
+                    <tr><th>#</th><th>Usuario</th><th>Email</th><th>Producto</th><th>Cant.</th><th>Total</th><th>ID Juego</th><th>Código</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr>
                 </thead>
                 <tbody>
                     {% for p in pedidos %}
@@ -34,6 +34,11 @@
                         <td>x{{ p.cantidad }}</td>
                         <td>${{ '%.4f'|format(p.total) }}</td>
                         <td>{{ p.id_juego or '-' }}</td>
+                        <td>
+                            {% if p.codigo_entregado %}
+                            <code style="background:var(--bg-primary);padding:0.2rem 0.4rem;border-radius:4px;font-size:0.75rem;word-break:break-all;">{{ p.codigo_entregado|replace('\n', ', ') }}</code>
+                            {% else %}-{% endif %}
+                        </td>
                         <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
                         <td>{{ p.fecha_pedido }}</td>
                         <td>
