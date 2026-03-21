@@ -15,38 +15,42 @@
         {% if pendientes|length > 0 %}
         <div class="card" style="padding:1.5rem; margin-bottom:1.5rem; border-left:4px solid #f59e0b; background:rgba(245,158,11,0.08);">
             <h3 style="margin:0 0 1rem; color:#f59e0b;"><i class="fas fa-user-clock"></i> Solicitudes Pendientes ({{ pendientes|length }})</h3>
-            <div class="table-responsive">
+            <!-- Desktop -->
+            <div class="table-responsive d-none-mobile">
                 <table class="table">
-                    <thead>
-                        <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Registro</th><th>Acción</th></tr>
-                    </thead>
+                    <thead><tr><th>ID</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Registro</th><th>Acción</th></tr></thead>
                     <tbody>
                         {% for u in pendientes %}
                         <tr>
-                            <td>{{ u.id }}</td>
-                            <td>{{ u.nombre }}</td>
-                            <td>{{ u.email }}</td>
-                            <td>{{ u.telefono or '-' }}</td>
-                            <td>{{ u.fecha_registro or '-' }}</td>
-                            <td>
-                                <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="display:inline;">
-                                    <button type="submit" class="btn btn-primary" style="padding:0.4rem 1rem; font-size:0.85rem;" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')">
-                                        <i class="fas fa-check"></i> Aprobar
-                                    </button>
-                                </form>
-                            </td>
+                            <td>{{ u.id }}</td><td>{{ u.nombre }}</td><td>{{ u.email }}</td><td>{{ u.telefono or '-' }}</td><td>{{ u.fecha_registro or '-' }}</td>
+                            <td><form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="display:inline;"><button type="submit" class="btn btn-primary" style="padding:0.4rem 1rem;font-size:0.85rem;" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')"><i class="fas fa-check"></i> Aprobar</button></form></td>
                         </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            <!-- Mobile -->
+            <div class="d-only-mobile pedidos-cards">
+                {% for u in pendientes %}
+                <div class="pedido-card">
+                    <div class="pedido-card-header"><span class="pedido-card-id">{{ u.nombre }}</span><span class="badge badge-cancelado">Pendiente</span></div>
+                    <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.4rem;"><i class="fas fa-envelope"></i> {{ u.email }}</div>
+                    <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}"><button type="submit" class="btn btn-primary btn-sm" style="width:100%;" onclick="return confirm('¿Aprobar?')"><i class="fas fa-check"></i> Aprobar</button></form>
+                </div>
+                {% endfor %}
+            </div>
         </div>
         {% endif %}
 
-        <div class="table-responsive">
-            <table class="table">
+        <div style="margin-bottom:1rem;">
+            <input type="text" id="filtroUsuarios" class="form-input" placeholder="Buscar por nombre, email, rol..." style="max-width:400px;" oninput="filtrarUsuarios()">
+        </div>
+
+        <!-- Desktop table -->
+        <div class="table-responsive d-none-mobile">
+            <table class="table" id="tablaUsuarios">
                 <thead>
-                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Estado</th><th>Registro</th><th>Último Login</th><th>Acciones</th></tr>
+                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Estado</th><th>Registro</th><th>Acciones</th></tr>
                 </thead>
                 <tbody>
                     {% for u in usuarios %}
@@ -56,37 +60,103 @@
                         <td>{{ u.email }}</td>
                         <td><span class="badge badge-{{ 'completado' if u.rol == 'admin' else 'procesando' }}">{{ u.rol|capitalize }}</span></td>
                         <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.4f'|format(u.saldo) }}</td>
-                        <td>
-                            {% if u.activo %}
-                                <span class="badge badge-completado">Activo</span>
-                            {% else %}
-                                <span class="badge badge-cancelado">Pendiente</span>
-                            {% endif %}
-                        </td>
+                        <td>{% if u.activo %}<span class="badge badge-completado">Activo</span>{% else %}<span class="badge badge-cancelado">Pendiente</span>{% endif %}</td>
                         <td>{{ u.fecha_registro or '-' }}</td>
-                        <td>{{ u.ultimo_login or 'Nunca' }}</td>
                         <td>
-                            {% if u.rol != 'admin' %}
-                            <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="display:inline;">
-                                {% if u.activo %}
-                                    <button type="submit" class="btn" style="padding:0.3rem 0.8rem; font-size:0.8rem; background:#ef4444; color:#fff; border:none; border-radius:6px; cursor:pointer;" onclick="return confirm('¿Desactivar a {{ u.nombre }}?')">
-                                        <i class="fas fa-ban"></i> Desactivar
-                                    </button>
-                                {% else %}
-                                    <button type="submit" class="btn btn-primary" style="padding:0.3rem 0.8rem; font-size:0.8rem;" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')">
-                                        <i class="fas fa-check"></i> Aprobar
-                                    </button>
+                            <div style="display:flex;gap:0.3rem;">
+                                <button class="btn btn-sm btn-secondary" onclick="editarUsuario({{ u.id }}, '{{ u.nombre|e }}', '{{ u.email|e }}', '{{ u.telefono|e }}')"><i class="fas fa-edit"></i></button>
+                                {% if u.rol != 'admin' %}
+                                <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="display:inline;">
+                                    {% if u.activo %}
+                                    <button type="submit" class="btn btn-sm" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" onclick="return confirm('¿Desactivar a {{ u.nombre }}?')"><i class="fas fa-ban"></i></button>
+                                    {% else %}
+                                    <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')"><i class="fas fa-check"></i></button>
+                                    {% endif %}
+                                </form>
                                 {% endif %}
-                            </form>
-                            {% else %}
-                                <span style="color:var(--text-secondary); font-size:0.8rem;">-</span>
-                            {% endif %}
+                            </div>
                         </td>
                     </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+
+        <!-- Mobile cards -->
+        <div class="d-only-mobile pedidos-cards" id="cardsUsuarios">
+            {% for u in usuarios %}
+            <div class="pedido-card usuario-card-item">
+                <div class="pedido-card-header">
+                    <span class="pedido-card-id">{{ u.nombre }}</span>
+                    <span class="badge badge-{{ 'completado' if u.activo else 'cancelado' }}">{{ 'Activo' if u.activo else 'Pendiente' }}</span>
+                </div>
+                <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.2rem;"><i class="fas fa-envelope"></i> {{ u.email }}</div>
+                <div class="pedido-card-body">
+                    <span class="badge badge-{{ 'completado' if u.rol == 'admin' else 'procesando' }}" style="font-size:0.7rem;">{{ u.rol|capitalize }}</span>
+                    <div class="pedido-card-total">${{ '%.4f'|format(u.saldo) }}</div>
+                </div>
+                <div style="display:flex;gap:0.4rem;margin-top:0.5rem;">
+                    <button class="btn btn-sm btn-secondary" style="flex:1;font-size:0.75rem;" onclick="editarUsuario({{ u.id }}, '{{ u.nombre|e }}', '{{ u.email|e }}', '{{ u.telefono|e }}')"><i class="fas fa-edit"></i> Editar</button>
+                    {% if u.rol != 'admin' %}
+                    <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="flex:1;">
+                        {% if u.activo %}
+                        <button type="submit" class="btn btn-sm" style="width:100%;background:#ef4444;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick="return confirm('¿Desactivar?')"><i class="fas fa-ban"></i> Desactivar</button>
+                        {% else %}
+                        <button type="submit" class="btn btn-sm btn-primary" style="width:100%;font-size:0.75rem;" onclick="return confirm('¿Aprobar?')"><i class="fas fa-check"></i> Aprobar</button>
+                        {% endif %}
+                    </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Modal editar usuario -->
+        <div id="modal-editar" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;justify-content:center;align-items:center;" onclick="if(event.target===this)this.style.display='none'">
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:1.5rem;max-width:450px;width:90%;">
+                <h3 style="margin:0 0 1rem;"><i class="fas fa-user-edit"></i> Editar Usuario</h3>
+                <form method="POST" id="form-editar-usuario">
+                    <div class="form-group">
+                        <label><i class="fas fa-user"></i> Nombre</label>
+                        <input type="text" name="nombre" id="edit-nombre" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-envelope"></i> Email</label>
+                        <input type="email" name="email" id="edit-email" required>
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-phone"></i> Teléfono</label>
+                        <input type="text" name="telefono" id="edit-telefono">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-lock"></i> Nueva contraseña (dejar vacío para no cambiar)</label>
+                        <input type="password" name="password" id="edit-password" placeholder="Mínimo 6 caracteres">
+                    </div>
+                    <div style="display:flex;gap:0.5rem;">
+                        <button type="submit" class="btn btn-primary" style="flex:1;"><i class="fas fa-save"></i> Guardar</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-editar').style.display='none'"><i class="fas fa-times"></i> Cancelar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function editarUsuario(id, nombre, email, telefono) {
+    document.getElementById('form-editar-usuario').action = '/admin/usuario/' + id + '/editar';
+    document.getElementById('edit-nombre').value = nombre;
+    document.getElementById('edit-email').value = email;
+    document.getElementById('edit-telefono').value = telefono || '';
+    document.getElementById('edit-password').value = '';
+    document.getElementById('modal-editar').style.display = 'flex';
+}
+function filtrarUsuarios() {
+    var texto = document.getElementById('filtroUsuarios').value.toLowerCase();
+    document.querySelectorAll('#tablaUsuarios tbody tr').forEach(function(f){ f.style.display = f.textContent.toLowerCase().includes(texto) ? '' : 'none'; });
+    document.querySelectorAll('.usuario-card-item').forEach(function(c){ c.style.display = c.textContent.toLowerCase().includes(texto) ? '' : 'none'; });
+}
+</script>
 {% endblock %}

@@ -35,7 +35,8 @@
     <div class="container">
         <h2 class="section-title"><i class="fas fa-exchange-alt"></i> Historial de Movimientos</h2>
         {% if transacciones %}
-        <div class="table-responsive">
+        <!-- Desktop -->
+        <div class="table-responsive d-none-mobile">
             <table class="table">
                 <thead>
                     <tr><th>Fecha</th><th>Tipo</th><th>Descripción</th><th>Monto</th><th>Saldo</th></tr>
@@ -62,6 +63,28 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+        <!-- Mobile -->
+        <div class="d-only-mobile pedidos-cards">
+            {% for t in transacciones %}
+            <div class="pedido-card">
+                <div class="pedido-card-header">
+                    {% if t.tipo == 'recarga' %}
+                    <span class="badge badge-completado"><i class="fas fa-arrow-up"></i> Recarga</span>
+                    {% elif t.tipo == 'compra' %}
+                    <span class="badge badge-procesando"><i class="fas fa-arrow-down"></i> Compra</span>
+                    {% else %}
+                    <span class="badge badge-pendiente"><i class="fas fa-undo"></i> Reembolso</span>
+                    {% endif %}
+                    <span class="{{ 'text-red' if t.tipo == 'compra' else 'text-green' }}" style="font-weight:700;font-size:1rem;">{{ '-' if t.tipo == 'compra' else '+' }}${{ '%.4f'|format(t.monto) }}</span>
+                </div>
+                <div style="font-size:0.85rem;color:var(--text-primary);margin-bottom:0.3rem;">{{ t.descripcion or '-' }}</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div class="pedido-card-fecha"><i class="fas fa-clock"></i> {{ t.fecha }}</div>
+                    <div style="font-size:0.8rem;color:var(--text-secondary);">Saldo: ${{ '%.4f'|format(t.saldo_nuevo) }}</div>
+                </div>
+            </div>
+            {% endfor %}
         </div>
         {% else %}
         <div class="empty-state">

@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+{% block title %}Mi Perfil - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1><i class="fas fa-user-cog"></i> Mi Perfil</h1>
+        <p>Gestiona tu información personal</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:1.5rem; max-width:800px;">
+            <!-- Datos personales -->
+            <div class="admin-card" style="grid-column:1/-1;">
+                <h2 style="margin-bottom:1rem;"><i class="fas fa-id-card"></i> Datos Personales</h2>
+                <form method="POST">
+                    <input type="hidden" name="accion" value="datos">
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label><i class="fas fa-user"></i> Nombre</label>
+                            <input type="text" name="nombre" value="{{ user.nombre }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-envelope"></i> Email</label>
+                            <input type="email" name="email" value="{{ user.email }}" required>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-phone"></i> Teléfono</label>
+                            <input type="text" name="telefono" value="{{ user.telefono or '' }}" placeholder="Ej: +58 412 1234567">
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-shield-alt"></i> Rol</label>
+                            <input type="text" value="{{ user.rol|capitalize }}" disabled style="opacity:0.6;">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Guardar Datos</button>
+                </form>
+            </div>
+
+            <!-- Cambiar contraseña -->
+            <div class="admin-card" style="grid-column:1/-1;">
+                <h2 style="margin-bottom:1rem;"><i class="fas fa-lock"></i> Cambiar Contraseña</h2>
+                <form method="POST">
+                    <input type="hidden" name="accion" value="password">
+                    <div class="form-group">
+                        <label><i class="fas fa-key"></i> Contraseña actual</label>
+                        <input type="password" name="password_actual" required placeholder="Tu contraseña actual">
+                    </div>
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label><i class="fas fa-lock"></i> Nueva contraseña</label>
+                            <input type="password" name="password_nueva" required placeholder="Mínimo 6 caracteres" minlength="6">
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-lock"></i> Confirmar contraseña</label>
+                            <input type="password" name="password_confirmar" required placeholder="Repite la contraseña">
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Cambiar Contraseña</button>
+                </form>
+            </div>
+
+            <!-- Info de cuenta -->
+            <div class="admin-card" style="grid-column:1/-1;">
+                <h2 style="margin-bottom:1rem;"><i class="fas fa-info-circle"></i> Información de Cuenta</h2>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                    <div style="padding:0.8rem; background:var(--bg-primary); border-radius:8px;">
+                        <div style="font-size:0.8rem; color:var(--text-secondary);"><i class="fas fa-calendar"></i> Registro</div>
+                        <div style="font-weight:600;">{{ user.fecha_registro or '-' }}</div>
+                    </div>
+                    <div style="padding:0.8rem; background:var(--bg-primary); border-radius:8px;">
+                        <div style="font-size:0.8rem; color:var(--text-secondary);"><i class="fas fa-clock"></i> Último login</div>
+                        <div style="font-weight:600;">{{ user.ultimo_login or 'N/A' }}</div>
+                    </div>
+                    <div style="padding:0.8rem; background:var(--bg-primary); border-radius:8px;">
+                        <div style="font-size:0.8rem; color:var(--text-secondary);"><i class="fas fa-wallet"></i> Saldo</div>
+                        <div style="font-weight:700; color:#22c55e;">${{ '%.4f'|format(saldo) }}</div>
+                    </div>
+                    <div style="padding:0.8rem; background:var(--bg-primary); border-radius:8px;">
+                        <div style="font-size:0.8rem; color:var(--text-secondary);"><i class="fas fa-key"></i> API Key</div>
+                        <div style="font-weight:600; font-size:0.75rem; word-break:break-all;">{{ user.api_key[:16] }}...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}

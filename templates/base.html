@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}{{ tienda_nombre }}{% endblock %}</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=20260321b">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}?v=20260321c">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
@@ -39,7 +39,7 @@
                 {% endif %}
             </div>
             <div class="nav-user">
-                <span class="nav-username"><i class="fas fa-user-circle"></i> {{ current_user.nombre }}</span>
+                <a href="{{ url_for('perfil') }}" class="nav-username" style="text-decoration:none;color:inherit;"><i class="fas fa-user-circle"></i> {{ current_user.nombre }}</a>
                 <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline"><i class="fas fa-sign-out-alt"></i> Salir</a>
             </div>
             {% else %}

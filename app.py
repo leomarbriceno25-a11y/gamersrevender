@@ -621,6 +621,48 @@ def mis_pedidos():
     return render_template('mis_pedidos.html', pedidos=pedidos)
 
 
+# ===== PERFIL =====
+@app.route('/perfil', methods=['GET', 'POST'])
+@login_required
+def perfil():
+    db = get_db()
+    user = db.execute("SELECT * FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+    if request.method == 'POST':
+        accion = request.form.get('accion')
+        if accion == 'datos':
+            nombre = request.form.get('nombre', '').strip()
+            email = request.form.get('email', '').strip()
+            telefono = request.form.get('telefono', '').strip()
+            if nombre and email:
+                try:
+                    db.execute("UPDATE usuarios SET nombre=?, email=?, telefono=? WHERE id=?",
+                               (nombre, email, telefono, session['user_id']))
+                    db.commit()
+                    flash('Datos actualizados correctamente', 'success')
+                except Exception:
+                    flash('Error: el email ya está en uso', 'error')
+        elif accion == 'password':
+            actual = request.form.get('password_actual', '')
+            nueva = request.form.get('password_nueva', '')
+            confirmar = request.form.get('password_confirmar', '')
+            if not check_password_hash(user['password'], actual):
+                flash('La contraseña actual es incorrecta', 'error')
+            elif len(nueva) < 6:
+                flash('La nueva contraseña debe tener al menos 6 caracteres', 'error')
+            elif nueva != confirmar:
+                flash('Las contraseñas no coinciden', 'error')
+            else:
+                db.execute("UPDATE usuarios SET password=? WHERE id=?",
+                           (generate_password_hash(nueva), session['user_id']))
+                db.commit()
+                flash('Contraseña cambiada correctamente', 'success')
+        db.close()
+        return redirect(url_for('perfil'))
+    saldo = get_saldo(session['user_id'])
+    db.close()
+    return render_template('perfil.html', user=user, saldo=saldo)
+
+
 # ===== CARTERA =====
 @app.route('/cartera')
 @login_required
@@ -672,6 +714,35 @@ def admin_toggle_usuario(id):
         flash('Usuario aprobado y activado.', 'success')
     else:
         flash('Usuario desactivado.', 'success')
+    return redirect(url_for('admin_usuarios'))
+
+
+@app.route('/admin/usuario/<int:id>/editar', methods=['POST'])
+@admin_required
+def admin_editar_usuario(id):
+    db = get_db()
+    user = db.execute("SELECT * FROM usuarios WHERE id = ?", (id,)).fetchone()
+    if not user:
+        db.close()
+        flash('Usuario no encontrado', 'error')
+        return redirect(url_for('admin_usuarios'))
+    nombre = request.form.get('nombre', '').strip()
+    email = request.form.get('email', '').strip()
+    telefono = request.form.get('telefono', '').strip()
+    nueva_pass = request.form.get('password', '').strip()
+    if nombre and email:
+        try:
+            if nueva_pass and len(nueva_pass) >= 6:
+                db.execute("UPDATE usuarios SET nombre=?, email=?, telefono=?, password=? WHERE id=?",
+                           (nombre, email, telefono, generate_password_hash(nueva_pass), id))
+            else:
+                db.execute("UPDATE usuarios SET nombre=?, email=?, telefono=? WHERE id=?",
+                           (nombre, email, telefono, id))
+            db.commit()
+            flash(f'Usuario "{nombre}" actualizado', 'success')
+        except Exception:
+            flash('Error: el email ya está en uso', 'error')
+    db.close()
     return redirect(url_for('admin_usuarios'))
 
 
