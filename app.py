@@ -380,11 +380,29 @@ def comprar():
             num_canjes = 1
         monto_api = prod['monto_api']
 
+        # Determinar de qué producto tomar los pines
+        pin_producto_id = producto_id
+        if num_canjes > 1:
+            try:
+                origen = prod['pin_origen_producto_id'] or 0
+            except (IndexError, KeyError):
+                origen = 0
+            if origen > 0:
+                pin_producto_id = origen
+            else:
+                base = db.execute(
+                    "SELECT id FROM productos WHERE usa_api = 1 AND monto_api = ? AND canjes_por_compra = 1 AND id != ? LIMIT 1",
+                    (monto_api, producto_id)
+                ).fetchone()
+                if base:
+                    pin_producto_id = base['id']
+            restock_pines(pin_producto_id)
+
         # Reservar N PINes atómicamente
         db.execute("BEGIN IMMEDIATE")
         pin_rows = db.execute(
             "SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' ORDER BY fecha_agregado ASC LIMIT ?",
-            (producto_id, num_canjes)
+            (pin_producto_id, num_canjes)
         ).fetchall()
 
         if len(pin_rows) < num_canjes:
@@ -1293,11 +1311,29 @@ def api_comprar():
             num_canjes = 1
         monto_api = prod['monto_api']
 
+        # Determinar de qué producto tomar los pines
+        pin_producto_id = producto_id
+        if num_canjes > 1:
+            try:
+                origen = prod['pin_origen_producto_id'] or 0
+            except (IndexError, KeyError):
+                origen = 0
+            if origen > 0:
+                pin_producto_id = origen
+            else:
+                base = db.execute(
+                    "SELECT id FROM productos WHERE usa_api = 1 AND monto_api = ? AND canjes_por_compra = 1 AND id != ? LIMIT 1",
+                    (monto_api, producto_id)
+                ).fetchone()
+                if base:
+                    pin_producto_id = base['id']
+            restock_pines(pin_producto_id)
+
         # Reservar N PINes atómicamente
         db.execute("BEGIN IMMEDIATE")
         pin_rows = db.execute(
             "SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' ORDER BY fecha_agregado ASC LIMIT ?",
-            (producto_id, num_canjes)
+            (pin_producto_id, num_canjes)
         ).fetchall()
 
         if len(pin_rows) < num_canjes:
