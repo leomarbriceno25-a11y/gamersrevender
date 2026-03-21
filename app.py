@@ -440,7 +440,7 @@ def mis_pines():
 @login_required
 def mis_pedidos():
     db = get_db()
-    pedidos = db.execute("SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC", (session['user_id'],)).fetchall()
+    pedidos = db.execute("SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? AND (p.codigo_entregado IS NULL OR p.codigo_entregado = '') ORDER BY p.fecha_pedido DESC", (session['user_id'],)).fetchall()
     db.close()
     return render_template('mis_pedidos.html', pedidos=pedidos)
 

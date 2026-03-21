@@ -36,7 +36,9 @@
                         <td>{{ p.id_juego or '-' }}</td>
                         <td>
                             {% if p.codigo_entregado %}
-                            <code style="background:var(--bg-primary);padding:0.2rem 0.4rem;border-radius:4px;font-size:0.75rem;word-break:break-all;">{{ p.codigo_entregado|replace('\n', ', ') }}</code>
+                            {% for cod in p.codigo_entregado.split('\n') %}
+                            <div><code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.75rem;word-break:break-all;">{{ cod }}</code></div>
+                            {% endfor %}
                             {% else %}-{% endif %}
                         </td>
                         <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>

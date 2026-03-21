@@ -11,8 +11,9 @@
 <section class="section">
     <div class="container">
         {% if pines %}
-        <div style="margin-bottom:1rem;">
+        <div style="margin-bottom:1rem; display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
             <input type="text" id="filtroPines" class="form-input" placeholder="Buscar por producto, código, pedido..." style="max-width:400px;" oninput="filtrarPines()">
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copiarTodosGlobal()"><i class="fas fa-copy"></i> Copiar todos los códigos</button>
         </div>
         <div class="table-responsive">
             <table class="table" id="tablaPines">
@@ -24,7 +25,7 @@
                     <tr>
                         <td>#{{ p.pedido_id }}</td>
                         <td>{{ p.producto_nombre }}</td>
-                        <td>
+                        <td class="celda-codigos" data-codigos="{{ p.codigo_entregado|replace('\n', '|||') }}">
                             {% set codigos = p.codigo_entregado.split('\n') %}
                             {% for cod in codigos %}
                             <div style="margin-bottom:0.2rem;">
@@ -32,6 +33,9 @@
                                 <button type="button" class="btn btn-sm" style="padding:0.15rem 0.4rem;font-size:0.7rem;" onclick="copiar('{{ cod }}', this)" title="Copiar"><i class="fas fa-copy"></i></button>
                             </div>
                             {% endfor %}
+                            {% if codigos|length > 1 %}
+                            <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.3rem;font-size:0.7rem;" onclick="copiarTodosFila(this)"><i class="fas fa-copy"></i> Copiar todos ({{ codigos|length }})</button>
+                            {% endif %}
                         </td>
                         <td>x{{ p.cantidad }}</td>
                         <td>${{ '%.4f'|format(p.total) }}</td>
@@ -54,6 +58,29 @@
             navigator.clipboard.writeText(texto).then(function(){
                 var orig = btn.innerHTML;
                 btn.innerHTML = '<i class="fas fa-check"></i>';
+                btn.style.color = '#22c55e';
+                setTimeout(function(){ btn.innerHTML = orig; btn.style.color = ''; }, 1500);
+            });
+        }
+        function copiarTodosFila(btn) {
+            var celda = btn.closest('.celda-codigos');
+            var codigos = celda.getAttribute('data-codigos').split('|||').join('\n');
+            navigator.clipboard.writeText(codigos).then(function(){
+                var orig = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i> Copiados!';
+                btn.style.color = '#22c55e';
+                setTimeout(function(){ btn.innerHTML = orig; btn.style.color = ''; }, 1500);
+            });
+        }
+        function copiarTodosGlobal() {
+            var celdas = document.querySelectorAll('.celda-codigos');
+            var todos = [];
+            celdas.forEach(function(c){ todos.push(c.getAttribute('data-codigos').split('|||').join('\n')); });
+            var texto = todos.join('\n');
+            var btn = event.target.closest('button');
+            navigator.clipboard.writeText(texto).then(function(){
+                var orig = btn.innerHTML;
+                btn.innerHTML = '<i class="fas fa-check"></i> Copiados!';
                 btn.style.color = '#22c55e';
                 setTimeout(function(){ btn.innerHTML = orig; btn.style.color = ''; }, 1500);
             });
