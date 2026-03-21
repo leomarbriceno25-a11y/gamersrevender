@@ -374,7 +374,10 @@ def comprar():
         from hype_api import canjear_pin_completo
         # Restock automático si el stock está bajo
         restock_pines(producto_id)
-        num_canjes = prod.get('canjes_por_compra', 1) or 1
+        try:
+            num_canjes = prod['canjes_por_compra'] or 1
+        except (IndexError, KeyError):
+            num_canjes = 1
         monto_api = prod['monto_api']
 
         # Reservar N PINes atómicamente
@@ -1284,7 +1287,10 @@ def api_comprar():
         from hype_api import canjear_pin_completo
         # Restock automático si el stock está bajo
         restock_pines(producto_id)
-        num_canjes = prod.get('canjes_por_compra', 1) or 1
+        try:
+            num_canjes = prod['canjes_por_compra'] or 1
+        except (IndexError, KeyError):
+            num_canjes = 1
         monto_api = prod['monto_api']
 
         # Reservar N PINes atómicamente
