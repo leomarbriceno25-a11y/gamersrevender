@@ -142,6 +142,19 @@ def init_db():
         db.execute("SELECT webhook_url FROM usuarios LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE usuarios ADD COLUMN webhook_url TEXT DEFAULT ''")
+    # Restock automático de pines: producto origen (Gift Card), stock mínimo y objetivo
+    try:
+        db.execute("SELECT pin_origen_producto_id FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN pin_origen_producto_id INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT stock_minimo FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN stock_minimo INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT stock_objetivo FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN stock_objetivo INTEGER DEFAULT 0")
 
 
     # Crear admin si no existe

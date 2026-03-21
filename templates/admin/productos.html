@@ -62,6 +62,29 @@
                         <option value="5">5 - 2376 diamantes (2180+196)</option>
                         <option value="6">6 - 6138 diamantes (5600+538)</option>
                     </select>
+                    <div style="margin-top:0.8rem; padding:0.8rem; background:var(--bg-primary); border-radius:8px; border:1px solid var(--border-color);">
+                        <label style="margin-bottom:0.5rem;display:block;"><i class="fas fa-sync-alt" style="color:#10b981;"></i> <strong>Restock Automático</strong></label>
+                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">Reabastecer pines automáticamente desde un producto Gift Card cuando el stock baje del mínimo</p>
+                        <div class="form-group">
+                            <label>Producto origen (Gift Card)</label>
+                            <select name="pin_origen_producto_id" id="form-pin-origen" class="form-select">
+                                <option value="0">-- Sin restock --</option>
+                                {% for gc in productos_giftcard|default([]) %}
+                                <option value="{{ gc.id }}">{{ gc.nombre }} (Stock: {{ gc.stock|default(0) }})</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-grid-2">
+                            <div class="form-group">
+                                <label>Stock mínimo (activa restock)</label>
+                                <input type="number" name="stock_minimo" id="form-stock-minimo" value="0" min="0" class="form-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Stock objetivo (reabastece hasta)</label>
+                                <input type="number" name="stock_objetivo" id="form-stock-objetivo" value="0" min="0" class="form-input">
+                            </div>
+                        </div>
+                    </div>
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
@@ -158,7 +181,7 @@
                         <td style="text-align:center;"><input type="checkbox" class="edit-manual" {{ 'checked' if p.recarga_manual|default(0) }} title="Recarga manual (proveedor confirma después)"></td>
                         <td>
                             <div class="action-btns">
-                                <button class="btn btn-sm btn-secondary" onclick="editarProducto({{ p.id }}, '{{ p.nombre|e }}', {{ p.precio }}, {{ p.categoria_id }}, '{{ p.icono }}', '{{ p.descripcion|e }}', {{ p.activo }}, {{ p.usa_api }}, {{ p.monto_api }}, {{ p.orden }}, {{ p.gamepoint_product_id }}, {{ p.gamepoint_package_id }}, {{ p.recarga_manual|default(0) }})" title="Editar completo">
+                                <button class="btn btn-sm btn-secondary" onclick="editarProducto({{ p.id }}, '{{ p.nombre|e }}', {{ p.precio }}, {{ p.categoria_id }}, '{{ p.icono }}', '{{ p.descripcion|e }}', {{ p.activo }}, {{ p.usa_api }}, {{ p.monto_api }}, {{ p.orden }}, {{ p.gamepoint_product_id }}, {{ p.gamepoint_package_id }}, {{ p.recarga_manual|default(0) }}, {{ p.pin_origen_producto_id|default(0) }}, {{ p.stock_minimo|default(0) }}, {{ p.stock_objetivo|default(0) }})" title="Editar completo">
                                     <i class="fas fa-edit"></i>
                                 </button>
                                 <form method="POST" style="display:inline;">
@@ -333,7 +356,7 @@ function cargarCamposGP() {
         });
 }
 
-function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi, orden, gpProduct, gpPackage, recargaManual) {
+function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi, orden, gpProduct, gpPackage, recargaManual, pinOrigenId, stockMin, stockObj) {
     document.getElementById('form-accion').value = 'editar';
     document.getElementById('form-producto-id').value = id;
     document.getElementById('form-nombre').value = nombre;
@@ -348,6 +371,9 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     document.getElementById('form-gp-product').value = gpProduct || 0;
     document.getElementById('form-gp-package').value = gpPackage || 0;
     document.getElementById('form-recarga-manual').checked = recargaManual == 1;
+    document.getElementById('form-pin-origen').value = pinOrigenId || 0;
+    document.getElementById('form-stock-minimo').value = stockMin || 0;
+    document.getElementById('form-stock-objetivo').value = stockObj || 0;
     toggleMonto();
     toggleGamepoint();
     if (gpProduct > 0) { cargarCamposGP(); }
@@ -374,6 +400,9 @@ function resetForm() {
     document.getElementById('form-gp-product').value = '0';
     document.getElementById('form-gp-package').value = '0';
     document.getElementById('form-gp-fields').value = '';
+    document.getElementById('form-pin-origen').value = '0';
+    document.getElementById('form-stock-minimo').value = '0';
+    document.getElementById('form-stock-objetivo').value = '0';
     document.getElementById('gp-fields-preview').style.display = 'none';
     document.getElementById('gp-packages-preview').style.display = 'none';
     toggleMonto();

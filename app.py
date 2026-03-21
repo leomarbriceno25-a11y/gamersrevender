@@ -56,6 +56,51 @@ def save_upload(file):
 init_db()
 
 
+def restock_pines(producto_id=None):
+    """Transfiere pines del producto origen (Gift Card) al producto Hype cuando el stock baja del mínimo.
+    Si producto_id se especifica, solo reabastece ese producto. Si no, revisa todos."""
+    db = get_db()
+    if producto_id:
+        productos = db.execute(
+            "SELECT id, nombre, pin_origen_producto_id, stock_minimo, stock_objetivo "
+            "FROM productos WHERE id = ? AND pin_origen_producto_id > 0 AND stock_minimo > 0",
+            (producto_id,)
+        ).fetchall()
+    else:
+        productos = db.execute(
+            "SELECT id, nombre, pin_origen_producto_id, stock_minimo, stock_objetivo "
+            "FROM productos WHERE pin_origen_producto_id > 0 AND stock_minimo > 0 AND activo = 1"
+        ).fetchall()
+
+    transferidos_total = 0
+    for prod in productos:
+        stock_actual = db.execute(
+            "SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'",
+            (prod['id'],)
+        ).fetchone()['c']
+
+        if stock_actual < prod['stock_minimo']:
+            necesarios = prod['stock_objetivo'] - stock_actual
+            if necesarios <= 0:
+                continue
+            # Tomar pines del producto origen (Gift Card)
+            pines_origen = db.execute(
+                "SELECT id FROM pines WHERE producto_id = ? AND estado = 'disponible' ORDER BY fecha_agregado ASC LIMIT ?",
+                (prod['pin_origen_producto_id'], necesarios)
+            ).fetchall()
+
+            for pin in pines_origen:
+                db.execute("UPDATE pines SET producto_id = ? WHERE id = ?", (prod['id'], pin['id']))
+                transferidos_total += 1
+
+            if pines_origen:
+                db.commit()
+                print(f"[RESTOCK] {len(pines_origen)} pines transferidos a '{prod['nombre']}' (stock: {stock_actual} -> {stock_actual + len(pines_origen)})")
+
+    db.close()
+    return transferidos_total
+
+
 # ===== DECORADORES =====
 def login_required(f):
     @wraps(f)
@@ -326,6 +371,8 @@ def comprar():
 
     # Si el producto usa API Hype Games (Free Fire), canjear PIN automáticamente
     elif prod['usa_api'] and id_juego:
+        # Restock automático si el stock está bajo
+        restock_pines(producto_id)
         # Reservar PIN atómicamente con BEGIN IMMEDIATE para evitar doble canje
         db.execute("BEGIN IMMEDIATE")
         pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
@@ -551,9 +598,12 @@ def admin_productos():
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
             recarga_manual = 1 if request.form.get('recarga_manual') else 0
             orden = int(request.form.get('orden', 0))
+            pin_origen_producto_id = int(request.form.get('pin_origen_producto_id', 0))
+            stock_minimo = int(request.form.get('stock_minimo', 0))
+            stock_objetivo = int(request.form.get('stock_objetivo', 0))
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -570,9 +620,12 @@ def admin_productos():
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
             recarga_manual = 1 if request.form.get('recarga_manual') else 0
             orden = int(request.form.get('orden', 0))
+            pin_origen_producto_id = int(request.form.get('pin_origen_producto_id', 0))
+            stock_minimo = int(request.form.get('stock_minimo', 0))
+            stock_objetivo = int(request.form.get('stock_objetivo', 0))
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=? WHERE id=?",
-                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=? WHERE id=?",
+                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -591,8 +644,16 @@ def admin_productos():
 
     productos = db.execute("SELECT p.*, c.nombre as categoria_nombre FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id ORDER BY c.orden, p.orden, p.nombre").fetchall()
     categorias = db.execute("SELECT * FROM categorias ORDER BY orden").fetchall()
+    # Productos giftcard para selector de restock
+    productos_giftcard_raw = db.execute(
+        "SELECT p.id, p.nombre FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE c.tipo = 'giftcards' AND p.activo = 1 ORDER BY p.nombre"
+    ).fetchall()
+    productos_giftcard = []
+    for gc in productos_giftcard_raw:
+        stock = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (gc['id'],)).fetchone()['c']
+        productos_giftcard.append({'id': gc['id'], 'nombre': gc['nombre'], 'stock': stock})
     db.close()
-    return render_template('admin/productos.html', productos=productos, categorias=categorias)
+    return render_template('admin/productos.html', productos=productos, categorias=categorias, productos_giftcard=productos_giftcard)
 
 
 @app.route('/admin/productos/eliminar-lote', methods=['POST'])
@@ -803,7 +864,19 @@ def cron_verificar_gamepoint():
         except Exception as e:
             detalles.append({'pedido': ped['id'], 'error': str(e)})
         verificados += 1
-    return jsonify({'ok': True, 'verificados': verificados, 'confirmados': confirmados, 'fallidos': fallidos, 'detalles': detalles})
+    # Ejecutar restock automático de pines después de verificar
+    restock_count = restock_pines()
+    return jsonify({'ok': True, 'verificados': verificados, 'confirmados': confirmados, 'fallidos': fallidos, 'restock': restock_count, 'detalles': detalles})
+
+
+@app.route('/cron/restock-pines', methods=['GET'])
+def cron_restock_pines():
+    """Endpoint para cron job - reabastece pines de productos Hype desde Gift Cards"""
+    cron_key = request.args.get('key', '')
+    if cron_key != app.secret_key:
+        return jsonify({'ok': False, 'error': 'No autorizado'}), 403
+    transferidos = restock_pines()
+    return jsonify({'ok': True, 'transferidos': transferidos})
 
 
 @app.route('/admin/categorias/orden', methods=['POST'])
@@ -1164,6 +1237,8 @@ def api_comprar():
 
     # Hype Games API (Free Fire con PINes)
     elif prod['usa_api'] and id_juego:
+        # Restock automático si el stock está bajo
+        restock_pines(producto_id)
         # Reservar PIN atómicamente con BEGIN IMMEDIATE para evitar doble canje
         db.execute("BEGIN IMMEDIATE")
         pin_row = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT 1", (producto_id,)).fetchone()
