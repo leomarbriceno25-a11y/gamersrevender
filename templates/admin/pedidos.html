@@ -34,21 +34,15 @@
                         <td>x{{ p.cantidad }}</td>
                         <td>${{ '%.4f'|format(p.total) }}</td>
                         <td>{{ p.id_juego or '-' }}</td>
-                        <td style="max-width:200px;">
+                        <td style="max-width:120px;">
                             {% if p.codigo_entregado %}
                             {% set codigos = p.codigo_entregado.split('\n') %}
-                            {% if codigos|length <= 3 %}
-                                {% for cod in codigos %}
-                                <div><code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.75rem;word-break:break-all;">{{ cod }}</code></div>
-                                {% endfor %}
+                            {% if codigos|length == 1 %}
+                                <code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;word-break:break-all;display:block;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ codigos[0] }}">{{ codigos[0][:16] }}…</code>
+                                <button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem;margin-top:0.2rem;" onclick="navigator.clipboard.writeText('{{ codigos[0]|e }}');this.innerHTML='✓ Copiado';setTimeout(()=>this.innerHTML='<i class=\'fas fa-copy\'></i> Copiar',1500)"><i class="fas fa-copy"></i> Copiar</button>
                             {% else %}
-                                <div><code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.75rem;">{{ codigos[0][:20] }}...</code></div>
-                                <span class="badge badge-completado" style="font-size:0.7rem;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'block':'none'; this.textContent=this.nextElementSibling.style.display==='none'?'{{ codigos|length }} códigos ▼':'Ocultar ▲'">{{ codigos|length }} códigos ▼</span>
-                                <div style="display:none;max-height:150px;overflow-y:auto;margin-top:0.3rem;">
-                                    {% for cod in codigos %}
-                                    <div><code style="background:var(--bg-primary);padding:0.1rem 0.3rem;border-radius:4px;font-size:0.7rem;word-break:break-all;">{{ cod }}</code></div>
-                                    {% endfor %}
-                                </div>
+                                <button class="btn btn-sm btn-secondary" style="font-size:0.7rem;padding:0.2rem 0.5rem;" onclick="verCodigos({{ p.id }})"><i class="fas fa-list"></i> {{ codigos|length }} códigos</button>
+                                <textarea id="codigos-{{ p.id }}" style="display:none;">{{ p.codigo_entregado }}</textarea>
                             {% endif %}
                             {% else %}-{% endif %}
                         </td>
@@ -70,7 +64,44 @@
                 </tbody>
             </table>
         </div>
+        <div id="modal-codigos" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;justify-content:center;align-items:center;" onclick="if(event.target===this)this.style.display='none'">
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:1.5rem;max-width:500px;width:90%;max-height:70vh;display:flex;flex-direction:column;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <h3 style="margin:0;" id="modal-codigos-titulo"><i class="fas fa-list"></i> Códigos</h3>
+                    <button class="btn btn-sm btn-secondary" onclick="document.getElementById('modal-codigos').style.display='none'"><i class="fas fa-times"></i></button>
+                </div>
+                <div id="modal-codigos-lista" style="overflow-y:auto;flex:1;margin-bottom:1rem;"></div>
+                <div style="display:flex;gap:0.5rem;">
+                    <button class="btn btn-primary" style="flex:1;" id="btn-copiar-todos" onclick="copiarTodosCodigos()"><i class="fas fa-copy"></i> Copiar todos</button>
+                </div>
+            </div>
+        </div>
         <script>
+        var codigosActual = '';
+        function verCodigos(pedidoId) {
+            var textarea = document.getElementById('codigos-' + pedidoId);
+            if (!textarea) return;
+            codigosActual = textarea.value;
+            var codigos = codigosActual.split('\n').filter(function(c){ return c.trim(); });
+            var lista = document.getElementById('modal-codigos-lista');
+            lista.innerHTML = '';
+            document.getElementById('modal-codigos-titulo').innerHTML = '<i class="fas fa-list"></i> Pedido #' + pedidoId + ' — ' + codigos.length + ' códigos';
+            codigos.forEach(function(cod, i) {
+                var div = document.createElement('div');
+                div.style.cssText = 'display:flex;align-items:center;gap:0.5rem;padding:0.4rem 0.5rem;background:var(--bg-primary);border-radius:6px;margin-bottom:0.3rem;';
+                div.innerHTML = '<span style="color:var(--text-secondary);font-size:0.75rem;min-width:20px;">' + (i+1) + '</span>' +
+                    '<code style="flex:1;font-size:0.75rem;word-break:break-all;">' + cod + '</code>' +
+                    '<button class="btn btn-sm btn-secondary" style="font-size:0.6rem;padding:0.1rem 0.3rem;" onclick="navigator.clipboard.writeText(\'' + cod.replace(/'/g, "\\'") + '\');this.innerHTML=\'✓\';setTimeout(()=>this.innerHTML=\'<i class=\\\'fas fa-copy\\\'></i>\',1000)"><i class="fas fa-copy"></i></button>';
+                lista.appendChild(div);
+            });
+            document.getElementById('modal-codigos').style.display = 'flex';
+        }
+        function copiarTodosCodigos() {
+            navigator.clipboard.writeText(codigosActual);
+            var btn = document.getElementById('btn-copiar-todos');
+            btn.innerHTML = '<i class="fas fa-check"></i> Copiados!';
+            setTimeout(function(){ btn.innerHTML = '<i class="fas fa-copy"></i> Copiar todos'; }, 1500);
+        }
         function filtrarPedidos(){
             var texto = document.getElementById('filtroPedidos').value.toLowerCase();
             var filas = document.querySelectorAll('#tablaPedidos tbody tr');
