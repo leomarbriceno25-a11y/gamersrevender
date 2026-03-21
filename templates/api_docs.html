@@ -42,12 +42,18 @@
                         <td><span class="badge badge-completado" style="font-size:0.75rem;">Recarga directa</span></td>
                         <td><code>id_juego</code> (Player ID)</td>
                         <td>Diamantes/créditos aplicados a la cuenta</td>
-                        <td>Mobile Legends, PUBG, Free Fire</td>
+                        <td>Mobile Legends, PUBG, Blood Strike</td>
+                    </tr>
+                    <tr>
+                        <td><span class="badge badge-pendiente" style="font-size:0.75rem;">Recarga PIN</span></td>
+                        <td><code>id_juego</code> (Player ID)</td>
+                        <td>Se consumen PINes internos y se aplica recarga (puede ser multi-canje)</td>
+                        <td>Free Fire</td>
                     </tr>
                     <tr>
                         <td><span class="badge badge-procesando" style="font-size:0.75rem;">Gift Card / Código</span></td>
-                        <td>Nada</td>
-                        <td>Se entrega un <strong>código</strong></td>
+                        <td>Solo <code>cantidad</code> (opcional)</td>
+                        <td>Se entrega un array de <strong>códigos</strong></td>
                         <td>Roblox, Steam, PlayStation, iTunes</td>
                     </tr>
                 </tbody>
@@ -161,7 +167,7 @@
   -d '{"producto_id": 1, "id_juego": "123456789", "input2": "10521"}' \
   {{ request.host_url }}api/v1/comprar</pre>
             </div>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (recarga):</h3>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (recarga GamePoint):</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
   "ok": true,
@@ -175,7 +181,45 @@
 }</pre>
             </div>
 
-            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-gift"></i> Ejemplo: Gift Card (Roblox)</h3>
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-fire" style="color:#ff6b00;"></i> Ejemplo: Recarga Free Fire (multi-canje)</h3>
+            <p style="font-size:0.9rem; color:var(--text-secondary);">Algunos productos de Free Fire consumen múltiples PINes internamente. El sistema lo maneja automáticamente. Si un canje parcial ocurre, se reembolsa la parte no completada.</p>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
+  -H "X-API-Key: TU_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"producto_id": 8, "id_juego": "987654321"}' \
+  {{ request.host_url }}api/v1/comprar</pre>
+            </div>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (multi-canje completo):</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
+  "ok": true,
+  "pedido_id": 60,
+  "estado": "completado",
+  "total": 3.00,
+  "saldo_restante": 147.00,
+  "nombre_jugador": "FirePlayer99",
+  "canjes_realizados": 3,
+  "mensaje": "3 recarga(s) aplicada(s) a FirePlayer99 (ID: 987654321)"
+}</pre>
+            </div>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta: canje parcial (reembolso automático):</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#f59e0b; margin:0; font-size:0.85rem;">{
+  "ok": true,
+  "pedido_id": 61,
+  "estado": "completado",
+  "total": 3.00,
+  "saldo_restante": 148.00,
+  "nombre_jugador": "FirePlayer99",
+  "canjes_realizados": 2,
+  "canjes_esperados": 3,
+  "reembolso_parcial": 1.00,
+  "mensaje": "2/3 recargas completadas. Reembolso parcial: $1.0000"
+}</pre>
+            </div>
+
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-gift"></i> Ejemplo: Gift Card (Roblox) — 1 código</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
   -H "X-API-Key: TU_KEY" \
@@ -183,7 +227,7 @@
   -d '{"producto_id": 5}' \
   {{ request.host_url }}api/v1/comprar</pre>
             </div>
-            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (código):</h3>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (1 código):</h3>
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
   "ok": true,
@@ -191,10 +235,42 @@
   "estado": "completado",
   "total": 12.00,
   "saldo_restante": 138.00,
-  "codigo": "XXXX-XXXX-XXXX-XXXX",
-  "referencia": "GP-20260318-002",
-  "mensaje": "Código entregado: XXXX-XXXX-XXXX-XXXX"
+  "codigos": ["XXXX-XXXX-XXXX-XXXX"],
+  "cantidad_entregada": 1,
+  "mensaje": "1 código(s) entregado(s)"
 }</pre>
+            </div>
+
+            <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-gift"></i> Ejemplo: Gift Card — múltiples códigos</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#7c3aed; margin:0; font-size:0.85rem;">curl -X POST \
+  -H "X-API-Key: TU_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"producto_id": 5, "cantidad": 3}' \
+  {{ request.host_url }}api/v1/comprar</pre>
+            </div>
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta exitosa (3 códigos):</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#f1f5f9; margin:0; font-size:0.85rem;">{
+  "ok": true,
+  "pedido_id": 56,
+  "estado": "completado",
+  "total": 36.00,
+  "saldo_restante": 102.00,
+  "codigos": [
+    "AAAA-BBBB-CCCC-DDDD",
+    "EEEE-FFFF-GGGG-HHHH",
+    "IIII-JJJJ-KKKK-LLLL"
+  ],
+  "cantidad_entregada": 3,
+  "mensaje": "3 código(s) entregado(s)"
+}</pre>
+            </div>
+            <div style="margin-top:1rem; padding:0.75rem; background:rgba(34,197,94,0.1); border:1px solid rgba(34,197,94,0.3); border-radius:8px;">
+                <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
+                    <strong style="color:#22c55e;"><i class="fas fa-box"></i> Gift Cards / Pines:</strong>
+                    Cuando compras gift cards, la respuesta devuelve un array <code>codigos</code> con todos los códigos entregados y <code>cantidad_entregada</code> con el número total. Si el stock es insuficiente, el pedido se cancela y el saldo se reembolsa automáticamente.
+                </p>
             </div>
 
             <h3 style="margin:1.5rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-clock" style="color:#f59e0b;"></i> Respuesta: Pedido en procesamiento (recarga manual)</h3>
