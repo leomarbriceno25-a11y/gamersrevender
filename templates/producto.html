@@ -33,14 +33,14 @@
                     <div class="form-group">
                         <label><i class="fas fa-gamepad"></i> {{ field.desc }} *</label>
                         {% if field.type == 'servervalue' and field.options %}
-                        <select name="{{ 'id_juego' if loop.first else field.name }}" class="form-select" required {{ 'id=input-id-juego' if loop.first }}>
+                        <select name="{{ 'id_juego' if loop.first else field.name }}" class="form-select" required {{ 'id=input-id-juego' if loop.first }} {{ 'id=input-zone-id' if loop.index == 2 }}>
                             <option value="">Selecciona {{ field.desc }}</option>
                             {% for opt in field.options %}
                             <option value="{{ opt.value }}">{{ opt.label }}</option>
                             {% endfor %}
                         </select>
                         {% else %}
-                        <input type="text" name="{{ 'id_juego' if loop.first else field.name }}" placeholder="{{ field.desc }}" required {{ 'id=input-id-juego' if loop.first }}>
+                        <input type="text" name="{{ 'id_juego' if loop.first else field.name }}" placeholder="{{ field.desc }}" required {{ 'id=input-id-juego' if loop.first }} {{ 'id=input-zone-id' if loop.index == 2 }}>
                         {% endif %}
                     </div>
                     {% endfor %}
