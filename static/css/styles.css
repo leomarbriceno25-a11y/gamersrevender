@@ -251,6 +251,12 @@ button:disabled, button[disabled] { opacity: 0.5; cursor: not-allowed; }
 
 /* ===== GAMES GRID ===== */
 .games-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1.2rem; }
+@media (max-width: 576px) {
+    .games-grid { grid-template-columns: repeat(2, 1fr); gap: 0.7rem; }
+    .game-card-img { aspect-ratio: 3/3.5; }
+    .game-card-content h3 { font-size: 0.75rem; }
+    .game-tag { font-size: 0.55rem; padding: 0.15rem 0.4rem; }
+}
 .game-card-img {
     position: relative;
     border-radius: var(--radius-lg);
@@ -575,4 +581,53 @@ button:disabled, button[disabled] { opacity: 0.5; cursor: not-allowed; }
     .products-grid { grid-template-columns: 1fr; }
     .empty-buttons { flex-direction: column; }
     .product-badges { flex-direction: column; }
+}
+
+/* ===== RESPONSIVE UTILITIES ===== */
+.d-only-mobile { display: none; }
+@media (max-width: 576px) {
+    .d-none-mobile { display: none !important; }
+    .d-only-mobile { display: block !important; }
+}
+
+/* ===== PEDIDO CARDS (Mobile) ===== */
+.pedidos-cards { display: flex; flex-direction: column; gap: 0.6rem; }
+.pedido-card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 0.8rem 1rem;
+    transition: border-color 0.2s;
+}
+.pedido-card:hover { border-color: var(--accent-primary); }
+.pedido-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+.pedido-card-id {
+    font-weight: 700;
+    font-size: 0.85rem;
+    color: var(--accent-primary);
+}
+.pedido-card-body {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.4rem;
+}
+.pedido-card-producto {
+    font-weight: 600;
+    font-size: 0.9rem;
+    color: var(--text-primary);
+}
+.pedido-card-total {
+    font-weight: 700;
+    font-size: 1rem;
+    color: #22c55e;
+}
+.pedido-card-fecha {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
 }

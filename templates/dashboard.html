@@ -95,7 +95,8 @@
 <section class="section">
     <div class="container">
         <h2 class="section-title"><i class="fas fa-history"></i> Últimos Pedidos</h2>
-        <div class="table-responsive">
+        <!-- Desktop table -->
+        <div class="table-responsive d-none-mobile">
             <table class="table">
                 <thead>
                     <tr><th>#</th><th>Producto</th><th>Total</th><th>Estado</th><th>Fecha</th></tr>
@@ -112,6 +113,22 @@
                     {% endfor %}
                 </tbody>
             </table>
+        </div>
+        <!-- Mobile cards -->
+        <div class="d-only-mobile pedidos-cards">
+            {% for p in ultimos %}
+            <div class="pedido-card">
+                <div class="pedido-card-header">
+                    <span class="pedido-card-id">#{{ p.id }}</span>
+                    <span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span>
+                </div>
+                <div class="pedido-card-body">
+                    <div class="pedido-card-producto">{{ p.producto_nombre }}</div>
+                    <div class="pedido-card-total">${{ '%.4f'|format(p.total) }}</div>
+                </div>
+                <div class="pedido-card-fecha"><i class="fas fa-clock"></i> {{ p.fecha_pedido }}</div>
+            </div>
+            {% endfor %}
         </div>
         <div class="text-center" style="margin-top:1rem;">
             <a href="{{ url_for('mis_pedidos') }}" class="btn btn-secondary">Ver todos</a>
