@@ -62,6 +62,20 @@
                         <input type="checkbox" name="activo" id="form-activo" checked> Categoría activa (visible en catálogo)
                     </label>
                 </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" name="verificar_nombre" id="form-verificar-nombre" onchange="document.getElementById('verificar-tipo-container').style.display=this.checked?'block':'none'"> <i class="fas fa-user-check"></i> Verificar nombre del jugador antes de comprar
+                    </label>
+                </div>
+                <div class="form-group" id="verificar-tipo-container" style="display:none;">
+                    <label><i class="fas fa-gamepad"></i> Tipo de verificación</label>
+                    <select name="verificar_nombre_tipo" id="form-verificar-tipo" class="form-select">
+                        <option value="">-- Seleccionar --</option>
+                        <option value="freefire">Free Fire</option>
+                        <option value="bloodstrike">Blood Strike</option>
+                        <option value="mobilelegends">Mobile Legends (requiere Zone ID)</option>
+                    </select>
+                </div>
                 <div class="form-actions">
                     <button type="submit" class="btn btn-primary" id="form-btn">
                         <i class="fas fa-plus"></i> <span id="form-btn-text">Crear Categoría</span>
@@ -89,7 +103,7 @@
                 <thead>
                     <tr>
                         <th style="width:40px;"><input type="checkbox" id="sel-todos" onclick="toggleTodos(this)" title="Seleccionar todos"></th>
-                        <th>Orden</th><th>Imagen</th><th>Nombre</th><th>Slug</th><th>Tipo</th><th>Productos</th><th>Activa</th><th>Acciones</th>
+                        <th>Orden</th><th>Imagen</th><th>Nombre</th><th>Slug</th><th>Tipo</th><th>Productos</th><th>Verificar</th><th>Activa</th><th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -114,6 +128,11 @@
                         <td><span class="badge {{ 'badge-completado' if c.tipo == 'juegos' else 'badge-pendiente' }}">{{ c.tipo }}</span></td>
                         <td>{{ c.total_productos }}</td>
                         <td>
+                            {% if c.verificar_nombre %}
+                            <span class="badge badge-completado" title="{{ c.verificar_nombre_tipo }}"><i class="fas fa-user-check"></i> {{ c.verificar_nombre_tipo }}</span>
+                            {% else %}-{% endif %}
+                        </td>
+                        <td>
                             {% if c.activo %}
                             <span class="badge badge-completado">Sí</span>
                             {% else %}
@@ -122,7 +141,7 @@
                         </td>
                         <td>
                             <div class="action-btns">
-                                <button class="btn btn-sm btn-secondary" onclick="editarCat({{ c.id }}, '{{ c.nombre|e }}', '{{ c.slug }}', '{{ c.icono }}', '{{ c.imagen|e }}', '{{ c.tipo }}', '{{ c.descripcion|e }}', {{ c.orden }}, {{ c.activo }})">
+                                <button class="btn btn-sm btn-secondary" onclick="editarCat({{ c.id }}, '{{ c.nombre|e }}', '{{ c.slug }}', '{{ c.icono }}', '{{ c.imagen|e }}', '{{ c.tipo }}', '{{ c.descripcion|e }}', {{ c.orden }}, {{ c.activo }}, {{ c.verificar_nombre or 0 }}, '{{ c.verificar_nombre_tipo or '' }}')">
                                     <i class="fas fa-edit"></i>
                                 </button>
                                 {% if c.total_productos == 0 %}
@@ -198,7 +217,7 @@ function moverCat(id, dir) {
     }).then(function() { location.reload(); });
 }
 
-function editarCat(id, nombre, slug, icono, imagen, tipo, descripcion, orden, activo) {
+function editarCat(id, nombre, slug, icono, imagen, tipo, descripcion, orden, activo, verificar_nombre, verificar_nombre_tipo) {
     document.getElementById('form-accion').value = 'editar';
     document.getElementById('form-cat-id').value = id;
     document.getElementById('form-nombre').value = nombre;
@@ -210,6 +229,9 @@ function editarCat(id, nombre, slug, icono, imagen, tipo, descripcion, orden, ac
     document.getElementById('form-descripcion').value = descripcion;
     document.getElementById('form-orden').value = orden;
     document.getElementById('form-activo').checked = activo == 1;
+    document.getElementById('form-verificar-nombre').checked = verificar_nombre == 1;
+    document.getElementById('form-verificar-tipo').value = verificar_nombre_tipo || '';
+    document.getElementById('verificar-tipo-container').style.display = verificar_nombre == 1 ? 'block' : 'none';
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-edit"></i> Editar Categoría #' + id;
     document.getElementById('form-btn-text').textContent = 'Guardar Cambios';
     document.getElementById('form-btn').querySelector('i').className = 'fas fa-save';
@@ -236,6 +258,9 @@ function resetForm() {
     document.getElementById('form-descripcion').value = '';
     document.getElementById('form-orden').value = '0';
     document.getElementById('form-activo').checked = true;
+    document.getElementById('form-verificar-nombre').checked = false;
+    document.getElementById('form-verificar-tipo').value = '';
+    document.getElementById('verificar-tipo-container').style.display = 'none';
     document.getElementById('preview-container').style.display = 'none';
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-plus-circle"></i> Nueva Categoría';
     document.getElementById('form-btn-text').textContent = 'Crear Categoría';

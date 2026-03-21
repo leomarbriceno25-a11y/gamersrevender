@@ -160,6 +160,15 @@ def init_db():
         db.execute("SELECT canjes_por_compra FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN canjes_por_compra INTEGER DEFAULT 1")
+    # Verificación de nombre de jugador por categoría
+    try:
+        db.execute("SELECT verificar_nombre FROM categorias LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE categorias ADD COLUMN verificar_nombre INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT verificar_nombre_tipo FROM categorias LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE categorias ADD COLUMN verificar_nombre_tipo TEXT DEFAULT ''")
 
 
     # Crear admin si no existe

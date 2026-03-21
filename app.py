@@ -56,6 +56,48 @@ def save_upload(file):
 init_db()
 
 
+def verificar_nombre_jugador(tipo, player_id, zone_id=''):
+    """Consulta APIs externas para obtener el nombre del jugador según el tipo de juego."""
+    import requests as ext_requests
+    try:
+        if tipo == 'freefire':
+            r = ext_requests.get(
+                f"https://tiendagiftven.net/conexion_api/api.php?action=ValidarParametros&id={player_id}",
+                timeout=10
+            )
+            data = r.json()
+            if data.get('alerta') == 'green' and data.get('nickname'):
+                return {'ok': True, 'nombre': data['nickname']}
+            return {'ok': False, 'error': 'ID no encontrado'}
+
+        elif tipo == 'bloodstrike':
+            r = ext_requests.get(
+                f"https://pay.neteasegames.com/gameclub/bloodstrike/-1/login-role?roleid={player_id}&client_type=gameclub",
+                timeout=10
+            )
+            data = r.json()
+            if data.get('code') == '0000' and data.get('data', {}).get('rolename'):
+                return {'ok': True, 'nombre': data['data']['rolename']}
+            return {'ok': False, 'error': 'ID no encontrado'}
+
+        elif tipo == 'mobilelegends':
+            if not zone_id:
+                return {'ok': False, 'error': 'Se requiere el Zone ID (Server ID)'}
+            r = ext_requests.get(
+                f"https://api.isan.eu.org/nickname/ml?id={player_id}&zone={zone_id}",
+                timeout=10
+            )
+            data = r.json()
+            if data.get('success') and data.get('name'):
+                return {'ok': True, 'nombre': data['name']}
+            return {'ok': False, 'error': 'ID o Zone ID no encontrado'}
+
+        else:
+            return {'ok': False, 'error': f'Tipo de verificación no soportado: {tipo}'}
+    except Exception as e:
+        return {'ok': False, 'error': f'Error de conexión: {str(e)}'}
+
+
 def restock_pines(producto_id=None):
     """Transfiere pines del producto origen (Gift Card) al producto Hype cuando el stock baja del mínimo.
     Si producto_id se especifica, solo reabastece ese producto. Si no, revisa todos."""
@@ -215,6 +257,28 @@ def logout():
     return redirect(url_for('login'))
 
 
+# ===== VERIFICAR NOMBRE JUGADOR =====
+@app.route('/api/verificar-nombre', methods=['POST'])
+@login_required
+def api_verificar_nombre():
+    data = request.get_json() or {}
+    producto_id = data.get('producto_id', 0)
+    player_id = str(data.get('player_id', '')).strip()
+    zone_id = str(data.get('zone_id', '')).strip()
+    if not producto_id or not player_id:
+        return jsonify({'ok': False, 'error': 'Faltan parámetros'})
+    db = get_db()
+    prod = db.execute(
+        "SELECT c.verificar_nombre, c.verificar_nombre_tipo FROM productos p "
+        "JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ?", (producto_id,)
+    ).fetchone()
+    db.close()
+    if not prod or not prod['verificar_nombre']:
+        return jsonify({'ok': False, 'error': 'Este producto no requiere verificación'})
+    resultado = verificar_nombre_jugador(prod['verificar_nombre_tipo'], player_id, zone_id)
+    return jsonify(resultado)
+
+
 # ===== DASHBOARD =====
 @app.route('/dashboard')
 @login_required
@@ -257,7 +321,7 @@ def catalogo_juego(slug):
 def producto(id):
     import json as _json
     db = get_db()
-    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.slug as categoria_slug, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (id,)).fetchone()
+    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.slug as categoria_slug, c.tipo as categoria_tipo, c.verificar_nombre, c.verificar_nombre_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (id,)).fetchone()
     db.close()
     if not prod:
         flash('Producto no encontrado', 'error')
@@ -1008,10 +1072,12 @@ def admin_categorias():
             tipo = request.form.get('tipo', 'juegos')
             descripcion = request.form.get('descripcion', '').strip()
             orden = int(request.form.get('orden', 0))
+            verificar_nombre = 1 if request.form.get('verificar_nombre') else 0
+            verificar_nombre_tipo = request.form.get('verificar_nombre_tipo', '').strip()
             if nombre and slug:
                 try:
-                    db.execute("INSERT INTO categorias (nombre, slug, icono, imagen, tipo, descripcion, orden) VALUES (?,?,?,?,?,?,?)",
-                               (nombre, slug, icono, imagen, tipo, descripcion, orden))
+                    db.execute("INSERT INTO categorias (nombre, slug, icono, imagen, tipo, descripcion, orden, verificar_nombre, verificar_nombre_tipo) VALUES (?,?,?,?,?,?,?,?,?)",
+                               (nombre, slug, icono, imagen, tipo, descripcion, orden, verificar_nombre, verificar_nombre_tipo))
                     db.commit()
                     flash(f'Categoría "{nombre}" creada', 'success')
                 except Exception:
@@ -1034,9 +1100,11 @@ def admin_categorias():
             descripcion = request.form.get('descripcion', '').strip()
             orden = int(request.form.get('orden', 0))
             activo = 1 if request.form.get('activo') else 0
+            verificar_nombre = 1 if request.form.get('verificar_nombre') else 0
+            verificar_nombre_tipo = request.form.get('verificar_nombre_tipo', '').strip()
             if cat_id > 0 and nombre and slug:
-                db.execute("UPDATE categorias SET nombre=?, slug=?, icono=?, imagen=?, tipo=?, descripcion=?, orden=?, activo=? WHERE id=?",
-                           (nombre, slug, icono, imagen, tipo, descripcion, orden, activo, cat_id))
+                db.execute("UPDATE categorias SET nombre=?, slug=?, icono=?, imagen=?, tipo=?, descripcion=?, orden=?, activo=?, verificar_nombre=?, verificar_nombre_tipo=? WHERE id=?",
+                           (nombre, slug, icono, imagen, tipo, descripcion, orden, activo, verificar_nombre, verificar_nombre_tipo, cat_id))
                 db.commit()
                 flash('Categoría actualizada', 'success')
         elif accion == 'eliminar':

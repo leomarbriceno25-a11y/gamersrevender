@@ -24,9 +24,8 @@
             </div>
 
             <div class="product-detail-form">
-                {% if current_user and current_user.rol == 'admin' %}
-                <h2><i class="fas fa-shopping-cart"></i> Realizar Pedido (Admin)</h2>
-                <form method="POST" action="{{ url_for('comprar') }}">
+                <h2><i class="fas fa-shopping-cart"></i> Realizar Pedido</h2>
+                <form method="POST" action="{{ url_for('comprar') }}" id="form-comprar">
                     <input type="hidden" name="producto_id" value="{{ producto.id }}">
 
                     {% if producto.gamepoint_product_id and producto.gamepoint_fields %}
@@ -45,11 +44,25 @@
                         {% endif %}
                     </div>
                     {% endfor %}
-                    {% elif producto.categoria_slug == 'freefire' %}
+                    {% elif producto.categoria_tipo != 'giftcards' %}
                     <div class="form-group">
-                        <label><i class="fas fa-gamepad"></i> ID de Free Fire *</label>
-                        <input type="text" name="id_juego" placeholder="Ingresa tu ID de Free Fire" required>
+                        <label><i class="fas fa-gamepad"></i> ID del Juego *</label>
+                        <input type="text" name="id_juego" id="input-id-juego" placeholder="Ingresa tu ID del juego" required>
                     </div>
+                    {% if producto.verificar_nombre_tipo == 'mobilelegends' %}
+                    <div class="form-group">
+                        <label><i class="fas fa-server"></i> Zone ID (Server ID) *</label>
+                        <input type="text" name="zone_id" id="input-zone-id" placeholder="Ingresa tu Zone/Server ID" required>
+                    </div>
+                    {% endif %}
+                    {% if producto.verificar_nombre %}
+                    <div id="verificacion-nombre" style="margin-bottom:1rem;">
+                        <button type="button" class="btn btn-secondary btn-block" id="btn-verificar" onclick="verificarNombre()">
+                            <i class="fas fa-user-check"></i> Verificar nombre del jugador
+                        </button>
+                        <div id="resultado-verificacion" style="display:none; margin-top:0.5rem; padding:0.75rem; border-radius:8px;"></div>
+                    </div>
+                    {% endif %}
                     {% endif %}
 
                     {% if producto.categoria_tipo == 'giftcards' %}
@@ -97,26 +110,6 @@
                     </a>
                     {% endif %}
                 </form>
-                {% else %}
-                <h2><i class="fas fa-code"></i> Compra vía API</h2>
-                <div style="padding:1rem; background:var(--bg-secondary); border:1px solid var(--border); border-radius:12px; margin-bottom:1rem;">
-                    <p style="color:var(--text-secondary); margin-bottom:1rem;">Las recargas se realizan únicamente a través de la API. Usa tu API Key para hacer pedidos programáticamente.</p>
-                    <div class="order-summary">
-                        <h3>Precio</h3>
-                        <div class="summary-row">
-                            <span>{{ producto.nombre }}</span>
-                            <span style="font-weight:bold; color:#22c55e;">${{ '%.4f'|format(producto.precio) }}</span>
-                        </div>
-                    </div>
-                    <div style="margin-top:1rem; padding:0.75rem; background:var(--bg-primary); border-radius:8px;">
-                        <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem;"><strong><i class="fas fa-terminal"></i> Endpoint:</strong></p>
-                        <code style="display:block; padding:0.5rem; background:#1a1a2e; border-radius:6px; font-size:0.8rem; color:#a78bfa; word-break:break-all;">POST /api/comprar</code>
-                    </div>
-                    <a href="{{ url_for('dashboard') }}" class="btn btn-primary btn-block" style="margin-top:1rem;">
-                        <i class="fas fa-key"></i> Ver mi API Key
-                    </a>
-                </div>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -137,6 +130,9 @@
 <script>
 var precioUnitario = {{ producto.precio }};
 var saldoActual = {{ saldo }};
+var productoId = {{ producto.id }};
+var requiereVerificacion = {{ 'true' if producto.verificar_nombre else 'false' }};
+var nombreVerificado = false;
 
 function actualizarTotal() {
     var cantInput = document.getElementById('input-cantidad');
@@ -153,14 +149,85 @@ function actualizarTotal() {
     if (btn) btn.disabled = saldoActual < total;
 }
 
-document.querySelector('form[action="{{ url_for("comprar") }}"]').addEventListener('submit', function(e) {
+function verificarNombre() {
+    var idJuego = document.getElementById('input-id-juego');
+    if (!idJuego || !idJuego.value.trim()) {
+        alert('Ingresa el ID del juego primero');
+        return;
+    }
+    var zoneId = document.getElementById('input-zone-id');
+    var btn = document.getElementById('btn-verificar');
+    var resultado = document.getElementById('resultado-verificacion');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
+    resultado.style.display = 'none';
+    nombreVerificado = false;
+
+    var body = { producto_id: productoId, player_id: idJuego.value.trim() };
+    if (zoneId) body.zone_id = zoneId.value.trim();
+
+    fetch('/api/verificar-nombre', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        resultado.style.display = 'block';
+        if (data.ok) {
+            nombreVerificado = true;
+            resultado.style.background = 'rgba(34,197,94,0.15)';
+            resultado.style.border = '1px solid #22c55e';
+            resultado.innerHTML = '<i class="fas fa-check-circle" style="color:#22c55e;"></i> <strong>Jugador encontrado:</strong> <span style="color:#22c55e; font-size:1.1rem;">' + data.nombre + '</span>';
+        } else {
+            resultado.style.background = 'rgba(239,68,68,0.15)';
+            resultado.style.border = '1px solid #ef4444';
+            resultado.innerHTML = '<i class="fas fa-times-circle" style="color:#ef4444;"></i> <strong>No encontrado:</strong> ' + (data.error || 'ID inválido');
+        }
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-user-check"></i> Verificar nombre del jugador';
+    })
+    .catch(function(err) {
+        resultado.style.display = 'block';
+        resultado.style.background = 'rgba(239,68,68,0.15)';
+        resultado.style.border = '1px solid #ef4444';
+        resultado.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#ef4444;"></i> Error de conexión';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-user-check"></i> Verificar nombre del jugador';
+    });
+}
+
+document.getElementById('form-comprar').addEventListener('submit', function(e) {
     var btn = document.getElementById('btn-comprar');
     if (btn.disabled) { e.preventDefault(); return; }
+    if (requiereVerificacion && !nombreVerificado) {
+        e.preventDefault();
+        alert('Debes verificar el nombre del jugador antes de comprar.');
+        return;
+    }
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
     var overlay = document.getElementById('loading-overlay');
     overlay.style.display = 'flex';
 });
+
+// Reset verification when ID changes
+var idInput = document.getElementById('input-id-juego');
+if (idInput) {
+    idInput.addEventListener('input', function() {
+        nombreVerificado = false;
+        var res = document.getElementById('resultado-verificacion');
+        if (res) res.style.display = 'none';
+    });
+}
+var zoneInput = document.getElementById('input-zone-id');
+if (zoneInput) {
+    zoneInput.addEventListener('input', function() {
+        nombreVerificado = false;
+        var res = document.getElementById('resultado-verificacion');
+        if (res) res.style.display = 'none';
+    });
+}
 </script>
 {% endblock %}
 
