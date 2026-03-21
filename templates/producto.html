@@ -33,17 +33,25 @@
                     <div class="form-group">
                         <label><i class="fas fa-gamepad"></i> {{ field.desc }} *</label>
                         {% if field.type == 'servervalue' and field.options %}
-                        <select name="{{ 'id_juego' if loop.first else field.name }}" class="form-select" required>
+                        <select name="{{ 'id_juego' if loop.first else field.name }}" class="form-select" required {{ 'id=input-id-juego' if loop.first }}>
                             <option value="">Selecciona {{ field.desc }}</option>
                             {% for opt in field.options %}
                             <option value="{{ opt.value }}">{{ opt.label }}</option>
                             {% endfor %}
                         </select>
                         {% else %}
-                        <input type="text" name="{{ 'id_juego' if loop.first else field.name }}" placeholder="{{ field.desc }}" required>
+                        <input type="text" name="{{ 'id_juego' if loop.first else field.name }}" placeholder="{{ field.desc }}" required {{ 'id=input-id-juego' if loop.first }}>
                         {% endif %}
                     </div>
                     {% endfor %}
+                    {% if producto.verificar_nombre %}
+                    <div id="verificacion-nombre" style="margin-bottom:1rem;">
+                        <button type="button" class="btn btn-secondary btn-block" id="btn-verificar" onclick="verificarNombre()">
+                            <i class="fas fa-user-check"></i> Verificar nombre del jugador
+                        </button>
+                        <div id="resultado-verificacion" style="display:none; margin-top:0.5rem; padding:0.75rem; border-radius:8px;"></div>
+                    </div>
+                    {% endif %}
                     {% elif producto.categoria_tipo != 'giftcards' %}
                     <div class="form-group">
                         <label><i class="fas fa-gamepad"></i> ID del Juego *</label>
