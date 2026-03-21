@@ -27,15 +27,15 @@
                         <td>{{ p.producto_nombre }}</td>
                         <td class="celda-codigos" data-codigos="{{ p.codigo_entregado|replace('\n', '|||') }}">
                             {% set codigos = p.codigo_entregado.split('\n') %}
+                            {% if codigos|length > 1 %}
+                            <button type="button" class="btn btn-sm btn-secondary" style="margin-bottom:0.4rem;font-size:0.7rem;" onclick="copiarTodosFila(this)"><i class="fas fa-copy"></i> Copiar todos ({{ codigos|length }})</button>
+                            {% endif %}
                             {% for cod in codigos %}
                             <div style="margin-bottom:0.2rem;">
                                 <code style="background:var(--bg-primary);padding:0.3rem 0.6rem;border-radius:4px;font-size:0.8rem;word-break:break-all;display:inline-block;">{{ cod }}</code>
                                 <button type="button" class="btn btn-sm" style="padding:0.15rem 0.4rem;font-size:0.7rem;" onclick="copiar('{{ cod }}', this)" title="Copiar"><i class="fas fa-copy"></i></button>
                             </div>
                             {% endfor %}
-                            {% if codigos|length > 1 %}
-                            <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.3rem;font-size:0.7rem;" onclick="copiarTodosFila(this)"><i class="fas fa-copy"></i> Copiar todos ({{ codigos|length }})</button>
-                            {% endif %}
                         </td>
                         <td>x{{ p.cantidad }}</td>
                         <td>${{ '%.4f'|format(p.total) }}</td>
