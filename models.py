@@ -202,9 +202,12 @@ def init_db():
             ('metodo_zelle_nombre', 'Zelle'),
             ('metodo_zelle_datos', 'Email Zelle: ---'),
             ('metodo_zelle_nota', 'Envía el monto exacto en USD por Zelle'),
+            ('recarga_minima', '0.50'),
         ]
         for clave, valor in metodos_default:
             db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES (?,?)", (clave, valor))
+    # Asegurar que recarga_minima exista en DBs existentes
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('recarga_minima', '0.50')")
 
     # Solicitudes de recarga de saldo
     try:

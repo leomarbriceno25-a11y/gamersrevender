@@ -12,6 +12,19 @@
 <section class="section">
     <div class="container" style="max-width:800px; margin:0 auto;">
         <form method="POST">
+            <!-- Recarga mínima -->
+            <div class="admin-card" style="margin-bottom:1.5rem; border-left:4px solid var(--primary);">
+                <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem;">
+                    <i class="fas fa-dollar-sign" style="font-size:1.5rem; color:var(--primary);"></i>
+                    <h2 style="margin:0; font-size:1.1rem;">Recarga Mínima</h2>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="font-size:0.85rem;"><i class="fas fa-arrow-down"></i> Monto mínimo para solicitar recarga (USD)</label>
+                    <input type="number" name="recarga_minima" value="{{ recarga_minima }}" step="0.01" min="0.01" placeholder="Ej: 1.00" style="font-size:0.95rem; max-width:200px;">
+                    <small style="color:var(--text-secondary); font-size:0.8rem;">Los usuarios no podrán solicitar recargas menores a este monto</small>
+                </div>
+            </div>
+
             {% for m in metodos %}
             <div class="admin-card" style="margin-bottom:1.5rem; border-left:4px solid {{ m.color }};">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">

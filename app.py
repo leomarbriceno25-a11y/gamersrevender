@@ -686,13 +686,17 @@ def solicitar_recarga():
             monto = float(monto)
         except (ValueError, TypeError):
             monto = 0
-        if monto < 0.50:
-            flash('El monto mínimo es $0.50', 'error')
+        db = get_db()
+        recarga_min_row = db.execute("SELECT valor FROM configuracion WHERE clave = 'recarga_minima'").fetchone()
+        recarga_min = float(recarga_min_row['valor']) if recarga_min_row else 0.50
+        if monto < recarga_min:
+            db.close()
+            flash(f'El monto mínimo de recarga es ${recarga_min:.2f}', 'error')
             return redirect(url_for('solicitar_recarga'))
         if not metodo_pago:
+            db.close()
             flash('Selecciona un método de pago', 'error')
             return redirect(url_for('solicitar_recarga'))
-        db = get_db()
         # Verificar que no tenga otra solicitud pendiente
         pendiente = db.execute("SELECT id FROM solicitudes_recarga WHERE usuario_id = ? AND estado = 'pendiente'", (session['user_id'],)).fetchone()
         if pendiente:
@@ -708,9 +712,10 @@ def solicitar_recarga():
     db = get_db()
     solicitudes = db.execute("SELECT * FROM solicitudes_recarga WHERE usuario_id = ? ORDER BY fecha_solicitud DESC LIMIT 20", (session['user_id'],)).fetchall()
     saldo = get_saldo(session['user_id'])
-    # Cargar config de métodos de pago
-    config_rows = db.execute("SELECT clave, valor FROM configuracion WHERE clave LIKE 'metodo_%'").fetchall()
+    # Cargar config completa
+    config_rows = db.execute("SELECT clave, valor FROM configuracion").fetchall()
     config = {r['clave']: r['valor'] for r in config_rows}
+    recarga_minima = config.get('recarga_minima', '0.50')
     # Cargar bonuses activos
     bonuses = db.execute("SELECT monto_minimo, porcentaje_bonus FROM bonus_recarga WHERE activo = 1 ORDER BY monto_minimo ASC").fetchall()
     db.close()
@@ -725,7 +730,7 @@ def solicitar_recarga():
                 'nota': config.get(f'metodo_{key}_nota', ''),
             })
     bonuses_list = [{'monto_minimo': b['monto_minimo'], 'porcentaje_bonus': b['porcentaje_bonus']} for b in bonuses]
-    return render_template('solicitar_recarga.html', solicitudes=solicitudes, saldo=saldo, metodos=metodos, bonuses=bonuses_list)
+    return render_template('solicitar_recarga.html', solicitudes=solicitudes, saldo=saldo, metodos=metodos, bonuses=bonuses_list, recarga_minima=recarga_minima)
 
 
 # ===== ADMIN =====
@@ -830,13 +835,21 @@ def admin_metodos_pago():
                     db.execute("UPDATE configuracion SET valor = ? WHERE clave = ?", (valor, clave))
                 else:
                     db.execute("INSERT INTO configuracion (clave, valor) VALUES (?,?)", (clave, valor))
+        # Recarga mínima
+        recarga_min = request.form.get('recarga_minima', '0.50').strip()
+        existing = db.execute("SELECT id FROM configuracion WHERE clave = 'recarga_minima'").fetchone()
+        if existing:
+            db.execute("UPDATE configuracion SET valor = ? WHERE clave = 'recarga_minima'", (recarga_min,))
+        else:
+            db.execute("INSERT INTO configuracion (clave, valor) VALUES ('recarga_minima', ?)", (recarga_min,))
         db.commit()
         db.close()
         flash('Métodos de pago actualizados correctamente', 'success')
         return redirect(url_for('admin_metodos_pago'))
-    config_rows = db.execute("SELECT clave, valor FROM configuracion WHERE clave LIKE 'metodo_%'").fetchall()
+    config_rows = db.execute("SELECT clave, valor FROM configuracion").fetchall()
     config = {r['clave']: r['valor'] for r in config_rows}
     db.close()
+    recarga_minima = config.get('recarga_minima', '0.50')
     metodos = []
     for key, icono, color in [('pago_movil', 'fa-mobile-alt', '#4CAF50'), ('binance', 'fa-coins', '#F0B90B'), ('zinli', 'fa-wallet', '#6C63FF'), ('zelle', 'fa-university', '#6D1ED4')]:
         metodos.append({
@@ -848,7 +861,7 @@ def admin_metodos_pago():
             'datos': config.get(f'metodo_{key}_datos', ''),
             'nota': config.get(f'metodo_{key}_nota', ''),
         })
-    return render_template('admin/metodos_pago.html', metodos=metodos)
+    return render_template('admin/metodos_pago.html', metodos=metodos, recarga_minima=recarga_minima)
 
 
 @app.route('/admin/bonus-recarga', methods=['GET', 'POST'])
