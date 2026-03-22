@@ -674,6 +674,44 @@ def cartera():
     return render_template('cartera.html', saldo=saldo, transacciones=transacciones)
 
 
+# ===== SOLICITAR RECARGA =====
+@app.route('/solicitar-recarga', methods=['GET', 'POST'])
+@login_required
+def solicitar_recarga():
+    if request.method == 'POST':
+        monto = request.form.get('monto', '0')
+        metodo_pago = request.form.get('metodo_pago', '').strip()
+        referencia = request.form.get('referencia', '').strip()
+        try:
+            monto = float(monto)
+        except (ValueError, TypeError):
+            monto = 0
+        if monto < 0.50:
+            flash('El monto mínimo es $0.50', 'error')
+            return redirect(url_for('solicitar_recarga'))
+        if not metodo_pago:
+            flash('Selecciona un método de pago', 'error')
+            return redirect(url_for('solicitar_recarga'))
+        db = get_db()
+        # Verificar que no tenga otra solicitud pendiente
+        pendiente = db.execute("SELECT id FROM solicitudes_recarga WHERE usuario_id = ? AND estado = 'pendiente'", (session['user_id'],)).fetchone()
+        if pendiente:
+            db.close()
+            flash('Ya tienes una solicitud de recarga pendiente. Espera a que sea procesada.', 'error')
+            return redirect(url_for('solicitar_recarga'))
+        db.execute("INSERT INTO solicitudes_recarga (usuario_id, monto, metodo_pago, referencia) VALUES (?,?,?,?)",
+                   (session['user_id'], monto, metodo_pago, referencia))
+        db.commit()
+        db.close()
+        flash(f'Solicitud de recarga por ${monto:.2f} enviada. El admin la revisará pronto.', 'success')
+        return redirect(url_for('solicitar_recarga'))
+    db = get_db()
+    solicitudes = db.execute("SELECT * FROM solicitudes_recarga WHERE usuario_id = ? ORDER BY fecha_solicitud DESC LIMIT 20", (session['user_id'],)).fetchall()
+    saldo = get_saldo(session['user_id'])
+    db.close()
+    return render_template('solicitar_recarga.html', solicitudes=solicitudes, saldo=saldo)
+
+
 # ===== ADMIN =====
 @app.route('/admin')
 @admin_required
@@ -684,8 +722,62 @@ def admin_panel():
     total_ventas = db.execute("SELECT COALESCE(SUM(total), 0) as c FROM pedidos WHERE estado = 'completado'").fetchone()['c']
     total_pendientes = db.execute("SELECT COUNT(*) as c FROM pedidos WHERE estado = 'pendiente'").fetchone()['c']
     ultimos_pedidos = db.execute("SELECT p.*, u.nombre as usuario_nombre, pr.nombre as producto_nombre FROM pedidos p JOIN usuarios u ON p.usuario_id = u.id JOIN productos pr ON p.producto_id = pr.id ORDER BY p.fecha_pedido DESC LIMIT 10").fetchall()
+    solicitudes_pendientes = db.execute("SELECT COUNT(*) as c FROM solicitudes_recarga WHERE estado = 'pendiente'").fetchone()['c']
     db.close()
-    return render_template('admin/panel.html', total_users=total_users, total_pedidos=total_pedidos, total_ventas=total_ventas, total_pendientes=total_pendientes, ultimos_pedidos=ultimos_pedidos)
+    return render_template('admin/panel.html', total_users=total_users, total_pedidos=total_pedidos, total_ventas=total_ventas, total_pendientes=total_pendientes, ultimos_pedidos=ultimos_pedidos, solicitudes_pendientes=solicitudes_pendientes)
+
+
+@app.route('/admin/solicitudes')
+@admin_required
+def admin_solicitudes():
+    db = get_db()
+    solicitudes = db.execute(
+        "SELECT s.*, u.nombre as usuario_nombre, u.email as usuario_email "
+        "FROM solicitudes_recarga s JOIN usuarios u ON s.usuario_id = u.id "
+        "ORDER BY CASE s.estado WHEN 'pendiente' THEN 0 ELSE 1 END, s.fecha_solicitud DESC"
+    ).fetchall()
+    db.close()
+    return render_template('admin/solicitudes.html', solicitudes=solicitudes)
+
+
+@app.route('/admin/solicitud/<int:id>/aprobar', methods=['POST'])
+@admin_required
+def admin_aprobar_solicitud(id):
+    db = get_db()
+    sol = db.execute("SELECT * FROM solicitudes_recarga WHERE id = ? AND estado = 'pendiente'", (id,)).fetchone()
+    if not sol:
+        db.close()
+        flash('Solicitud no encontrada o ya procesada', 'error')
+        return redirect(url_for('admin_solicitudes'))
+    nota = request.form.get('nota', '').strip()
+    # Aplicar la recarga al saldo del usuario
+    recargar_saldo(sol['usuario_id'], sol['monto'],
+                   f"Recarga aprobada (solicitud #{id}) - {sol['metodo_pago']}",
+                   admin_id=session['user_id'])
+    db.execute("UPDATE solicitudes_recarga SET estado = 'aprobada', admin_id = ?, nota_admin = ?, fecha_respuesta = datetime('now','localtime') WHERE id = ?",
+               (session['user_id'], nota, id))
+    db.commit()
+    db.close()
+    flash(f'Solicitud #{id} aprobada. Se recargaron ${sol["monto"]:.4f} al usuario.', 'success')
+    return redirect(url_for('admin_solicitudes'))
+
+
+@app.route('/admin/solicitud/<int:id>/rechazar', methods=['POST'])
+@admin_required
+def admin_rechazar_solicitud(id):
+    db = get_db()
+    sol = db.execute("SELECT * FROM solicitudes_recarga WHERE id = ? AND estado = 'pendiente'", (id,)).fetchone()
+    if not sol:
+        db.close()
+        flash('Solicitud no encontrada o ya procesada', 'error')
+        return redirect(url_for('admin_solicitudes'))
+    nota = request.form.get('nota', '').strip() or 'Solicitud rechazada por el administrador'
+    db.execute("UPDATE solicitudes_recarga SET estado = 'rechazada', admin_id = ?, nota_admin = ?, fecha_respuesta = datetime('now','localtime') WHERE id = ?",
+               (session['user_id'], nota, id))
+    db.commit()
+    db.close()
+    flash(f'Solicitud #{id} rechazada.', 'success')
+    return redirect(url_for('admin_solicitudes'))
 
 
 @app.route('/admin/usuarios')

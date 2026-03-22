@@ -24,9 +24,10 @@
             </div>
         </div>
 
-        <div class="wallet-info-box">
-            <i class="fas fa-info-circle"></i>
-            <p>Para recargar tu cartera, contacta al administrador por WhatsApp. Una vez confirmado el pago, tu saldo se actualizará.</p>
+        <div style="text-align:center; margin-top:1rem;">
+            <a href="{{ url_for('solicitar_recarga') }}" class="btn btn-primary" style="padding:0.8rem 2rem; font-size:1rem;">
+                <i class="fas fa-money-bill-wave"></i> Solicitar Recarga de Saldo
+            </a>
         </div>
     </div>
 </section>

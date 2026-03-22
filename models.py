@@ -160,6 +160,28 @@ def init_db():
         db.execute("SELECT canjes_por_compra FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN canjes_por_compra INTEGER DEFAULT 1")
+    # Solicitudes de recarga de saldo
+    try:
+        db.execute("SELECT id FROM solicitudes_recarga LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS solicitudes_recarga (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL,
+                monto REAL NOT NULL,
+                metodo_pago TEXT NOT NULL,
+                referencia TEXT DEFAULT '',
+                comprobante TEXT DEFAULT '',
+                estado TEXT DEFAULT 'pendiente' CHECK(estado IN ('pendiente', 'aprobada', 'rechazada')),
+                nota_admin TEXT DEFAULT '',
+                admin_id INTEGER,
+                fecha_solicitud TEXT DEFAULT (datetime('now','localtime')),
+                fecha_respuesta TEXT,
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+                FOREIGN KEY (admin_id) REFERENCES usuarios(id)
+            );
+        """)
+
     # Verificación de nombre de jugador por categoría
     try:
         db.execute("SELECT verificar_nombre FROM categorias LIMIT 1")

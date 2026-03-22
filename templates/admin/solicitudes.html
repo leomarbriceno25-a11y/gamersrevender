@@ -1,0 +1,119 @@
+{% extends 'base.html' %}
+{% block title %}Solicitudes de Recarga - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-money-bill-wave"></i> Solicitudes de Recarga</h1>
+        <p>Aprueba o rechaza las solicitudes de los revendedores</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        {% set pendientes = solicitudes|selectattr('estado', 'equalto', 'pendiente')|list %}
+        {% if pendientes %}
+        <h2 class="section-title" style="color:#f59e0b;"><i class="fas fa-clock"></i> Pendientes ({{ pendientes|length }})</h2>
+        <div class="pedidos-cards" style="margin-bottom:2rem;">
+            {% for s in pendientes %}
+            <div class="pedido-card" style="border-left:4px solid #f59e0b; padding:1.25rem;">
+                <div class="pedido-card-header" style="margin-bottom:0.75rem;">
+                    <div>
+                        <span style="font-weight:700; font-size:1.2rem; color:var(--primary);">${{ '%.2f'|format(s.monto) }}</span>
+                        <span class="badge badge-pendiente" style="margin-left:0.5rem;"><i class="fas fa-clock"></i> Pendiente</span>
+                    </div>
+                    <span style="font-size:0.8rem; color:var(--text-secondary);">#{{ s.id }}</span>
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.5rem; margin-bottom:0.75rem; font-size:0.9rem;">
+                    <div><i class="fas fa-user" style="color:var(--primary); width:16px;"></i> <strong>{{ s.usuario_nombre }}</strong></div>
+                    <div><i class="fas fa-envelope" style="color:var(--text-secondary); width:16px;"></i> {{ s.usuario_email }}</div>
+                    <div><i class="fas fa-credit-card" style="color:var(--text-secondary); width:16px;"></i> {{ s.metodo_pago }}</div>
+                    {% if s.referencia %}
+                    <div><i class="fas fa-hashtag" style="color:var(--text-secondary); width:16px;"></i> Ref: {{ s.referencia }}</div>
+                    {% endif %}
+                </div>
+                <div class="pedido-card-fecha" style="margin-bottom:1rem;"><i class="fas fa-clock"></i> {{ s.fecha_solicitud }}</div>
+
+                <div style="display:flex; gap:0.5rem; flex-wrap:wrap;">
+                    <form method="POST" action="{{ url_for('admin_aprobar_solicitud', id=s.id) }}" style="flex:1;" onsubmit="return confirm('¿Aprobar recarga de ${{ '%.2f'|format(s.monto) }} para {{ s.usuario_nombre }}?')">
+                        <input type="hidden" name="nota" value="">
+                        <button type="submit" class="btn btn-primary" style="width:100%;"><i class="fas fa-check"></i> Aprobar</button>
+                    </form>
+                    <form method="POST" action="{{ url_for('admin_rechazar_solicitud', id=s.id) }}" style="flex:1;">
+                        <div style="display:flex; gap:0.5rem;">
+                            <input type="text" name="nota" placeholder="Motivo (opcional)" style="flex:1; font-size:0.85rem;">
+                            <button type="submit" class="btn btn-sm" style="background:#ef4444; color:white; white-space:nowrap;" onclick="return confirm('¿Rechazar esta solicitud?')"><i class="fas fa-times"></i> Rechazar</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding:2rem;">
+            <i class="fas fa-check-circle" style="color:#10b981;"></i>
+            <h2>Sin solicitudes pendientes</h2>
+            <p>No hay solicitudes de recarga por procesar</p>
+        </div>
+        {% endif %}
+
+        {% set procesadas = solicitudes|rejectattr('estado', 'equalto', 'pendiente')|list %}
+        {% if procesadas %}
+        <h2 class="section-title"><i class="fas fa-history"></i> Historial</h2>
+        <!-- Desktop -->
+        <div class="table-responsive d-none-mobile">
+            <table class="table">
+                <thead>
+                    <tr><th>#</th><th>Usuario</th><th>Monto</th><th>Método</th><th>Ref</th><th>Estado</th><th>Nota</th><th>Fecha</th></tr>
+                </thead>
+                <tbody>
+                    {% for s in procesadas %}
+                    <tr>
+                        <td>{{ s.id }}</td>
+                        <td>{{ s.usuario_nombre }}</td>
+                        <td style="font-weight:600;">${{ '%.2f'|format(s.monto) }}</td>
+                        <td>{{ s.metodo_pago }}</td>
+                        <td>{{ s.referencia or '-' }}</td>
+                        <td>
+                            {% if s.estado == 'aprobada' %}
+                            <span class="badge badge-completado"><i class="fas fa-check"></i> Aprobada</span>
+                            {% else %}
+                            <span class="badge badge-cancelado"><i class="fas fa-times"></i> Rechazada</span>
+                            {% endif %}
+                        </td>
+                        <td style="font-size:0.85rem;">{{ s.nota_admin or '-' }}</td>
+                        <td style="font-size:0.85rem;">{{ s.fecha_solicitud }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <!-- Mobile -->
+        <div class="d-only-mobile pedidos-cards">
+            {% for s in procesadas %}
+            <div class="pedido-card" style="border-left:3px solid {{ '#10b981' if s.estado == 'aprobada' else '#ef4444' }};">
+                <div class="pedido-card-header">
+                    <span style="font-weight:700;">${{ '%.2f'|format(s.monto) }}</span>
+                    {% if s.estado == 'aprobada' %}
+                    <span class="badge badge-completado"><i class="fas fa-check"></i> Aprobada</span>
+                    {% else %}
+                    <span class="badge badge-cancelado"><i class="fas fa-times"></i> Rechazada</span>
+                    {% endif %}
+                </div>
+                <div style="font-size:0.85rem; color:var(--text-secondary);">
+                    <i class="fas fa-user"></i> {{ s.usuario_nombre }} — {{ s.metodo_pago }}
+                    {% if s.referencia %} — Ref: {{ s.referencia }}{% endif %}
+                </div>
+                {% if s.nota_admin %}
+                <div style="font-size:0.85rem; color:var(--text-primary); background:var(--bg-primary); padding:0.4rem 0.6rem; border-radius:6px; margin-top:0.3rem;">
+                    <i class="fas fa-comment"></i> {{ s.nota_admin }}
+                </div>
+                {% endif %}
+                <div class="pedido-card-fecha" style="margin-top:0.3rem;"><i class="fas fa-clock"></i> {{ s.fecha_solicitud }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

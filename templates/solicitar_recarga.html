@@ -1,0 +1,163 @@
+{% extends 'base.html' %}
+{% block title %}Solicitar Recarga - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('cartera') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Mi Cartera</a>
+        <h1><i class="fas fa-money-bill-wave"></i> Solicitar Recarga</h1>
+        <p>Envía tu solicitud y el admin la aprobará</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="admin-card" style="max-width:700px; margin:0 auto;">
+            <h2 style="margin-bottom:0.5rem;"><i class="fas fa-plus-circle" style="color:var(--primary);"></i> Nueva Solicitud</h2>
+            <p style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:1.5rem;">Saldo actual: <strong style="color:var(--primary);">${{ '%.4f'|format(saldo) }}</strong></p>
+
+            <form method="POST">
+                <div class="form-group">
+                    <label><i class="fas fa-dollar-sign"></i> Monto a recargar (USD)</label>
+                    <input type="number" name="monto" step="0.01" min="0.50" placeholder="Ej: 10.00" required style="font-size:1.1rem;">
+                </div>
+
+                <div class="form-group">
+                    <label><i class="fas fa-credit-card"></i> Método de pago</label>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-top:0.5rem;">
+                        <label class="metodo-pago-option" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; border:2px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.2s;">
+                            <input type="radio" name="metodo_pago" value="Pago Móvil" required style="accent-color:var(--primary);">
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary);"><i class="fas fa-mobile-alt" style="color:#4CAF50;"></i> Pago Móvil</div>
+                                <div style="font-size:0.8rem; color:var(--text-secondary);">Transferencia bancaria</div>
+                            </div>
+                        </label>
+                        <label class="metodo-pago-option" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; border:2px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.2s;">
+                            <input type="radio" name="metodo_pago" value="Binance Pay" style="accent-color:var(--primary);">
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary);"><i class="fas fa-coins" style="color:#F0B90B;"></i> Binance Pay</div>
+                                <div style="font-size:0.8rem; color:var(--text-secondary);">USDT / Cripto</div>
+                            </div>
+                        </label>
+                        <label class="metodo-pago-option" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; border:2px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.2s;">
+                            <input type="radio" name="metodo_pago" value="Zinli" style="accent-color:var(--primary);">
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary);"><i class="fas fa-wallet" style="color:#6C63FF;"></i> Zinli</div>
+                                <div style="font-size:0.8rem; color:var(--text-secondary);">Dólares digitales</div>
+                            </div>
+                        </label>
+                        <label class="metodo-pago-option" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; border:2px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.2s;">
+                            <input type="radio" name="metodo_pago" value="Zelle" style="accent-color:var(--primary);">
+                            <div>
+                                <div style="font-weight:600; color:var(--text-primary);"><i class="fas fa-university" style="color:#6D1ED4;"></i> Zelle</div>
+                                <div style="font-size:0.8rem; color:var(--text-secondary);">Transferencia USD</div>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- Datos de pago dinámicos -->
+                <div id="datos-pago" style="display:none; background:var(--bg-primary); border:1px solid var(--border); border-radius:10px; padding:1.25rem; margin-bottom:1.5rem;">
+                    <h3 style="font-size:0.95rem; margin-bottom:0.75rem; color:var(--primary);"><i class="fas fa-info-circle"></i> Datos para el pago</h3>
+                    <div id="datos-pago-content"></div>
+                </div>
+
+                <div class="form-group">
+                    <label><i class="fas fa-hashtag"></i> Número de referencia / comprobante</label>
+                    <input type="text" name="referencia" placeholder="Ej: Últimos 4 dígitos de la referencia" maxlength="100">
+                    <small style="color:var(--text-secondary); font-size:0.8rem;">Opcional pero ayuda a verificar tu pago más rápido</small>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary" style="width:100%; padding:0.9rem; font-size:1rem;">
+                        <i class="fas fa-paper-plane"></i> Enviar Solicitud de Recarga
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</section>
+
+{% if solicitudes %}
+<section class="section">
+    <div class="container" style="max-width:700px; margin:0 auto;">
+        <h2 class="section-title"><i class="fas fa-history"></i> Mis Solicitudes</h2>
+        <div class="pedidos-cards">
+            {% for s in solicitudes %}
+            <div class="pedido-card" style="border-left:3px solid {{ '#10b981' if s.estado == 'aprobada' else '#f59e0b' if s.estado == 'pendiente' else '#ef4444' }};">
+                <div class="pedido-card-header">
+                    <span style="font-weight:700; font-size:1rem;">${{ '%.2f'|format(s.monto) }}</span>
+                    {% if s.estado == 'pendiente' %}
+                    <span class="badge badge-pendiente"><i class="fas fa-clock"></i> Pendiente</span>
+                    {% elif s.estado == 'aprobada' %}
+                    <span class="badge badge-completado"><i class="fas fa-check"></i> Aprobada</span>
+                    {% else %}
+                    <span class="badge badge-cancelado"><i class="fas fa-times"></i> Rechazada</span>
+                    {% endif %}
+                </div>
+                <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.3rem;">
+                    <i class="fas fa-credit-card"></i> {{ s.metodo_pago }}
+                    {% if s.referencia %} — Ref: {{ s.referencia }}{% endif %}
+                </div>
+                {% if s.nota_admin %}
+                <div style="font-size:0.85rem; color:var(--text-primary); background:var(--bg-primary); padding:0.5rem 0.75rem; border-radius:6px; margin-bottom:0.3rem;">
+                    <i class="fas fa-comment"></i> {{ s.nota_admin }}
+                </div>
+                {% endif %}
+                <div class="pedido-card-fecha"><i class="fas fa-clock"></i> {{ s.fecha_solicitud }}</div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<script>
+const metodosDatos = {
+    'Pago Móvil': `
+        <div style="display:grid; gap:0.5rem;">
+            <div><strong>Banco:</strong> Banesco</div>
+            <div><strong>Teléfono:</strong> 0412-0000000</div>
+            <div><strong>Cédula:</strong> V-00000000</div>
+            <div style="margin-top:0.5rem; padding:0.5rem; background:var(--bg-secondary); border-radius:6px; font-size:0.85rem; color:#f59e0b;">
+                <i class="fas fa-exclamation-triangle"></i> Envía el monto exacto en Bs al cambio del día
+            </div>
+        </div>`,
+    'Binance Pay': `
+        <div style="display:grid; gap:0.5rem;">
+            <div><strong>Binance ID:</strong> 000000000</div>
+            <div><strong>Moneda:</strong> USDT</div>
+            <div style="margin-top:0.5rem; padding:0.5rem; background:var(--bg-secondary); border-radius:6px; font-size:0.85rem; color:#f59e0b;">
+                <i class="fas fa-exclamation-triangle"></i> Envía el monto exacto en USDT por Binance Pay
+            </div>
+        </div>`,
+    'Zinli': `
+        <div style="display:grid; gap:0.5rem;">
+            <div><strong>Usuario Zinli:</strong> correo@ejemplo.com</div>
+            <div style="margin-top:0.5rem; padding:0.5rem; background:var(--bg-secondary); border-radius:6px; font-size:0.85rem; color:#f59e0b;">
+                <i class="fas fa-exclamation-triangle"></i> Envía el monto exacto en USD por Zinli
+            </div>
+        </div>`,
+    'Zelle': `
+        <div style="display:grid; gap:0.5rem;">
+            <div><strong>Email Zelle:</strong> correo@ejemplo.com</div>
+            <div style="margin-top:0.5rem; padding:0.5rem; background:var(--bg-secondary); border-radius:6px; font-size:0.85rem; color:#f59e0b;">
+                <i class="fas fa-exclamation-triangle"></i> Envía el monto exacto en USD por Zelle
+            </div>
+        </div>`
+};
+
+document.querySelectorAll('input[name="metodo_pago"]').forEach(radio => {
+    radio.addEventListener('change', function() {
+        const datos = document.getElementById('datos-pago');
+        const content = document.getElementById('datos-pago-content');
+        // Highlight selected option
+        document.querySelectorAll('.metodo-pago-option').forEach(o => o.style.borderColor = 'var(--border)');
+        this.closest('.metodo-pago-option').style.borderColor = 'var(--primary)';
+        if (metodosDatos[this.value]) {
+            content.innerHTML = metodosDatos[this.value];
+            datos.style.display = 'block';
+        }
+    });
+});
+</script>
+{% endblock %}
