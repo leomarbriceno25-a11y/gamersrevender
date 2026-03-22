@@ -160,6 +160,19 @@ def init_db():
         db.execute("SELECT canjes_por_compra FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN canjes_por_compra INTEGER DEFAULT 1")
+    # Bonus por monto de recarga
+    try:
+        db.execute("SELECT id FROM bonus_recarga LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS bonus_recarga (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                monto_minimo REAL NOT NULL,
+                porcentaje_bonus REAL NOT NULL,
+                activo INTEGER DEFAULT 1
+            );
+        """)
+
     # Configuración general (métodos de pago, etc.)
     try:
         db.execute("SELECT id FROM configuracion LIMIT 1")

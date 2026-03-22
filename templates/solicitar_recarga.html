@@ -18,8 +18,26 @@
             <form method="POST">
                 <div class="form-group">
                     <label><i class="fas fa-dollar-sign"></i> Monto a recargar (USD)</label>
-                    <input type="number" name="monto" step="0.01" min="0.50" placeholder="Ej: 10.00" required style="font-size:1.1rem;">
+                    <input type="number" name="monto" id="monto_input" step="0.01" min="0.50" placeholder="Ej: 10.00" required style="font-size:1.1rem;" oninput="calcularBonus()">
+                    <div id="bonus-info" style="display:none; margin-top:0.5rem; padding:0.75rem; background:linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.05)); border:1px solid #10b981; border-radius:8px;">
+                        <div style="font-size:0.9rem; color:#10b981; font-weight:600;">
+                            <i class="fas fa-gift"></i> <span id="bonus-text"></span>
+                        </div>
+                    </div>
                 </div>
+
+                {% if bonuses %}
+                <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:10px; padding:1rem; margin-bottom:1rem;">
+                    <div style="font-size:0.85rem; font-weight:600; color:var(--text-primary); margin-bottom:0.5rem;"><i class="fas fa-gift" style="color:#10b981;"></i> Bonificaciones disponibles</div>
+                    <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
+                        {% for b in bonuses %}
+                        <div style="padding:0.4rem 0.75rem; background:var(--bg-secondary); border-radius:6px; font-size:0.8rem; color:var(--text-secondary);">
+                            <strong style="color:#10b981;">+{{ '%.0f'|format(b.porcentaje_bonus) }}%</strong> en recargas ≥ ${{ '%.2f'|format(b.monto_minimo) }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                {% endif %}
 
                 <div class="form-group">
                     <label><i class="fas fa-credit-card"></i> Método de pago</label>
@@ -136,5 +154,35 @@ document.querySelectorAll('input[name="metodo_pago"]').forEach(radio => {
         }
     });
 });
+
+// Bonus calculator
+const bonusTiers = [
+    {% for b in bonuses %}
+    { monto_minimo: {{ b.monto_minimo }}, porcentaje: {{ b.porcentaje_bonus }} }{{ ',' if not loop.last }}
+    {% endfor %}
+];
+
+function calcularBonus() {
+    const monto = parseFloat(document.getElementById('monto_input').value) || 0;
+    const infoDiv = document.getElementById('bonus-info');
+    const textSpan = document.getElementById('bonus-text');
+    if (monto <= 0 || bonusTiers.length === 0) {
+        infoDiv.style.display = 'none';
+        return;
+    }
+    // Encontrar el bonus más alto que aplica (tiers ya ordenados ASC, tomamos el último que aplique)
+    let aplicable = null;
+    for (const tier of bonusTiers) {
+        if (monto >= tier.monto_minimo) aplicable = tier;
+    }
+    if (aplicable) {
+        const bonus = (monto * aplicable.porcentaje / 100).toFixed(2);
+        const total = (monto + parseFloat(bonus)).toFixed(2);
+        textSpan.textContent = `+${aplicable.porcentaje}% bonus = $${bonus} extra → Recibirás $${total}`;
+        infoDiv.style.display = 'block';
+    } else {
+        infoDiv.style.display = 'none';
+    }
+}
 </script>
 {% endblock %}

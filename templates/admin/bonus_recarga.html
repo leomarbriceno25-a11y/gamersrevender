@@ -1,0 +1,87 @@
+{% extends 'base.html' %}
+{% block title %}Bonus de Recarga - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-gift"></i> Bonus de Recarga</h1>
+        <p>Configura porcentajes de bonus por monto mínimo de recarga</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container" style="max-width:700px; margin:0 auto;">
+        <!-- Agregar nuevo bonus -->
+        <div class="admin-card" style="margin-bottom:2rem;">
+            <h2 style="margin-bottom:1rem;"><i class="fas fa-plus-circle" style="color:var(--primary);"></i> Agregar Bonus</h2>
+            <form method="POST" style="display:flex; gap:0.75rem; align-items:flex-end; flex-wrap:wrap;">
+                <input type="hidden" name="accion" value="agregar">
+                <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
+                    <label style="font-size:0.85rem;"><i class="fas fa-dollar-sign"></i> Monto mínimo (USD)</label>
+                    <input type="number" name="monto_minimo" step="0.01" min="0.01" placeholder="Ej: 50.00" required>
+                </div>
+                <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
+                    <label style="font-size:0.85rem;"><i class="fas fa-percent"></i> Bonus (%)</label>
+                    <input type="number" name="porcentaje_bonus" step="0.01" min="0.01" max="100" placeholder="Ej: 5" required>
+                </div>
+                <button type="submit" class="btn btn-primary" style="height:42px; white-space:nowrap;">
+                    <i class="fas fa-plus"></i> Agregar
+                </button>
+            </form>
+        </div>
+
+        <!-- Lista de bonuses -->
+        {% if bonuses %}
+        <h2 class="section-title"><i class="fas fa-list"></i> Niveles de Bonus Activos</h2>
+        <div class="pedidos-cards">
+            {% for b in bonuses %}
+            <div class="pedido-card" style="border-left:4px solid {{ '#10b981' if b.activo else '#6b7280' }};">
+                <div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:0.75rem;">
+                    <div>
+                        <div style="font-size:1.1rem; font-weight:700; color:var(--text-primary);">
+                            <i class="fas fa-gift" style="color:var(--primary);"></i>
+                            +{{ '%.1f'|format(b.porcentaje_bonus) }}% bonus
+                        </div>
+                        <div style="font-size:0.9rem; color:var(--text-secondary); margin-top:0.25rem;">
+                            En recargas de <strong>${{ '%.2f'|format(b.monto_minimo) }}</strong> o más
+                        </div>
+                        {% if not b.activo %}
+                        <span class="badge badge-cancelado" style="margin-top:0.25rem;"><i class="fas fa-pause"></i> Inactivo</span>
+                        {% endif %}
+                    </div>
+                    <div style="display:flex; gap:0.5rem;">
+                        <form method="POST" style="display:inline;">
+                            <input type="hidden" name="accion" value="toggle">
+                            <input type="hidden" name="bonus_id" value="{{ b.id }}">
+                            <button type="submit" class="btn btn-sm" style="background:{{ '#6b7280' if b.activo else '#10b981' }}; color:white;">
+                                <i class="fas {{ 'fa-pause' if b.activo else 'fa-play' }}"></i> {{ 'Desactivar' if b.activo else 'Activar' }}
+                            </button>
+                        </form>
+                        <form method="POST" style="display:inline;" onsubmit="return confirm('¿Eliminar este bonus?')">
+                            <input type="hidden" name="accion" value="eliminar">
+                            <input type="hidden" name="bonus_id" value="{{ b.id }}">
+                            <button type="submit" class="btn btn-sm" style="background:#ef4444; color:white;">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <div style="margin-top:1.5rem; padding:1rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:10px; font-size:0.9rem; color:var(--text-secondary);">
+            <i class="fas fa-info-circle" style="color:var(--primary);"></i>
+            <strong>¿Cómo funciona?</strong> Al aprobar una solicitud de recarga, se aplica automáticamente el bonus más alto que corresponda según el monto. 
+            Ejemplo: si el usuario recarga $50 y hay un bonus de 5% para recargas >= $50, recibirá $50 + $2.50 = $52.50 en su cartera.
+        </div>
+        {% else %}
+        <div class="empty-state" style="padding:2rem;">
+            <i class="fas fa-gift"></i>
+            <h2>Sin bonus configurados</h2>
+            <p>Agrega niveles de bonus para incentivar recargas mayores</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
