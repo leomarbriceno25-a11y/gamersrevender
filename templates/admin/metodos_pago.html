@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block title %}Métodos de Pago - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-credit-card"></i> Métodos de Pago</h1>
+        <p>Configura los datos que verán los usuarios al solicitar recarga</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container" style="max-width:800px; margin:0 auto;">
+        <form method="POST">
+            {% for m in metodos %}
+            <div class="admin-card" style="margin-bottom:1.5rem; border-left:4px solid {{ m.color }};">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">
+                    <div style="display:flex; align-items:center; gap:0.75rem;">
+                        <i class="fas {{ m.icono }}" style="font-size:1.5rem; color:{{ m.color }};"></i>
+                        <h2 style="margin:0; font-size:1.1rem;">{{ m.nombre or m.key }}</h2>
+                    </div>
+                    <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+                        <span style="font-size:0.85rem; color:var(--text-secondary);">Activo</span>
+                        <input type="checkbox" name="{{ m.key }}_activo" value="1" {{ 'checked' if m.activo == '1' }}
+                               style="width:20px; height:20px; accent-color:{{ m.color }};">
+                    </label>
+                </div>
+
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label style="font-size:0.85rem;"><i class="fas fa-tag"></i> Nombre del método</label>
+                    <input type="text" name="{{ m.key }}_nombre" value="{{ m.nombre }}" placeholder="Ej: Pago Móvil" style="font-size:0.95rem;">
+                </div>
+
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label style="font-size:0.85rem;"><i class="fas fa-info-circle"></i> Datos de pago (un dato por línea)</label>
+                    <textarea name="{{ m.key }}_datos" rows="4" placeholder="Banco: Banesco&#10;Teléfono: 0412-1234567&#10;Cédula: V-12345678" style="font-size:0.95rem; resize:vertical;">{{ m.datos }}</textarea>
+                    <small style="color:var(--text-secondary); font-size:0.8rem;">Estos datos los verá el usuario al seleccionar este método</small>
+                </div>
+
+                <div class="form-group">
+                    <label style="font-size:0.85rem;"><i class="fas fa-exclamation-triangle"></i> Nota / advertencia</label>
+                    <input type="text" name="{{ m.key }}_nota" value="{{ m.nota }}" placeholder="Ej: Envía el monto exacto en Bs al cambio del día" style="font-size:0.95rem;">
+                </div>
+            </div>
+            {% endfor %}
+
+            <div class="form-actions" style="text-align:center;">
+                <button type="submit" class="btn btn-primary" style="padding:0.9rem 3rem; font-size:1rem;">
+                    <i class="fas fa-save"></i> Guardar Cambios
+                </button>
+            </div>
+        </form>
+    </div>
+</section>
+{% endblock %}

@@ -708,8 +708,21 @@ def solicitar_recarga():
     db = get_db()
     solicitudes = db.execute("SELECT * FROM solicitudes_recarga WHERE usuario_id = ? ORDER BY fecha_solicitud DESC LIMIT 20", (session['user_id'],)).fetchall()
     saldo = get_saldo(session['user_id'])
+    # Cargar config de métodos de pago
+    config_rows = db.execute("SELECT clave, valor FROM configuracion WHERE clave LIKE 'metodo_%'").fetchall()
+    config = {r['clave']: r['valor'] for r in config_rows}
     db.close()
-    return render_template('solicitar_recarga.html', solicitudes=solicitudes, saldo=saldo)
+    # Armar lista de métodos activos
+    metodos = []
+    for key in ['pago_movil', 'binance', 'zinli', 'zelle']:
+        if config.get(f'metodo_{key}_activo') == '1':
+            metodos.append({
+                'id': key,
+                'nombre': config.get(f'metodo_{key}_nombre', key),
+                'datos': config.get(f'metodo_{key}_datos', ''),
+                'nota': config.get(f'metodo_{key}_nota', ''),
+            })
+    return render_template('solicitar_recarga.html', solicitudes=solicitudes, saldo=saldo, metodos=metodos)
 
 
 # ===== ADMIN =====
@@ -778,6 +791,48 @@ def admin_rechazar_solicitud(id):
     db.close()
     flash(f'Solicitud #{id} rechazada.', 'success')
     return redirect(url_for('admin_solicitudes'))
+
+
+@app.route('/admin/metodos-pago', methods=['GET', 'POST'])
+@admin_required
+def admin_metodos_pago():
+    db = get_db()
+    if request.method == 'POST':
+        for key in ['pago_movil', 'binance', 'zinli', 'zelle']:
+            activo = '1' if request.form.get(f'{key}_activo') else '0'
+            nombre = request.form.get(f'{key}_nombre', '').strip()
+            datos = request.form.get(f'{key}_datos', '').strip()
+            nota = request.form.get(f'{key}_nota', '').strip()
+            for clave, valor in [
+                (f'metodo_{key}_activo', activo),
+                (f'metodo_{key}_nombre', nombre),
+                (f'metodo_{key}_datos', datos),
+                (f'metodo_{key}_nota', nota),
+            ]:
+                existing = db.execute("SELECT id FROM configuracion WHERE clave = ?", (clave,)).fetchone()
+                if existing:
+                    db.execute("UPDATE configuracion SET valor = ? WHERE clave = ?", (valor, clave))
+                else:
+                    db.execute("INSERT INTO configuracion (clave, valor) VALUES (?,?)", (clave, valor))
+        db.commit()
+        db.close()
+        flash('Métodos de pago actualizados correctamente', 'success')
+        return redirect(url_for('admin_metodos_pago'))
+    config_rows = db.execute("SELECT clave, valor FROM configuracion WHERE clave LIKE 'metodo_%'").fetchall()
+    config = {r['clave']: r['valor'] for r in config_rows}
+    db.close()
+    metodos = []
+    for key, icono, color in [('pago_movil', 'fa-mobile-alt', '#4CAF50'), ('binance', 'fa-coins', '#F0B90B'), ('zinli', 'fa-wallet', '#6C63FF'), ('zelle', 'fa-university', '#6D1ED4')]:
+        metodos.append({
+            'key': key,
+            'icono': icono,
+            'color': color,
+            'activo': config.get(f'metodo_{key}_activo', '0'),
+            'nombre': config.get(f'metodo_{key}_nombre', ''),
+            'datos': config.get(f'metodo_{key}_datos', ''),
+            'nota': config.get(f'metodo_{key}_nota', ''),
+        })
+    return render_template('admin/metodos_pago.html', metodos=metodos)
 
 
 @app.route('/admin/usuarios')

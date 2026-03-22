@@ -160,6 +160,39 @@ def init_db():
         db.execute("SELECT canjes_por_compra FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN canjes_por_compra INTEGER DEFAULT 1")
+    # Configuración general (métodos de pago, etc.)
+    try:
+        db.execute("SELECT id FROM configuracion LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS configuracion (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                clave TEXT NOT NULL UNIQUE,
+                valor TEXT DEFAULT ''
+            );
+        """)
+        # Insertar métodos de pago por defecto
+        metodos_default = [
+            ('metodo_pago_movil_activo', '1'),
+            ('metodo_pago_movil_nombre', 'Pago Móvil'),
+            ('metodo_pago_movil_datos', 'Banco: ---\nTeléfono: ---\nCédula: ---'),
+            ('metodo_pago_movil_nota', 'Envía el monto exacto en Bs al cambio del día'),
+            ('metodo_binance_activo', '1'),
+            ('metodo_binance_nombre', 'Binance Pay'),
+            ('metodo_binance_datos', 'Binance ID: ---\nMoneda: USDT'),
+            ('metodo_binance_nota', 'Envía el monto exacto en USDT por Binance Pay'),
+            ('metodo_zinli_activo', '1'),
+            ('metodo_zinli_nombre', 'Zinli'),
+            ('metodo_zinli_datos', 'Usuario Zinli: ---'),
+            ('metodo_zinli_nota', 'Envía el monto exacto en USD por Zinli'),
+            ('metodo_zelle_activo', '1'),
+            ('metodo_zelle_nombre', 'Zelle'),
+            ('metodo_zelle_datos', 'Email Zelle: ---'),
+            ('metodo_zelle_nota', 'Envía el monto exacto en USD por Zelle'),
+        ]
+        for clave, valor in metodos_default:
+            db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES (?,?)", (clave, valor))
+
     # Solicitudes de recarga de saldo
     try:
         db.execute("SELECT id FROM solicitudes_recarga LIMIT 1")

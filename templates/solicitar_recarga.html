@@ -23,36 +23,22 @@
 
                 <div class="form-group">
                     <label><i class="fas fa-credit-card"></i> Método de pago</label>
+                    {% if metodos %}
                     <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-top:0.5rem;">
-                        <label class="metodo-pago-option" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; border:2px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.2s;">
-                            <input type="radio" name="metodo_pago" value="Pago Móvil" required style="accent-color:var(--primary);">
+                        {% for m in metodos %}
+                        <label class="metodo-pago-option" data-metodo="{{ m.id }}" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; border:2px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.2s;">
+                            <input type="radio" name="metodo_pago" value="{{ m.nombre }}" required style="accent-color:var(--primary);">
                             <div>
-                                <div style="font-weight:600; color:var(--text-primary);"><i class="fas fa-mobile-alt" style="color:#4CAF50;"></i> Pago Móvil</div>
-                                <div style="font-size:0.8rem; color:var(--text-secondary);">Transferencia bancaria</div>
+                                <div style="font-weight:600; color:var(--text-primary);">{{ m.nombre }}</div>
                             </div>
                         </label>
-                        <label class="metodo-pago-option" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; border:2px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.2s;">
-                            <input type="radio" name="metodo_pago" value="Binance Pay" style="accent-color:var(--primary);">
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary);"><i class="fas fa-coins" style="color:#F0B90B;"></i> Binance Pay</div>
-                                <div style="font-size:0.8rem; color:var(--text-secondary);">USDT / Cripto</div>
-                            </div>
-                        </label>
-                        <label class="metodo-pago-option" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; border:2px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.2s;">
-                            <input type="radio" name="metodo_pago" value="Zinli" style="accent-color:var(--primary);">
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary);"><i class="fas fa-wallet" style="color:#6C63FF;"></i> Zinli</div>
-                                <div style="font-size:0.8rem; color:var(--text-secondary);">Dólares digitales</div>
-                            </div>
-                        </label>
-                        <label class="metodo-pago-option" style="display:flex; align-items:center; gap:0.75rem; padding:1rem; border:2px solid var(--border); border-radius:10px; cursor:pointer; transition:all 0.2s;">
-                            <input type="radio" name="metodo_pago" value="Zelle" style="accent-color:var(--primary);">
-                            <div>
-                                <div style="font-weight:600; color:var(--text-primary);"><i class="fas fa-university" style="color:#6D1ED4;"></i> Zelle</div>
-                                <div style="font-size:0.8rem; color:var(--text-secondary);">Transferencia USD</div>
-                            </div>
-                        </label>
+                        {% endfor %}
                     </div>
+                    {% else %}
+                    <div style="padding:1rem; background:var(--bg-primary); border-radius:8px; color:var(--text-secondary); text-align:center;">
+                        <i class="fas fa-exclamation-circle"></i> No hay métodos de pago configurados. Contacta al administrador.
+                    </div>
+                    {% endif %}
                 </div>
 
                 <!-- Datos de pago dinámicos -->
@@ -113,48 +99,39 @@
 
 <script>
 const metodosDatos = {
-    'Pago Móvil': `
-        <div style="display:grid; gap:0.5rem;">
-            <div><strong>Banco:</strong> Banesco</div>
-            <div><strong>Teléfono:</strong> 0412-0000000</div>
-            <div><strong>Cédula:</strong> V-00000000</div>
-            <div style="margin-top:0.5rem; padding:0.5rem; background:var(--bg-secondary); border-radius:6px; font-size:0.85rem; color:#f59e0b;">
-                <i class="fas fa-exclamation-triangle"></i> Envía el monto exacto en Bs al cambio del día
-            </div>
-        </div>`,
-    'Binance Pay': `
-        <div style="display:grid; gap:0.5rem;">
-            <div><strong>Binance ID:</strong> 000000000</div>
-            <div><strong>Moneda:</strong> USDT</div>
-            <div style="margin-top:0.5rem; padding:0.5rem; background:var(--bg-secondary); border-radius:6px; font-size:0.85rem; color:#f59e0b;">
-                <i class="fas fa-exclamation-triangle"></i> Envía el monto exacto en USDT por Binance Pay
-            </div>
-        </div>`,
-    'Zinli': `
-        <div style="display:grid; gap:0.5rem;">
-            <div><strong>Usuario Zinli:</strong> correo@ejemplo.com</div>
-            <div style="margin-top:0.5rem; padding:0.5rem; background:var(--bg-secondary); border-radius:6px; font-size:0.85rem; color:#f59e0b;">
-                <i class="fas fa-exclamation-triangle"></i> Envía el monto exacto en USD por Zinli
-            </div>
-        </div>`,
-    'Zelle': `
-        <div style="display:grid; gap:0.5rem;">
-            <div><strong>Email Zelle:</strong> correo@ejemplo.com</div>
-            <div style="margin-top:0.5rem; padding:0.5rem; background:var(--bg-secondary); border-radius:6px; font-size:0.85rem; color:#f59e0b;">
-                <i class="fas fa-exclamation-triangle"></i> Envía el monto exacto en USD por Zelle
-            </div>
-        </div>`
+    {% for m in metodos %}
+    '{{ m.nombre }}': {
+        datos: {{ m.datos|tojson }},
+        nota: {{ m.nota|tojson }}
+    }{{ ',' if not loop.last }}
+    {% endfor %}
 };
 
 document.querySelectorAll('input[name="metodo_pago"]').forEach(radio => {
     radio.addEventListener('change', function() {
         const datos = document.getElementById('datos-pago');
         const content = document.getElementById('datos-pago-content');
-        // Highlight selected option
         document.querySelectorAll('.metodo-pago-option').forEach(o => o.style.borderColor = 'var(--border)');
         this.closest('.metodo-pago-option').style.borderColor = 'var(--primary)';
-        if (metodosDatos[this.value]) {
-            content.innerHTML = metodosDatos[this.value];
+        const info = metodosDatos[this.value];
+        if (info) {
+            let html = '<div style="display:grid; gap:0.5rem;">';
+            info.datos.split('\n').forEach(line => {
+                if (line.trim()) {
+                    const parts = line.split(':');
+                    if (parts.length >= 2) {
+                        html += '<div><strong>' + parts[0].trim() + ':</strong> ' + parts.slice(1).join(':').trim() + '</div>';
+                    } else {
+                        html += '<div>' + line.trim() + '</div>';
+                    }
+                }
+            });
+            if (info.nota) {
+                html += '<div style="margin-top:0.5rem; padding:0.5rem; background:var(--bg-secondary); border-radius:6px; font-size:0.85rem; color:#f59e0b;">';
+                html += '<i class="fas fa-exclamation-triangle"></i> ' + info.nota + '</div>';
+            }
+            html += '</div>';
+            content.innerHTML = html;
             datos.style.display = 'block';
         }
     });
