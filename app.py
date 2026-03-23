@@ -1579,8 +1579,14 @@ def admin_almacen():
 def admin_pedidos():
     db = get_db()
     pedidos = db.execute("SELECT p.*, u.nombre as usuario_nombre, u.email as usuario_email, pr.nombre as producto_nombre FROM pedidos p JOIN usuarios u ON p.usuario_id = u.id JOIN productos pr ON p.producto_id = pr.id ORDER BY p.fecha_pedido DESC").fetchall()
+    # Obtener PINes usados por cada pedido
+    pines_por_pedido = {}
+    for ped in pedidos:
+        pines = db.execute("SELECT id, pin FROM pines WHERE pedido_id = ?", (ped['id'],)).fetchall()
+        if pines:
+            pines_por_pedido[ped['id']] = pines
     db.close()
-    return render_template('admin/pedidos.html', pedidos=pedidos)
+    return render_template('admin/pedidos.html', pedidos=pedidos, pines_por_pedido=pines_por_pedido)
 
 
 @app.route('/admin/pedido/<int:id>/estado', methods=['POST'])

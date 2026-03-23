@@ -115,6 +115,10 @@
             {% endfor %}
         </div>
 
+        <div style="margin-bottom:1rem;">
+            <input type="text" id="filtroPines" class="form-input" placeholder="Buscar por # de PIN, código, producto, estado..." style="max-width:500px;" oninput="filtrarPines()">
+        </div>
+
         {% if filtro and productos_api %}
         <div style="margin-bottom: 1rem;">
             <form method="POST" style="display:inline;">
@@ -129,7 +133,7 @@
 
         {% if pines %}
         <div class="table-responsive">
-            <table class="table">
+            <table class="table" id="tablaPines">
                 <thead>
                     <tr><th>ID</th><th>Producto</th><th>PIN</th><th>Estado</th><th>Usado por</th><th>Fecha</th><th>Acciones</th></tr>
                 </thead>
@@ -177,4 +181,16 @@
         {% endif %}
     </div>
 </section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function filtrarPines() {
+    var texto = document.getElementById('filtroPines').value.toLowerCase();
+    var filas = document.querySelectorAll('#tablaPines tbody tr');
+    filas.forEach(function(fila) {
+        fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
+    });
+}
+</script>
 {% endblock %}
