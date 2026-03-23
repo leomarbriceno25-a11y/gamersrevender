@@ -11,6 +11,7 @@ from models import (
 import config
 import secrets
 import os
+from telegram_bot import notificar_recarga, notificar_stock_bajo
 import uuid
 import sqlite3
 
@@ -141,6 +142,21 @@ def restock_pines(producto_id=None):
 
     db.close()
     return transferidos_total
+
+
+# ===== HELPERS =====
+def verificar_stock_bajo(producto_id):
+    """Verifica si el stock de pines bajó del mínimo y notifica por Telegram"""
+    try:
+        db = get_db()
+        prod = db.execute("SELECT id, nombre, stock_minimo FROM productos WHERE id = ?", (producto_id,)).fetchone()
+        if prod and prod['stock_minimo'] > 0:
+            stock_actual = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (producto_id,)).fetchone()['c']
+            if stock_actual <= prod['stock_minimo']:
+                notificar_stock_bajo(prod['nombre'], prod['id'], stock_actual, prod['stock_minimo'])
+        db.close()
+    except Exception as e:
+        print(f"[STOCK] Error verificando stock: {e}")
 
 
 # ===== DECORADORES =====
@@ -516,6 +532,7 @@ def comprar():
             db3.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador, pedido_id))
             db3.commit()
             db3.close()
+            verificar_stock_bajo(pin_producto_id)
             flash(f'Pedido #{pedido_id} completado. {canjes_ok} recarga(s) aplicada(s) a {nombre_jugador} (ID: {id_juego}).', 'success')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         elif canjes_ok > 0:
@@ -532,6 +549,7 @@ def comprar():
             db4.commit()
             db4.close()
             recargar_saldo(user_id, monto_parcial, f"Reembolso parcial: {canjes_ok}/{num_canjes} canjes OK pedido #{pedido_id}")
+            verificar_stock_bajo(pin_producto_id)
             flash(f'Pedido #{pedido_id}: {canjes_ok}/{num_canjes} recargas completadas. Se reembolsó ${monto_parcial:.4f} por las fallidas.', 'warning')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         else:
@@ -562,6 +580,7 @@ def comprar():
             db.execute("UPDATE pedidos SET estado = 'completado', codigo_entregado = ? WHERE id = ?", (todos_codigos, pedido_id))
             db.commit()
             db.close()
+            verificar_stock_bajo(producto_id)
             flash(f'Pedido #{pedido_id} completado. {len(codigos)} código(s) entregado(s).', 'success')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         else:
@@ -706,7 +725,9 @@ def solicitar_recarga():
         db.execute("INSERT INTO solicitudes_recarga (usuario_id, monto, metodo_pago, referencia) VALUES (?,?,?,?)",
                    (session['user_id'], monto, metodo_pago, referencia))
         db.commit()
+        usuario = db.execute("SELECT nombre FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
         db.close()
+        notificar_recarga(usuario['nombre'] if usuario else 'Desconocido', monto, metodo_pago, referencia)
         flash(f'Solicitud de recarga por ${monto:.2f} enviada. El admin la revisará pronto.', 'success')
         return redirect(url_for('solicitar_recarga'))
     db = get_db()
@@ -903,6 +924,34 @@ def admin_bonus_recarga():
     bonuses = db.execute("SELECT * FROM bonus_recarga ORDER BY monto_minimo ASC").fetchall()
     db.close()
     return render_template('admin/bonus_recarga.html', bonuses=bonuses)
+
+
+@app.route('/admin/telegram', methods=['GET', 'POST'])
+@admin_required
+def admin_telegram():
+    db = get_db()
+    if request.method == 'POST':
+        token = request.form.get('telegram_bot_token', '').strip()
+        chat_id = request.form.get('telegram_chat_id', '').strip()
+        activo = '1' if request.form.get('telegram_activo') else '0'
+        for clave, valor in [('telegram_bot_token', token), ('telegram_chat_id', chat_id), ('telegram_activo', activo)]:
+            existing = db.execute("SELECT id FROM configuracion WHERE clave = ?", (clave,)).fetchone()
+            if existing:
+                db.execute("UPDATE configuracion SET valor = ? WHERE clave = ?", (valor, clave))
+            else:
+                db.execute("INSERT INTO configuracion (clave, valor) VALUES (?,?)", (clave, valor))
+        db.commit()
+        # Test si se activa
+        if activo == '1' and token and chat_id:
+            from telegram_bot import enviar_telegram
+            enviar_telegram("✅ <b>Notificaciones activadas</b>\n\nRecibirás alertas de recargas y stock bajo.")
+        db.close()
+        flash('Configuración de Telegram guardada', 'success')
+        return redirect(url_for('admin_telegram'))
+    config_rows = db.execute("SELECT clave, valor FROM configuracion WHERE clave LIKE 'telegram_%'").fetchall()
+    config = {r['clave']: r['valor'] for r in config_rows}
+    db.close()
+    return render_template('admin/telegram.html', config=config)
 
 
 @app.route('/admin/usuarios')
@@ -1793,6 +1842,7 @@ def api_comprar():
             db3.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador, pedido_id))
             db3.commit()
             db3.close()
+            verificar_stock_bajo(pin_producto_id)
             return jsonify({
                 'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
                 'total': total, 'saldo_restante': get_saldo(user_id_api),
@@ -1811,6 +1861,7 @@ def api_comprar():
             db4.commit()
             db4.close()
             recargar_saldo(user_id_api, monto_parcial, f"Reembolso parcial API: {canjes_ok}/{num_canjes} canjes OK pedido #{pedido_id}")
+            verificar_stock_bajo(pin_producto_id)
             return jsonify({
                 'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
                 'total': total, 'saldo_restante': get_saldo(user_id_api),
@@ -1847,6 +1898,7 @@ def api_comprar():
             db.execute("UPDATE pedidos SET estado = 'completado', codigo_entregado = ? WHERE id = ?", (todos_codigos, pedido_id))
             db.commit()
             db.close()
+            verificar_stock_bajo(producto_id)
             return jsonify({
                 'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
                 'total': total, 'saldo_restante': get_saldo(user_id_api),

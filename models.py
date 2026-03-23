@@ -206,8 +206,11 @@ def init_db():
         ]
         for clave, valor in metodos_default:
             db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES (?,?)", (clave, valor))
-    # Asegurar que recarga_minima exista en DBs existentes
+    # Asegurar que configs existan en DBs existentes
     db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('recarga_minima', '0.50')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('telegram_bot_token', '')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('telegram_chat_id', '')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('telegram_activo', '0')")
 
     # Solicitudes de recarga de saldo
     try:

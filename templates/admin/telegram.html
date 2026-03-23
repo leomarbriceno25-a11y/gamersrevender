@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+{% block title %}Telegram - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fab fa-telegram"></i> Notificaciones Telegram</h1>
+        <p>Recibe alertas de recargas y stock bajo directo en tu Telegram</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container" style="max-width:600px; margin:0 auto;">
+        <form method="POST">
+            <div class="admin-card" style="margin-bottom:1.5rem; border-left:4px solid #0088cc;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem;">
+                    <div style="display:flex; align-items:center; gap:0.75rem;">
+                        <i class="fab fa-telegram" style="font-size:1.8rem; color:#0088cc;"></i>
+                        <h2 style="margin:0; font-size:1.1rem;">Configuración del Bot</h2>
+                    </div>
+                    <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+                        <span style="font-size:0.85rem; color:var(--text-secondary);">Activo</span>
+                        <input type="checkbox" name="telegram_activo" value="1" {{ 'checked' if config.get('telegram_activo') == '1' }}
+                               style="width:22px; height:22px; accent-color:#0088cc;">
+                    </label>
+                </div>
+
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label style="font-size:0.85rem;"><i class="fas fa-key"></i> Bot Token</label>
+                    <input type="text" name="telegram_bot_token" value="{{ config.get('telegram_bot_token', '') }}" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" style="font-size:0.95rem; font-family:monospace;">
+                    <small style="color:var(--text-secondary); font-size:0.8rem;">Obtén tu token creando un bot con <a href="https://t.me/BotFather" target="_blank" style="color:#0088cc;">@BotFather</a></small>
+                </div>
+
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label style="font-size:0.85rem;"><i class="fas fa-hashtag"></i> Chat ID</label>
+                    <input type="text" name="telegram_chat_id" value="{{ config.get('telegram_chat_id', '') }}" placeholder="Ej: 123456789 o -100123456789" style="font-size:0.95rem; font-family:monospace;">
+                    <small style="color:var(--text-secondary); font-size:0.8rem;">Tu ID personal o el del grupo. Usa <a href="https://t.me/userinfobot" target="_blank" style="color:#0088cc;">@userinfobot</a> para obtenerlo</small>
+                </div>
+            </div>
+
+            <div class="admin-card" style="margin-bottom:1.5rem; background:rgba(0,136,204,0.05); border:1px solid rgba(0,136,204,0.2);">
+                <h3 style="margin:0 0 0.75rem; font-size:0.95rem; color:var(--text-primary);"><i class="fas fa-bell" style="color:#0088cc;"></i> Notificaciones que recibirás</h3>
+                <div style="display:grid; gap:0.5rem;">
+                    <div style="display:flex; align-items:center; gap:0.5rem; font-size:0.85rem; color:var(--text-secondary);">
+                        <i class="fas fa-check-circle" style="color:#10b981;"></i> Nueva solicitud de recarga de billetera
+                    </div>
+                    <div style="display:flex; align-items:center; gap:0.5rem; font-size:0.85rem; color:var(--text-secondary);">
+                        <i class="fas fa-check-circle" style="color:#10b981;"></i> Stock bajo de códigos en almacén
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-actions" style="text-align:center;">
+                <button type="submit" class="btn btn-primary" style="padding:0.9rem 3rem; font-size:1rem; background:#0088cc;">
+                    <i class="fas fa-save"></i> Guardar Configuración
+                </button>
+            </div>
+        </form>
+
+        <div class="admin-card" style="margin-top:1.5rem;">
+            <h3 style="margin:0 0 0.75rem; font-size:0.95rem;"><i class="fas fa-info-circle" style="color:#0088cc;"></i> ¿Cómo configurar?</h3>
+            <ol style="margin:0; padding-left:1.2rem; font-size:0.85rem; color:var(--text-secondary); line-height:1.8;">
+                <li>Abre Telegram y busca <strong>@BotFather</strong></li>
+                <li>Envía <code>/newbot</code> y sigue las instrucciones</li>
+                <li>Copia el <strong>token</strong> que te da y pégalo arriba</li>
+                <li>Busca <strong>@userinfobot</strong> y envía <code>/start</code> para obtener tu <strong>Chat ID</strong></li>
+                <li>Pega tu Chat ID arriba y activa las notificaciones</li>
+                <li><strong>Importante:</strong> envía <code>/start</code> a tu bot antes de guardar</li>
+            </ol>
+        </div>
+    </div>
+</section>
+{% endblock %}
