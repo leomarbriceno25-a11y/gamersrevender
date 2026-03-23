@@ -1544,6 +1544,14 @@ def admin_almacen():
                 db.execute("DELETE FROM pines WHERE producto_id = ? AND estado = 'disponible'", (producto_id,))
                 db.commit()
                 flash('PINes disponibles eliminados', 'success')
+        elif accion == 'stock_minimo':
+            producto_id = int(request.form.get('producto_id', 0))
+            stock_min = int(request.form.get('stock_minimo', 0))
+            if producto_id > 0:
+                db.execute("UPDATE productos SET stock_minimo = ? WHERE id = ?", (stock_min, producto_id))
+                db.commit()
+                prod_nombre = db.execute("SELECT nombre FROM productos WHERE id = ?", (producto_id,)).fetchone()
+                flash(f'Alerta Telegram para "{prod_nombre["nombre"]}" configurada: stock mínimo = {stock_min}', 'success')
         return redirect(url_for('admin_almacen'))
 
     # Productos de categoría Gift Card + productos usa_api (Free Fire)

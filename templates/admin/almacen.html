@@ -40,6 +40,31 @@
 {% if productos_api %}
 <section class="section">
     <div class="container">
+        <div class="admin-card" style="margin-bottom:1.5rem; border-left:4px solid #0088cc;">
+            <h2 style="margin-bottom:0.75rem;"><i class="fab fa-telegram" style="color:#0088cc;"></i> Alerta Telegram por Stock Bajo</h2>
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin-bottom:1rem;">Configura a cuántos códigos debe bajar cada producto para recibir notificación. Pon <strong>0</strong> para desactivar.</p>
+            <div style="display:grid; gap:0.75rem;">
+                {% for p in productos_api %}
+                <form method="POST" style="display:flex; align-items:center; gap:0.75rem; padding:0.75rem; background:var(--bg-primary); border-radius:8px; border:1px solid var(--border);">
+                    <input type="hidden" name="accion" value="stock_minimo">
+                    <input type="hidden" name="producto_id" value="{{ p.id }}">
+                    <div style="flex:1; display:flex; align-items:center; gap:0.5rem;">
+                        <i class="fas fa-gem" style="color:var(--primary);"></i>
+                        <div>
+                            <div style="font-weight:600; font-size:0.9rem; color:var(--text-primary);">{{ p.nombre }}</div>
+                            <div style="font-size:0.75rem; color:var(--text-secondary);">Stock actual: <strong class="{{ 'text-green' if stock.get(p.id, 0) > (p.stock_minimo or 0) else '' }}" style="{{ 'color:#ef4444;font-weight:700;' if stock.get(p.id, 0) <= (p.stock_minimo or 0) and (p.stock_minimo or 0) > 0 else '' }}">{{ stock.get(p.id, 0) }}</strong></div>
+                        </div>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:0.4rem;">
+                        <label style="font-size:0.8rem; color:var(--text-secondary); white-space:nowrap;">Mínimo:</label>
+                        <input type="number" name="stock_minimo" value="{{ p.stock_minimo or 0 }}" min="0" style="width:70px; padding:0.4rem 0.5rem; font-size:0.9rem; text-align:center; border-radius:6px; border:1px solid var(--border); background:var(--bg-secondary); color:var(--text-primary);">
+                    </div>
+                    <button type="submit" class="btn btn-sm" style="background:#0088cc; color:#fff; border:none; border-radius:6px; padding:0.4rem 0.7rem; font-size:0.8rem; cursor:pointer; white-space:nowrap;"><i class="fas fa-save"></i></button>
+                </form>
+                {% endfor %}
+            </div>
+        </div>
+
         <div class="admin-card">
             <h2><i class="fas fa-plus-circle"></i> Agregar PINes</h2>
             <form method="POST">
