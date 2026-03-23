@@ -38,10 +38,7 @@
                             {% if pines_por_pedido.get(p.id) %}
                             {% set pines_ped = pines_por_pedido[p.id] %}
                             {% for pin in pines_ped %}
-                            <div style="font-size:0.7rem;margin-bottom:0.15rem;">
-                                <span style="color:var(--text-secondary);">#{{ pin.id }}</span>
-                                <code style="background:var(--bg-primary);padding:0.1rem 0.3rem;border-radius:3px;font-size:0.65rem;word-break:break-all;" title="{{ pin.pin }}">{{ pin.pin[:20] }}{% if pin.pin|length > 20 %}…{% endif %}</code>
-                            </div>
+                            <span style="font-size:0.75rem; color:var(--primary);" title="{{ pin.pin }}">#{{ pin.id }}</span>{{ ', ' if not loop.last }}
                             {% endfor %}
                             {% else %}-{% endif %}
                         </td>
