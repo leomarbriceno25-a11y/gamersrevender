@@ -63,15 +63,19 @@
                         <td>{% if u.activo %}<span class="badge badge-completado">Activo</span>{% else %}<span class="badge badge-cancelado">Pendiente</span>{% endif %}</td>
                         <td>{{ u.fecha_registro or '-' }}</td>
                         <td>
-                            <div style="display:flex;gap:0.3rem;">
-                                <button class="btn btn-sm btn-secondary" onclick="editarUsuario({{ u.id }}, '{{ u.nombre|e }}', '{{ u.email|e }}', '{{ u.telefono|e }}')"><i class="fas fa-edit"></i></button>
+                            <div style="display:flex;gap:0.3rem;flex-wrap:wrap;">
+                                <button class="btn btn-sm btn-secondary" title="Editar" onclick="editarUsuario({{ u.id }}, '{{ u.nombre|e }}', '{{ u.email|e }}', '{{ u.telefono|e }}')"><i class="fas fa-edit"></i></button>
                                 {% if u.rol != 'admin' %}
+                                <button class="btn btn-sm" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Descontar saldo" onclick="descontarSaldo({{ u.id }}, '{{ u.nombre|e }}', {{ u.saldo }})"><i class="fas fa-minus-circle"></i></button>
                                 <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="display:inline;">
                                     {% if u.activo %}
-                                    <button type="submit" class="btn btn-sm" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" onclick="return confirm('¿Desactivar a {{ u.nombre }}?')"><i class="fas fa-ban"></i></button>
+                                    <button type="submit" class="btn btn-sm" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Desactivar" onclick="return confirm('¿Desactivar a {{ u.nombre }}?')"><i class="fas fa-ban"></i></button>
                                     {% else %}
-                                    <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')"><i class="fas fa-check"></i></button>
+                                    <button type="submit" class="btn btn-sm btn-primary" title="Aprobar" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')"><i class="fas fa-check"></i></button>
                                     {% endif %}
+                                </form>
+                                <form method="POST" action="{{ url_for('admin_eliminar_usuario', id=u.id) }}" style="display:inline;">
+                                    <button type="submit" class="btn btn-sm" style="background:#7f1d1d;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Eliminar" onclick="return confirm('¿ELIMINAR permanentemente a {{ u.nombre }}? Se borrarán todas sus transacciones y datos. Esta acción NO se puede deshacer.')"><i class="fas fa-trash"></i></button>
                                 </form>
                                 {% endif %}
                             </div>
@@ -95,15 +99,19 @@
                     <span class="badge badge-{{ 'completado' if u.rol == 'admin' else 'procesando' }}" style="font-size:0.7rem;">{{ u.rol|capitalize }}</span>
                     <div class="pedido-card-total">${{ '%.4f'|format(u.saldo) }}</div>
                 </div>
-                <div style="display:flex;gap:0.4rem;margin-top:0.5rem;">
+                <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
                     <button class="btn btn-sm btn-secondary" style="flex:1;font-size:0.75rem;" onclick="editarUsuario({{ u.id }}, '{{ u.nombre|e }}', '{{ u.email|e }}', '{{ u.telefono|e }}')"><i class="fas fa-edit"></i> Editar</button>
                     {% if u.rol != 'admin' %}
+                    <button class="btn btn-sm" style="flex:1;background:#f59e0b;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick="descontarSaldo({{ u.id }}, '{{ u.nombre|e }}', {{ u.saldo }})"><i class="fas fa-minus-circle"></i> Descontar</button>
                     <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="flex:1;">
                         {% if u.activo %}
                         <button type="submit" class="btn btn-sm" style="width:100%;background:#ef4444;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick="return confirm('¿Desactivar?')"><i class="fas fa-ban"></i> Desactivar</button>
                         {% else %}
                         <button type="submit" class="btn btn-sm btn-primary" style="width:100%;font-size:0.75rem;" onclick="return confirm('¿Aprobar?')"><i class="fas fa-check"></i> Aprobar</button>
                         {% endif %}
+                    </form>
+                    <form method="POST" action="{{ url_for('admin_eliminar_usuario', id=u.id) }}" style="flex:1;">
+                        <button type="submit" class="btn btn-sm" style="width:100%;background:#7f1d1d;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick="return confirm('¿ELIMINAR permanentemente a {{ u.nombre }}? Esta acción NO se puede deshacer.')"><i class="fas fa-trash"></i> Eliminar</button>
                     </form>
                     {% endif %}
                 </div>
@@ -139,6 +147,27 @@
                 </form>
             </div>
         </div>
+        <!-- Modal descontar saldo -->
+        <div id="modal-descontar" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;justify-content:center;align-items:center;" onclick="if(event.target===this)this.style.display='none'">
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:1.5rem;max-width:450px;width:90%;">
+                <h3 style="margin:0 0 1rem;color:#f59e0b;"><i class="fas fa-minus-circle"></i> Descontar Saldo</h3>
+                <p style="font-size:0.9rem;color:var(--text-secondary);margin-bottom:1rem;">Usuario: <strong id="desc-nombre"></strong> — Saldo: <strong id="desc-saldo-actual"></strong></p>
+                <form method="POST" id="form-descontar">
+                    <div class="form-group">
+                        <label><i class="fas fa-dollar-sign"></i> Monto a descontar (USD)</label>
+                        <input type="number" name="monto" id="desc-monto" step="0.01" min="0.01" required style="font-size:1rem;">
+                    </div>
+                    <div class="form-group">
+                        <label><i class="fas fa-comment"></i> Motivo</label>
+                        <input type="text" name="motivo" placeholder="Ej: Ajuste de saldo, devolución..." style="font-size:0.95rem;">
+                    </div>
+                    <div style="display:flex;gap:0.5rem;">
+                        <button type="submit" class="btn" style="flex:1;background:#f59e0b;color:#000;border:none;border-radius:8px;padding:0.7rem;font-weight:600;cursor:pointer;"><i class="fas fa-minus-circle"></i> Descontar</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-descontar').style.display='none'"><i class="fas fa-times"></i> Cancelar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
 </section>
 {% endblock %}
@@ -152,6 +181,14 @@ function editarUsuario(id, nombre, email, telefono) {
     document.getElementById('edit-telefono').value = telefono || '';
     document.getElementById('edit-password').value = '';
     document.getElementById('modal-editar').style.display = 'flex';
+}
+function descontarSaldo(id, nombre, saldo) {
+    document.getElementById('form-descontar').action = '/admin/usuario/' + id + '/descontar';
+    document.getElementById('desc-nombre').textContent = nombre;
+    document.getElementById('desc-saldo-actual').textContent = '$' + saldo.toFixed(4);
+    document.getElementById('desc-monto').value = '';
+    document.getElementById('desc-monto').max = saldo;
+    document.getElementById('modal-descontar').style.display = 'flex';
 }
 function filtrarUsuarios() {
     var texto = document.getElementById('filtroUsuarios').value.toLowerCase();

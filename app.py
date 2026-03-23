@@ -963,6 +963,58 @@ def admin_editar_usuario(id):
     return redirect(url_for('admin_usuarios'))
 
 
+@app.route('/admin/usuario/<int:id>/descontar', methods=['POST'])
+@admin_required
+def admin_descontar_saldo(id):
+    db = get_db()
+    user = db.execute("SELECT u.*, COALESCE(c.saldo, 0) as saldo FROM usuarios u LEFT JOIN carteras c ON u.id = c.usuario_id WHERE u.id = ?", (id,)).fetchone()
+    if not user:
+        db.close()
+        flash('Usuario no encontrado', 'error')
+        return redirect(url_for('admin_usuarios'))
+    try:
+        monto = float(request.form.get('monto', 0))
+    except (ValueError, TypeError):
+        monto = 0
+    motivo = request.form.get('motivo', 'Descuento administrativo').strip() or 'Descuento administrativo'
+    if monto <= 0:
+        db.close()
+        flash('El monto debe ser mayor a 0', 'error')
+        return redirect(url_for('admin_usuarios'))
+    if monto > user['saldo']:
+        db.close()
+        flash(f'El usuario solo tiene ${user["saldo"]:.4f} de saldo', 'error')
+        return redirect(url_for('admin_usuarios'))
+    db.close()
+    nuevo_saldo = descontar_saldo(id, monto, motivo)
+    flash(f'Se descontó ${monto:.4f} a {user["nombre"]}. Nuevo saldo: ${nuevo_saldo:.4f}', 'success')
+    return redirect(url_for('admin_usuarios'))
+
+
+@app.route('/admin/usuario/<int:id>/eliminar', methods=['POST'])
+@admin_required
+def admin_eliminar_usuario(id):
+    db = get_db()
+    user = db.execute("SELECT * FROM usuarios WHERE id = ?", (id,)).fetchone()
+    if not user:
+        db.close()
+        flash('Usuario no encontrado', 'error')
+        return redirect(url_for('admin_usuarios'))
+    if user['rol'] == 'admin':
+        db.close()
+        flash('No se puede eliminar un administrador', 'error')
+        return redirect(url_for('admin_usuarios'))
+    nombre = user['nombre']
+    db.execute("DELETE FROM transacciones WHERE usuario_id = ?", (id,))
+    db.execute("DELETE FROM carteras WHERE usuario_id = ?", (id,))
+    db.execute("DELETE FROM solicitudes_recarga WHERE usuario_id = ?", (id,))
+    db.execute("DELETE FROM usuarios WHERE id = ?", (id,))
+    db.commit()
+    db.close()
+    flash(f'Usuario "{nombre}" eliminado permanentemente', 'success')
+    return redirect(url_for('admin_usuarios'))
+
+
 @app.route('/admin/recargas', methods=['GET', 'POST'])
 @admin_required
 def admin_recargas():
