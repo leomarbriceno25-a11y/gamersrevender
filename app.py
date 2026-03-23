@@ -1054,7 +1054,10 @@ def admin_eliminar_usuario(id):
         flash('No se puede eliminar un administrador', 'error')
         return redirect(url_for('admin_usuarios'))
     nombre = user['nombre']
+    db.execute("UPDATE pines SET usado_por = NULL WHERE usado_por = ?", (id,))
+    db.execute("DELETE FROM pedidos WHERE usuario_id = ?", (id,))
     db.execute("DELETE FROM transacciones WHERE usuario_id = ?", (id,))
+    db.execute("DELETE FROM transacciones WHERE admin_id = ?", (id,))
     db.execute("DELETE FROM carteras WHERE usuario_id = ?", (id,))
     db.execute("DELETE FROM solicitudes_recarga WHERE usuario_id = ?", (id,))
     db.execute("DELETE FROM usuarios WHERE id = ?", (id,))
