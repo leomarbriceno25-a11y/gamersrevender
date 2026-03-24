@@ -269,6 +269,7 @@ def crear_orden(package_id, validation_token, merchant_code=""):
             "ok": False,
             "status": "error",
             "code": code,
+            "referenceno": resultado.get("referenceno", ""),
             "message": resultado.get("message", "Error desconocido"),
         }
 
@@ -368,6 +369,7 @@ def recarga_completa(product_id, fields, package_id, merchant_code="", wait=True
         return {
             "ok": False,
             "paso": "orden",
+            "referenceno": "",
             "error": orden.get("reason", orden.get("message", "")),
         }
 

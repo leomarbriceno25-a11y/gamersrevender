@@ -429,8 +429,22 @@ def comprar():
                 return redirect(url_for('pedido_detalle', id=pedido_id))
             else:
                 if es_manual:
-                    # Para recarga_manual, NO cancelar — GamePoint puede haberlo procesado igual
-                    db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+                    # Para recarga_manual, guardar referencia si existe
+                    ref = resultado_api.get('referenceno', '')
+                    if ref:
+                        db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+                    else:
+                        db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+                        # Sin referencia — notificar admin por Telegram
+                        from telegram_bot import enviar_telegram
+                        enviar_telegram(
+                            f"⚠️ <b>Pedido #{pedido_id} SIN REFERENCIA</b>\n\n"
+                            f"🎮 Producto: {prod['nombre']}\n"
+                            f"👤 ID Juego: {id_juego}\n"
+                            f"💵 Total: ${total:.4f}\n"
+                            f"❌ Error: {resultado_api.get('error', resultado_api.get('message', 'Sin respuesta'))}\n\n"
+                            f"📋 Revisa manualmente en GamePoint y marca como completado o cancelado."
+                        )
                     db2.commit()
                     db2.close()
                     error_msg = resultado_api.get('error', resultado_api.get('message', 'Error desconocido'))
@@ -450,6 +464,16 @@ def comprar():
                 db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
                 db2.commit()
                 db2.close()
+                # Sin referencia por excepción — notificar admin
+                from telegram_bot import enviar_telegram
+                enviar_telegram(
+                    f"⚠️ <b>Pedido #{pedido_id} SIN REFERENCIA (excepción)</b>\n\n"
+                    f"🎮 Producto: {prod['nombre']}\n"
+                    f"👤 ID Juego: {id_juego}\n"
+                    f"💵 Total: ${total:.4f}\n"
+                    f"❌ Error: {str(e)}\n\n"
+                    f"📋 Revisa manualmente en GamePoint y marca como completado o cancelado."
+                )
                 flash(f'Pedido #{pedido_id} enviado pero hubo un error de conexión. Se verificará automáticamente.', 'warning')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
             else:
@@ -1341,18 +1365,19 @@ def admin_verificar_gamepoint():
         except Exception:
             pass
         verificados += 1
-    # Cancelar pedidos sin referencia que llevan más de 1 hora procesando
+    # Pedidos sin referencia — notificar por Telegram para revisión manual
     for ped in pedidos_sin_ref:
         try:
             from datetime import datetime, timedelta
             fecha_ped = datetime.strptime(ped['fecha_pedido'], '%Y-%m-%d %H:%M:%S')
-            if datetime.now() - fecha_ped > timedelta(hours=1):
-                db2 = get_db()
-                db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (ped['id'],))
-                db2.commit()
-                db2.close()
-                recargar_saldo(ped['usuario_id'], ped['total'],
-                               f"Reembolso auto: GamePoint sin referencia pedido #{ped['id']} (>1h)")
+            if datetime.now() - fecha_ped > timedelta(minutes=5):
+                from telegram_bot import enviar_telegram
+                enviar_telegram(
+                    f"🔔 <b>Pedido #{ped['id']} SIN REFERENCIA - Revisión necesaria</b>\n\n"
+                    f"💵 Total: ${float(ped['total']):.4f}\n"
+                    f"📅 Fecha: {ped['fecha_pedido']}\n\n"
+                    f"📋 Revisa en GamePoint si se procesó y marca manualmente."
+                )
                 fallidos += 1
                 verificados += 1
         except Exception:
@@ -1420,34 +1445,31 @@ def cron_verificar_gamepoint():
         except Exception as e:
             detalles.append({'pedido': ped['id'], 'error': str(e)})
         verificados += 1
-    # Pedidos procesando SIN referencia (recarga_manual que fallaron antes de obtener ref)
-    # Si llevan más de 5 min, marcar como completado (el proveedor los procesa igual)
+    # Pedidos procesando SIN referencia — notificar Telegram para revisión manual
+    # (no auto-completar ni auto-cancelar, ya que no se puede verificar con GamePoint)
     db3 = get_db()
     pedidos_sin_ref = db3.execute(
-        "SELECT p.id, p.usuario_id, p.total, p.fecha_pedido, pr.recarga_manual "
+        "SELECT p.id, p.usuario_id, p.total, p.fecha_pedido, pr.nombre as producto_nombre, p.id_juego "
         "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
         "WHERE p.estado = 'procesando' AND (p.referencia_externa IS NULL OR p.referencia_externa = '') "
-        "AND pr.gamepoint_product_id > 0 AND pr.recarga_manual = 1 "
+        "AND pr.gamepoint_product_id > 0 "
         "AND p.fecha_pedido >= datetime('now', 'localtime', '-48 hours') "
-        "AND p.fecha_pedido <= datetime('now', 'localtime', '-5 minutes')"
+        "AND p.fecha_pedido <= datetime('now', 'localtime', '-5 minutes') "
+        "AND p.fecha_pedido >= datetime('now', 'localtime', '-10 minutes')"
     ).fetchall()
     db3.close()
     for ped in pedidos_sin_ref:
-        try:
-            db4 = get_db()
-            db4.execute("UPDATE pedidos SET estado = 'completado' WHERE id = ?", (ped['id'],))
-            db4.commit()
-            db4.close()
-            confirmados += 1
-            verificados += 1
-            detalles.append({'pedido': ped['id'], 'accion': 'completado_sin_ref'})
-            enviar_webhook(ped['usuario_id'], {
-                'evento': 'pedido_actualizado',
-                'pedido_id': ped['id'],
-                'estado': 'completado',
-            })
-        except Exception:
-            pass
+        verificados += 1
+        detalles.append({'pedido': ped['id'], 'accion': 'sin_ref_pendiente_revision'})
+        from telegram_bot import enviar_telegram
+        enviar_telegram(
+            f"🔔 <b>Pedido #{ped['id']} SIN REFERENCIA - Revisión necesaria</b>\n\n"
+            f"🎮 Producto: {ped['producto_nombre']}\n"
+            f"🆔 ID Juego: {ped['id_juego'] or 'N/A'}\n"
+            f"💵 Total: ${float(ped['total']):.4f}\n"
+            f"📅 Fecha: {ped['fecha_pedido']}\n\n"
+            f"📋 Revisa en GamePoint si se procesó y marca manualmente como completado o cancelado."
+        )
     # Ejecutar restock automático de pines después de verificar
     restock_count = restock_pines()
     return jsonify({'ok': True, 'verificados': verificados, 'confirmados': confirmados, 'fallidos': fallidos, 'restock': restock_count, 'detalles': detalles})
@@ -1829,13 +1851,27 @@ def api_comprar():
                 return jsonify(resp)
             else:
                 if es_manual:
-                    # Para recarga_manual, NO cancelar — GamePoint puede haberlo procesado igual
-                    db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+                    ref = resultado_api.get('referenceno', '')
+                    if ref:
+                        db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+                    else:
+                        db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+                        from telegram_bot import enviar_telegram
+                        enviar_telegram(
+                            f"⚠️ <b>Pedido #{pedido_id} SIN REFERENCIA (API)</b>\n\n"
+                            f"👤 Usuario: {user['nombre']}\n"
+                            f"🎮 Producto: {prod['nombre']}\n"
+                            f"🆔 ID Juego: {id_juego}\n"
+                            f"💵 Total: ${total:.4f}\n"
+                            f"❌ Error: {resultado_api.get('error', resultado_api.get('message', 'Sin respuesta'))}\n\n"
+                            f"📋 Revisa manualmente en GamePoint y marca como completado o cancelado."
+                        )
                     db2.commit()
                     db2.close()
                     return jsonify({
                         'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando',
                         'total': total, 'saldo_restante': get_saldo(user_id_api),
+                        'referencia': ref,
                         'mensaje': 'Pedido enviado pero respuesta incierta. Se verificará automáticamente.'
                     })
                 else:
@@ -1853,6 +1889,16 @@ def api_comprar():
                 db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
                 db2.commit()
                 db2.close()
+                from telegram_bot import enviar_telegram
+                enviar_telegram(
+                    f"⚠️ <b>Pedido #{pedido_id} SIN REFERENCIA (excepción API)</b>\n\n"
+                    f"👤 Usuario: {user['nombre']}\n"
+                    f"🎮 Producto: {prod['nombre']}\n"
+                    f"🆔 ID Juego: {id_juego}\n"
+                    f"💵 Total: ${total:.4f}\n"
+                    f"❌ Error: {str(e)}\n\n"
+                    f"📋 Revisa manualmente en GamePoint y marca como completado o cancelado."
+                )
                 return jsonify({
                     'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando',
                     'total': total, 'saldo_restante': get_saldo(user_id_api),
