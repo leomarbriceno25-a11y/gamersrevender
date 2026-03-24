@@ -1420,6 +1420,34 @@ def cron_verificar_gamepoint():
         except Exception as e:
             detalles.append({'pedido': ped['id'], 'error': str(e)})
         verificados += 1
+    # Pedidos procesando SIN referencia (recarga_manual que fallaron antes de obtener ref)
+    # Si llevan más de 5 min, marcar como completado (el proveedor los procesa igual)
+    db3 = get_db()
+    pedidos_sin_ref = db3.execute(
+        "SELECT p.id, p.usuario_id, p.total, p.fecha_pedido, pr.recarga_manual "
+        "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
+        "WHERE p.estado = 'procesando' AND (p.referencia_externa IS NULL OR p.referencia_externa = '') "
+        "AND pr.gamepoint_product_id > 0 AND pr.recarga_manual = 1 "
+        "AND p.fecha_pedido >= datetime('now', 'localtime', '-48 hours') "
+        "AND p.fecha_pedido <= datetime('now', 'localtime', '-5 minutes')"
+    ).fetchall()
+    db3.close()
+    for ped in pedidos_sin_ref:
+        try:
+            db4 = get_db()
+            db4.execute("UPDATE pedidos SET estado = 'completado' WHERE id = ?", (ped['id'],))
+            db4.commit()
+            db4.close()
+            confirmados += 1
+            verificados += 1
+            detalles.append({'pedido': ped['id'], 'accion': 'completado_sin_ref'})
+            enviar_webhook(ped['usuario_id'], {
+                'evento': 'pedido_actualizado',
+                'pedido_id': ped['id'],
+                'estado': 'completado',
+            })
+        except Exception:
+            pass
     # Ejecutar restock automático de pines después de verificar
     restock_count = restock_pines()
     return jsonify({'ok': True, 'verificados': verificados, 'confirmados': confirmados, 'fallidos': fallidos, 'restock': restock_count, 'detalles': detalles})
