@@ -476,8 +476,8 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
                 <h4 style="color:#f59e0b; margin:0 0 0.8rem;"><i class="fas fa-cogs"></i> ¿Cómo funciona?</h4>
                 <ol style="color:var(--text-secondary); font-size:0.85rem; line-height:2; margin:0; padding-left:1.2rem;">
                     <li>Tu petición <code>POST /api/v1/comprar</code> envía la recarga al proveedor.</li>
-                    <li>El sistema <strong>espera hasta 4 minutos</strong> para que el proveedor confirme.</li>
-                    <li>Si el proveedor confirma en esos 4 minutos → recibes <code>"estado": "completado"</code> directamente.</li>
+                    <li>El sistema <strong>espera hasta 30 segundos</strong> para que el proveedor confirme.</li>
+                    <li>Si el proveedor confirma en esos 30 segundos → recibes <code>"estado": "completado"</code> directamente.</li>
                     <li>Si aún no confirma → recibes <code>"estado": "procesando"</code>. <strong>La recarga ya se hizo</strong>, solo falta la confirmación.</li>
                     <li>Nuestro sistema verifica automáticamente cada minuto y actualiza el estado a <code>"completado"</code> en ~5 minutos.</li>
                     <li>Cuando cambie de estado, recibes una notificación en tu <strong>webhook</strong> (si lo tienes configurado).</li>
