@@ -470,7 +470,20 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
 
             <!-- Pedido en procesamiento -->
             <h3 style="margin:2rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-clock" style="color:#f59e0b;"></i> Respuesta: Pedido en procesamiento</h3>
-            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem;">Algunos productos requieren confirmación del proveedor (segundos a minutos). Tu saldo ya fue descontado, pero el pedido no está listo aún.</p>
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.5rem;">Algunos productos (como <strong>Honor of Kings, PUBG UC</strong> y otros marcados con <code>procesamiento_manual: true</code>) requieren confirmación del proveedor. La recarga se realiza pero el proveedor tarda unos minutos en confirmar.</p>
+
+            <div style="margin:1rem 0; padding:1rem; background:rgba(245,158,11,0.08); border:1px solid rgba(245,158,11,0.3); border-radius:8px;">
+                <h4 style="color:#f59e0b; margin:0 0 0.8rem;"><i class="fas fa-cogs"></i> ¿Cómo funciona?</h4>
+                <ol style="color:var(--text-secondary); font-size:0.85rem; line-height:2; margin:0; padding-left:1.2rem;">
+                    <li>Tu petición <code>POST /api/v1/comprar</code> envía la recarga al proveedor.</li>
+                    <li>El sistema <strong>espera hasta 4 minutos</strong> para que el proveedor confirme.</li>
+                    <li>Si el proveedor confirma en esos 4 minutos → recibes <code>"estado": "completado"</code> directamente.</li>
+                    <li>Si aún no confirma → recibes <code>"estado": "procesando"</code>. <strong>La recarga ya se hizo</strong>, solo falta la confirmación.</li>
+                    <li>Nuestro sistema verifica automáticamente cada minuto y actualiza el estado a <code>"completado"</code> en ~5 minutos.</li>
+                    <li>Cuando cambie de estado, recibes una notificación en tu <strong>webhook</strong> (si lo tienes configurado).</li>
+                </ol>
+            </div>
+
             <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
 <pre style="color:#f59e0b; margin:0; font-size:0.85rem;">{
   "ok": true,
@@ -485,7 +498,13 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
             <div style="margin-top:0.5rem; padding:0.75rem; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px;">
                 <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
                     <strong style="color:#f59e0b;"><i class="fas fa-clock"></i> ¿Qué hacer?</strong>
-                    Espera el webhook o consulta <code>GET /api/v1/pedido/46</code> después de unos minutos. Si se confirma cambia a <code>"completado"</code>. Si falla, cambia a <code>"cancelado"</code> y tu saldo se reembolsa.
+                    Espera el webhook o consulta <code>GET /api/v1/pedido/46</code> después de 5 minutos. El estado cambiará a <code>"completado"</code> automáticamente. Si falla (raro), cambia a <code>"cancelado"</code> y tu saldo se reembolsa.
+                </p>
+            </div>
+            <div style="margin-top:0.5rem; padding:0.75rem; background:rgba(124,58,237,0.1); border:1px solid rgba(124,58,237,0.3); border-radius:8px;">
+                <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
+                    <strong style="color:#7c3aed;"><i class="fas fa-bell"></i> Tip:</strong>
+                    Para no tener que consultar manualmente, <strong>registra un webhook</strong> con <code>POST /api/v1/webhook</code>. Recibirás una notificación automática cuando el pedido pase a <code>"completado"</code> o <code>"cancelado"</code>.
                 </p>
             </div>
 
