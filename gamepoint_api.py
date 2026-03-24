@@ -360,18 +360,25 @@ def recarga_completa(product_id, fields, package_id, merchant_code=""):
     print(f"[GAMEPOINT] Creando orden (paquete {package_id})...")
     orden = crear_orden(package_id, validation_token, merchant_code)
 
-    if not orden.get("ok"):
+    referenceno = orden.get("referenceno", "")
+    status = orden.get("status", "")
+
+    if not orden.get("ok") and not referenceno:
+        # Falló sin referencia — no hay nada que consultar
         return {
             "ok": False,
             "paso": "orden",
             "error": orden.get("reason", orden.get("message", "")),
         }
 
-    referenceno = orden.get("referenceno", "")
-    status = orden.get("status", "")
+    if not orden.get("ok") and referenceno:
+        # Falló PERO tiene referencia — GamePoint pudo haberlo procesado igual
+        print(f"[GAMEPOINT] Orden reportó error pero tiene ref {referenceno}, verificando...")
+        status = "pending"  # Forzar polling
+
     print(f"[GAMEPOINT] Orden creada: {referenceno} (status: {status})")
 
-    # Paso 3: Si está pending, consultar cada 20s hasta recibir respuesta definitiva
+    # Paso 3: Si está pending o necesita verificación, consultar cada 20s hasta respuesta definitiva
     if status == "pending":
         intento = 0
         while True:
