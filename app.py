@@ -427,21 +427,37 @@ def comprar():
                     flash(f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador or id_juego} (Ref: {ref}).', 'success')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
             else:
+                if es_manual:
+                    # Para recarga_manual, NO cancelar — GamePoint puede haberlo procesado igual
+                    db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+                    db2.commit()
+                    db2.close()
+                    error_msg = resultado_api.get('error', resultado_api.get('message', 'Error desconocido'))
+                    flash(f'Pedido #{pedido_id} enviado pero respuesta incierta ({error_msg}). Se verificará automáticamente.', 'warning')
+                    return redirect(url_for('pedido_detalle', id=pedido_id))
+                else:
+                    db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                    db2.commit()
+                    db2.close()
+                    recargar_saldo(user_id, total, f"Reembolso: Error GamePoint pedido #{pedido_id}")
+                    error_msg = resultado_api.get('error', resultado_api.get('message', 'Error desconocido'))
+                    flash(f'Error en recarga: {error_msg}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
+                    return redirect(url_for('pedido_detalle', id=pedido_id))
+        except Exception as e:
+            db2 = get_db()
+            if es_manual:
+                db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+                db2.commit()
+                db2.close()
+                flash(f'Pedido #{pedido_id} enviado pero hubo un error de conexión. Se verificará automáticamente.', 'warning')
+                return redirect(url_for('pedido_detalle', id=pedido_id))
+            else:
                 db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
                 db2.commit()
                 db2.close()
-                recargar_saldo(user_id, total, f"Reembolso: Error GamePoint pedido #{pedido_id}")
-                error_msg = resultado_api.get('error', resultado_api.get('message', 'Error desconocido'))
-                flash(f'Error en recarga: {error_msg}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
+                recargar_saldo(user_id, total, f"Reembolso: Excepción GamePoint pedido #{pedido_id}")
+                flash(f'Error inesperado en la recarga. Se reembolsó ${total:.4f} a tu cartera.', 'error')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
-        except Exception as e:
-            db2 = get_db()
-            db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id, total, f"Reembolso: Excepción GamePoint pedido #{pedido_id}")
-            flash(f'Error inesperado en la recarga. Se reembolsó ${total:.4f} a tu cartera.', 'error')
-            return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Hype Games (Free Fire), canjear PIN(es) automáticamente
     elif prod['usa_api'] and id_juego:
@@ -1279,6 +1295,14 @@ def admin_verificar_gamepoint():
         "AND pr.gamepoint_product_id > 0 "
         "AND p.fecha_pedido >= datetime('now', 'localtime', '-48 hours')"
     ).fetchall()
+    # También buscar pedidos procesando SIN referencia (fallaron antes de obtener ref)
+    pedidos_sin_ref = db.execute(
+        "SELECT p.id, p.usuario_id, p.total, p.estado, p.fecha_pedido "
+        "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
+        "WHERE p.estado = 'procesando' AND (p.referencia_externa IS NULL OR p.referencia_externa = '') "
+        "AND pr.gamepoint_product_id > 0 "
+        "AND p.fecha_pedido >= datetime('now', 'localtime', '-48 hours')"
+    ).fetchall()
     db.close()
     verificados = 0
     confirmados = 0
@@ -1316,6 +1340,22 @@ def admin_verificar_gamepoint():
         except Exception:
             pass
         verificados += 1
+    # Cancelar pedidos sin referencia que llevan más de 1 hora procesando
+    for ped in pedidos_sin_ref:
+        try:
+            from datetime import datetime, timedelta
+            fecha_ped = datetime.strptime(ped['fecha_pedido'], '%Y-%m-%d %H:%M:%S')
+            if datetime.now() - fecha_ped > timedelta(hours=1):
+                db2 = get_db()
+                db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (ped['id'],))
+                db2.commit()
+                db2.close()
+                recargar_saldo(ped['usuario_id'], ped['total'],
+                               f"Reembolso auto: GamePoint sin referencia pedido #{ped['id']} (>1h)")
+                fallidos += 1
+                verificados += 1
+        except Exception:
+            pass
     flash(f'Verificación: {verificados} revisados, {confirmados} confirmados, {fallidos} fallidos reembolsados.', 'success')
     return redirect(url_for('admin_pedidos'))
 
@@ -1749,24 +1789,45 @@ def api_comprar():
                     resp['mensaje'] = f'Recarga completada para {nombre_jugador or id_juego} (Ref: {ref})'
                 return jsonify(resp)
             else:
+                if es_manual:
+                    # Para recarga_manual, NO cancelar — GamePoint puede haberlo procesado igual
+                    db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+                    db2.commit()
+                    db2.close()
+                    return jsonify({
+                        'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando',
+                        'total': total, 'saldo_restante': get_saldo(user_id_api),
+                        'mensaje': 'Pedido enviado pero respuesta incierta. Se verificará automáticamente.'
+                    })
+                else:
+                    db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+                    db2.commit()
+                    db2.close()
+                    recargar_saldo(user_id_api, total, f"Reembolso API: Error GamePoint pedido #{pedido_id}")
+                    return jsonify({
+                        'ok': False, 'error': resultado_api.get('error', resultado_api.get('message', 'Error desconocido')),
+                        'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
+                    }), 400
+        except Exception as e:
+            db2 = get_db()
+            if es_manual:
+                db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+                db2.commit()
+                db2.close()
+                return jsonify({
+                    'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando',
+                    'total': total, 'saldo_restante': get_saldo(user_id_api),
+                    'mensaje': 'Pedido enviado pero hubo error de conexión. Se verificará automáticamente.'
+                })
+            else:
                 db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
                 db2.commit()
                 db2.close()
-                recargar_saldo(user_id_api, total, f"Reembolso API: Error GamePoint pedido #{pedido_id}")
+                recargar_saldo(user_id_api, total, f"Reembolso API: Excepción GamePoint pedido #{pedido_id}")
                 return jsonify({
-                    'ok': False, 'error': resultado_api.get('error', resultado_api.get('message', 'Error desconocido')),
-                    'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
-                }), 400
-        except Exception as e:
-            db2 = get_db()
-            db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id_api, total, f"Reembolso API: Excepción GamePoint pedido #{pedido_id}")
-            return jsonify({
-                'ok': False, 'error': str(e), 'pedido_id': pedido_id,
-                'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
-            }), 500
+                    'ok': False, 'error': str(e), 'pedido_id': pedido_id,
+                    'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
+                }), 500
 
     # Hype Games API (Free Fire con PINes) - Multi-canje
     elif prod['usa_api'] and id_juego:

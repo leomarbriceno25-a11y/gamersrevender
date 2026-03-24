@@ -371,19 +371,33 @@ def recarga_completa(product_id, fields, package_id, merchant_code=""):
     status = orden.get("status", "")
     print(f"[GAMEPOINT] Orden creada: {referenceno} (status: {status})")
 
-    # Paso 3: Si está pending, consultar
+    # Paso 3: Si está pending, consultar con reintentos
     if status == "pending":
-        print(f"[GAMEPOINT] Orden pendiente, consultando en 5 segundos...")
-        time.sleep(5)
-        inquiry = consultar_orden(referenceno)
+        for intento in range(1, 4):
+            espera = 5 * intento  # 5s, 10s, 15s
+            print(f"[GAMEPOINT] Orden pendiente, intento {intento}/3 en {espera}s...")
+            time.sleep(espera)
+            inquiry = consultar_orden(referenceno)
+            inq_status = inquiry.get("status", "pending")
+            if inq_status in ("success", "failed"):
+                return {
+                    "ok": inq_status == "success",
+                    "referenceno": referenceno,
+                    "status": inq_status,
+                    "ingamename": inquiry.get("ingamename", ""),
+                    "amount": inquiry.get("amount"),
+                    "item": inquiry.get("item", ""),
+                    "message": inquiry.get("message", orden.get("message", "")),
+                }
+        # Después de 3 intentos sigue pending — retornar como ok para que no se cancele
         return {
-            "ok": inquiry.get("ok", False),
+            "ok": True,
             "referenceno": referenceno,
-            "status": inquiry.get("status", "pending"),
-            "ingamename": inquiry.get("ingamename", ""),
-            "amount": inquiry.get("amount"),
-            "item": inquiry.get("item", ""),
-            "message": inquiry.get("message", orden.get("message", "")),
+            "status": "pending",
+            "ingamename": "",
+            "amount": inquiry.get("amount") if inquiry else None,
+            "item": "",
+            "message": "Orden aún pendiente después de reintentos",
         }
 
     # Para gift cards, consultar siempre para obtener el código
