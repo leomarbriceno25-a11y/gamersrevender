@@ -378,12 +378,11 @@ def recarga_completa(product_id, fields, package_id, merchant_code=""):
 
     print(f"[GAMEPOINT] Orden creada: {referenceno} (status: {status})")
 
-    # Paso 3: Si está pending o necesita verificación, consultar cada 20s hasta respuesta definitiva
+    # Paso 3: Si está pending o necesita verificación, consultar cada 20s (máx 6 intentos = 2 min)
     if status == "pending":
-        intento = 0
-        while True:
-            intento += 1
-            print(f"[GAMEPOINT] Orden pendiente, intento {intento} (esperando 20s)...")
+        max_intentos = 6
+        for intento in range(1, max_intentos + 1):
+            print(f"[GAMEPOINT] Orden pendiente, intento {intento}/{max_intentos} (esperando 20s)...")
             time.sleep(20)
             try:
                 inquiry = consultar_orden(referenceno)
@@ -401,7 +400,17 @@ def recarga_completa(product_id, fields, package_id, merchant_code=""):
                 print(f"[GAMEPOINT]   Aún pendiente (intento {intento})")
             except Exception as e:
                 print(f"[GAMEPOINT]   Error consultando (intento {intento}): {e}")
-                # Seguir reintentando
+        # Después de 6 intentos sigue pending — retornar ok para que quede como procesando
+        print(f"[GAMEPOINT] Aún pendiente después de {max_intentos} intentos, dejando como procesando")
+        return {
+            "ok": True,
+            "referenceno": referenceno,
+            "status": "pending",
+            "ingamename": "",
+            "amount": None,
+            "item": "",
+            "message": "Orden pendiente, se verificará automáticamente",
+        }
 
     # Para gift cards, consultar siempre para obtener el código
     inquiry = consultar_orden(referenceno)
