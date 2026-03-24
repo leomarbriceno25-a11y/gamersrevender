@@ -407,7 +407,8 @@ def comprar():
                 product_id=gp_product_id,
                 fields=gp_fields,
                 package_id=gp_package_id,
-                merchant_code=merchant_code
+                merchant_code=merchant_code,
+                wait=False
             )
             # Reabrir DB para guardar resultado
             db2 = get_db()
@@ -1787,6 +1788,16 @@ def api_comprar():
                 else:
                     resp['nombre_jugador'] = nombre_jugador
                     resp['mensaje'] = f'Recarga completada para {nombre_jugador or id_juego} (Ref: {ref})'
+                # Notificar al revendedor por webhook
+                enviar_webhook(user_id_api, {
+                    'evento': 'pedido_actualizado',
+                    'pedido_id': pedido_id,
+                    'estado': estado_final,
+                    'referencia': ref,
+                    'nombre_jugador': nombre_jugador or '',
+                    'codigo': codigo or '',
+                    'total': total,
+                })
                 return jsonify(resp)
             else:
                 if es_manual:

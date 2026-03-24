@@ -331,7 +331,7 @@ def consultar_orden(referenceno):
         }
 
 
-def recarga_completa(product_id, fields, package_id, merchant_code=""):
+def recarga_completa(product_id, fields, package_id, merchant_code="", wait=True):
     """
     Ejecuta el flujo completo de recarga:
     1. Validar jugador
@@ -378,8 +378,20 @@ def recarga_completa(product_id, fields, package_id, merchant_code=""):
 
     print(f"[GAMEPOINT] Orden creada: {referenceno} (status: {status})")
 
-    # Paso 3: Si está pending, esperar 4 minutos y verificar una sola vez
+    # Paso 3: Si está pending, verificar según modo
     if status == "pending":
+        if not wait:
+            # Modo web: devolver inmediato, el cron verificará después
+            print(f"[GAMEPOINT] Orden pendiente (modo inmediato), dejando como procesando")
+            return {
+                "ok": True,
+                "referenceno": referenceno,
+                "status": "pending",
+                "ingamename": "",
+                "amount": None,
+                "item": "",
+                "message": "Orden pendiente, se verificará automáticamente",
+            }
         print(f"[GAMEPOINT] Orden pendiente, esperando 4 minutos para verificar...")
         time.sleep(240)
         try:
