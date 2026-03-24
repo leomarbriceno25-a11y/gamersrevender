@@ -392,26 +392,27 @@ def recarga_completa(product_id, fields, package_id, merchant_code="", wait=True
                 "item": "",
                 "message": "Orden pendiente, se verificará automáticamente",
             }
-        print(f"[GAMEPOINT] Orden pendiente, esperando 4 minutos para verificar...")
-        time.sleep(240)
-        try:
-            inquiry = consultar_orden(referenceno)
-            inq_status = inquiry.get("status", "pending")
-            print(f"[GAMEPOINT] Resultado después de 4min: {inq_status}")
-            if inq_status in ("success", "failed"):
-                return {
-                    "ok": inq_status == "success",
-                    "referenceno": referenceno,
-                    "status": inq_status,
-                    "ingamename": inquiry.get("ingamename", ""),
-                    "amount": inquiry.get("amount"),
-                    "item": inquiry.get("item", ""),
-                    "message": inquiry.get("message", orden.get("message", "")),
-                }
-        except Exception as e:
-            print(f"[GAMEPOINT] Error consultando después de 4min: {e}")
-        # Sigue pending o error — retornar ok para que quede como procesando
-        print(f"[GAMEPOINT] Aún pendiente después de 4min, dejando como procesando")
+        for intento in range(1, 4):
+            print(f"[GAMEPOINT] Orden pendiente, intento {intento}/3 (esperando 10s)...")
+            time.sleep(10)
+            try:
+                inquiry = consultar_orden(referenceno)
+                inq_status = inquiry.get("status", "pending")
+                print(f"[GAMEPOINT] Resultado intento {intento}: {inq_status}")
+                if inq_status in ("success", "failed"):
+                    return {
+                        "ok": inq_status == "success",
+                        "referenceno": referenceno,
+                        "status": inq_status,
+                        "ingamename": inquiry.get("ingamename", ""),
+                        "amount": inquiry.get("amount"),
+                        "item": inquiry.get("item", ""),
+                        "message": inquiry.get("message", orden.get("message", "")),
+                    }
+            except Exception as e:
+                print(f"[GAMEPOINT] Error consultando intento {intento}: {e}")
+        # Sigue pending después de 30s — retornar ok para que quede como procesando
+        print(f"[GAMEPOINT] Aún pendiente después de 30s, dejando como procesando")
         return {
             "ok": True,
             "referenceno": referenceno,
