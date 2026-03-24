@@ -392,8 +392,8 @@ def recarga_completa(product_id, fields, package_id, merchant_code="", wait=True
                 "item": "",
                 "message": "Orden pendiente, se verificará automáticamente",
             }
-        for intento in range(1, 4):
-            print(f"[GAMEPOINT] Orden pendiente, intento {intento}/3 (esperando 10s)...")
+        for intento in range(1, 7):
+            print(f"[GAMEPOINT] Orden pendiente, intento {intento}/6 (esperando 10s)...")
             time.sleep(10)
             try:
                 inquiry = consultar_orden(referenceno)
@@ -411,8 +411,8 @@ def recarga_completa(product_id, fields, package_id, merchant_code="", wait=True
                     }
             except Exception as e:
                 print(f"[GAMEPOINT] Error consultando intento {intento}: {e}")
-        # Sigue pending después de 30s — retornar ok para que quede como procesando
-        print(f"[GAMEPOINT] Aún pendiente después de 30s, dejando como procesando")
+        # Sigue pending después de 1min — retornar ok para que quede como procesando
+        print(f"[GAMEPOINT] Aún pendiente después de 1min, dejando como procesando")
         return {
             "ok": True,
             "referenceno": referenceno,
