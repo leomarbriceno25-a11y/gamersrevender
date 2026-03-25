@@ -681,6 +681,77 @@ def mis_pedidos():
     return render_template('mis_pedidos.html', pedidos=pedidos)
 
 
+# ===== ESTADÍSTICAS USUARIO =====
+@app.route('/estadisticas')
+@login_required
+def estadisticas():
+    from datetime import datetime, timedelta
+    uid = session['user_id']
+    fecha_desde = request.args.get('desde', '')
+    fecha_hasta = request.args.get('hasta', '')
+    # Default: hoy
+    if not fecha_desde:
+        fecha_desde = datetime.now().strftime('%Y-%m-%d')
+    if not fecha_hasta:
+        fecha_hasta = datetime.now().strftime('%Y-%m-%d')
+
+    db = get_db()
+    # Stats generales en el rango
+    stats = db.execute(
+        "SELECT COUNT(*) as total_pedidos, "
+        "COALESCE(SUM(CASE WHEN estado='completado' THEN total ELSE 0 END), 0) as total_gastado, "
+        "COALESCE(SUM(CASE WHEN estado='completado' THEN 1 ELSE 0 END), 0) as completados, "
+        "COALESCE(SUM(CASE WHEN estado='cancelado' THEN 1 ELSE 0 END), 0) as cancelados, "
+        "COALESCE(SUM(CASE WHEN estado='procesando' THEN 1 ELSE 0 END), 0) as procesando "
+        "FROM pedidos WHERE usuario_id = ? AND date(fecha_pedido) >= ? AND date(fecha_pedido) <= ?",
+        (uid, fecha_desde, fecha_hasta)
+    ).fetchone()
+
+    # Stats del día de hoy
+    hoy = datetime.now().strftime('%Y-%m-%d')
+    stats_hoy = db.execute(
+        "SELECT COUNT(*) as total, "
+        "COALESCE(SUM(CASE WHEN estado='completado' THEN total ELSE 0 END), 0) as gastado "
+        "FROM pedidos WHERE usuario_id = ? AND date(fecha_pedido) = ?",
+        (uid, hoy)
+    ).fetchone()
+
+    # Productos más comprados en el rango
+    top_productos = db.execute(
+        "SELECT pr.nombre, COUNT(*) as veces, SUM(p.total) as total_gastado "
+        "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
+        "WHERE p.usuario_id = ? AND p.estado = 'completado' "
+        "AND date(p.fecha_pedido) >= ? AND date(p.fecha_pedido) <= ? "
+        "GROUP BY pr.id ORDER BY veces DESC LIMIT 10",
+        (uid, fecha_desde, fecha_hasta)
+    ).fetchall()
+
+    # Ventas por día en el rango (para gráfico)
+    ventas_diarias = db.execute(
+        "SELECT date(fecha_pedido) as dia, COUNT(*) as cantidad, "
+        "COALESCE(SUM(CASE WHEN estado='completado' THEN total ELSE 0 END), 0) as monto "
+        "FROM pedidos WHERE usuario_id = ? "
+        "AND date(fecha_pedido) >= ? AND date(fecha_pedido) <= ? "
+        "GROUP BY date(fecha_pedido) ORDER BY dia",
+        (uid, fecha_desde, fecha_hasta)
+    ).fetchall()
+
+    # Últimos pedidos en el rango
+    ultimos = db.execute(
+        "SELECT p.*, pr.nombre as producto_nombre FROM pedidos p "
+        "JOIN productos pr ON p.producto_id = pr.id "
+        "WHERE p.usuario_id = ? AND date(p.fecha_pedido) >= ? AND date(p.fecha_pedido) <= ? "
+        "ORDER BY p.fecha_pedido DESC LIMIT 20",
+        (uid, fecha_desde, fecha_hasta)
+    ).fetchall()
+
+    db.close()
+    return render_template('estadisticas.html',
+        stats=stats, stats_hoy=stats_hoy, top_productos=top_productos,
+        ventas_diarias=ventas_diarias, ultimos=ultimos,
+        fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
+
+
 # ===== PERFIL =====
 @app.route('/perfil', methods=['GET', 'POST'])
 @login_required
@@ -808,6 +879,86 @@ def admin_panel():
     solicitudes_pendientes = db.execute("SELECT COUNT(*) as c FROM solicitudes_recarga WHERE estado = 'pendiente'").fetchone()['c']
     db.close()
     return render_template('admin/panel.html', total_users=total_users, total_pedidos=total_pedidos, total_ventas=total_ventas, total_pendientes=total_pendientes, ultimos_pedidos=ultimos_pedidos, solicitudes_pendientes=solicitudes_pendientes)
+
+
+@app.route('/admin/estadisticas')
+@admin_required
+def admin_estadisticas():
+    from datetime import datetime, timedelta
+    fecha_desde = request.args.get('desde', '')
+    fecha_hasta = request.args.get('hasta', '')
+    if not fecha_desde:
+        fecha_desde = datetime.now().strftime('%Y-%m-%d')
+    if not fecha_hasta:
+        fecha_hasta = datetime.now().strftime('%Y-%m-%d')
+
+    db = get_db()
+    hoy = datetime.now().strftime('%Y-%m-%d')
+
+    # Stats del rango
+    stats = db.execute(
+        "SELECT COUNT(*) as total_pedidos, "
+        "COALESCE(SUM(CASE WHEN estado='completado' THEN total ELSE 0 END), 0) as total_ventas, "
+        "COALESCE(SUM(CASE WHEN estado='completado' THEN 1 ELSE 0 END), 0) as completados, "
+        "COALESCE(SUM(CASE WHEN estado='cancelado' THEN 1 ELSE 0 END), 0) as cancelados, "
+        "COALESCE(SUM(CASE WHEN estado='procesando' THEN 1 ELSE 0 END), 0) as procesando, "
+        "COUNT(DISTINCT usuario_id) as usuarios_activos "
+        "FROM pedidos WHERE date(fecha_pedido) >= ? AND date(fecha_pedido) <= ?",
+        (fecha_desde, fecha_hasta)
+    ).fetchone()
+
+    # Stats de hoy
+    stats_hoy = db.execute(
+        "SELECT COUNT(*) as total, "
+        "COALESCE(SUM(CASE WHEN estado='completado' THEN total ELSE 0 END), 0) as ventas, "
+        "COUNT(DISTINCT usuario_id) as usuarios "
+        "FROM pedidos WHERE date(fecha_pedido) = ?",
+        (hoy,)
+    ).fetchone()
+
+    # Top productos del rango
+    top_productos = db.execute(
+        "SELECT pr.nombre, COUNT(*) as veces, SUM(p.total) as total_vendido "
+        "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
+        "WHERE p.estado = 'completado' "
+        "AND date(p.fecha_pedido) >= ? AND date(p.fecha_pedido) <= ? "
+        "GROUP BY pr.id ORDER BY veces DESC LIMIT 10",
+        (fecha_desde, fecha_hasta)
+    ).fetchall()
+
+    # Top usuarios del rango
+    top_usuarios = db.execute(
+        "SELECT u.nombre, u.email, COUNT(*) as pedidos, "
+        "COALESCE(SUM(CASE WHEN p.estado='completado' THEN p.total ELSE 0 END), 0) as total_gastado "
+        "FROM pedidos p JOIN usuarios u ON p.usuario_id = u.id "
+        "WHERE date(p.fecha_pedido) >= ? AND date(p.fecha_pedido) <= ? "
+        "GROUP BY u.id ORDER BY total_gastado DESC LIMIT 10",
+        (fecha_desde, fecha_hasta)
+    ).fetchall()
+
+    # Ventas por día
+    ventas_diarias = db.execute(
+        "SELECT date(fecha_pedido) as dia, COUNT(*) as cantidad, "
+        "COALESCE(SUM(CASE WHEN estado='completado' THEN total ELSE 0 END), 0) as monto "
+        "FROM pedidos WHERE date(fecha_pedido) >= ? AND date(fecha_pedido) <= ? "
+        "GROUP BY date(fecha_pedido) ORDER BY dia",
+        (fecha_desde, fecha_hasta)
+    ).fetchall()
+
+    # Recargas de saldo en el rango
+    total_recargas = db.execute(
+        "SELECT COUNT(*) as cantidad, COALESCE(SUM(monto), 0) as total "
+        "FROM transacciones WHERE tipo = 'recarga' "
+        "AND date(fecha) >= ? AND date(fecha) <= ?",
+        (fecha_desde, fecha_hasta)
+    ).fetchone()
+
+    db.close()
+    return render_template('admin/estadisticas.html',
+        stats=stats, stats_hoy=stats_hoy, top_productos=top_productos,
+        top_usuarios=top_usuarios, ventas_diarias=ventas_diarias,
+        total_recargas=total_recargas,
+        fecha_desde=fecha_desde, fecha_hasta=fecha_hasta)
 
 
 @app.route('/admin/solicitudes')

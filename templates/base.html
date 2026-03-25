@@ -34,6 +34,7 @@
                 <a href="{{ url_for('cartera') }}"><i class="fas fa-wallet"></i> ${{ '%.4f'|format(saldo) }}</a>
                 <a href="{{ url_for('mis_pedidos') }}"><i class="fas fa-shopping-bag"></i> Pedidos</a>
                 <a href="{{ url_for('mis_pines') }}"><i class="fas fa-key"></i> Mis Pines</a>
+                <a href="{{ url_for('estadisticas') }}"><i class="fas fa-chart-bar"></i> Estadísticas</a>
                 {% if current_user.rol == 'admin' %}
                 <a href="{{ url_for('admin_panel') }}"><i class="fas fa-cog"></i> Admin</a>
                 {% endif %}

@@ -1,0 +1,200 @@
+{% extends 'base.html' %}
+{% block title %}Estadísticas Admin - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1><i class="fas fa-chart-pie"></i> Estadísticas de Ventas</h1>
+        <p>Panel de métricas y rendimiento de la tienda</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <!-- Filtro de fechas -->
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:1.2rem; margin-bottom:2rem;">
+            <form method="GET" style="display:flex; gap:1rem; align-items:flex-end; flex-wrap:wrap;">
+                <div style="flex:1; min-width:140px;">
+                    <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.3rem;">Desde</label>
+                    <input type="date" name="desde" value="{{ fecha_desde }}" class="form-control" style="width:100%;">
+                </div>
+                <div style="flex:1; min-width:140px;">
+                    <label style="display:block; font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.3rem;">Hasta</label>
+                    <input type="date" name="hasta" value="{{ fecha_hasta }}" class="form-control" style="width:100%;">
+                </div>
+                <button type="submit" class="btn btn-primary" style="height:42px;"><i class="fas fa-filter"></i> Filtrar</button>
+                <a href="{{ url_for('admin_estadisticas') }}" class="btn btn-secondary" style="height:42px;"><i class="fas fa-redo"></i> Hoy</a>
+            </form>
+            <div style="display:flex; gap:0.5rem; margin-top:0.8rem; flex-wrap:wrap;">
+                <a href="#" class="btn btn-sm btn-outline" onclick="event.preventDefault(); var d=new Date(); var h=d.toISOString().split('T')[0]; location.href='?desde='+h+'&hasta='+h;">Hoy</a>
+                <a href="#" class="btn btn-sm btn-outline" onclick="event.preventDefault(); var d=new Date(); d.setDate(d.getDate()-7); location.href='?desde='+d.toISOString().split('T')[0]+'&hasta='+new Date().toISOString().split('T')[0];">7 días</a>
+                <a href="#" class="btn btn-sm btn-outline" onclick="event.preventDefault(); var d=new Date(); d.setDate(d.getDate()-30); location.href='?desde='+d.toISOString().split('T')[0]+'&hasta='+new Date().toISOString().split('T')[0];">30 días</a>
+                <a href="#" class="btn btn-sm btn-outline" onclick="event.preventDefault(); var d=new Date(); location.href='?desde='+d.getFullYear()+'-'+(''+(d.getMonth()+1)).padStart(2,'0')+'-01&hasta='+d.toISOString().split('T')[0];">Este mes</a>
+            </div>
+        </div>
+
+        <!-- Stats de hoy -->
+        <h3 style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:0.8rem;"><i class="fas fa-sun"></i> HOY</h3>
+        <div class="stats-grid" style="margin-bottom:2rem;">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-shopping-cart"></i></div>
+                <div class="stat-info">
+                    <h3>{{ stats_hoy.total }}</h3>
+                    <p>Pedidos hoy</p>
+                </div>
+            </div>
+            <div class="stat-card stat-card-wallet">
+                <div class="stat-icon"><i class="fas fa-dollar-sign"></i></div>
+                <div class="stat-info">
+                    <h3>${{ '%.4f'|format(stats_hoy.ventas) }}</h3>
+                    <p>Ventas hoy</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-users"></i></div>
+                <div class="stat-info">
+                    <h3>{{ stats_hoy.usuarios }}</h3>
+                    <p>Usuarios activos hoy</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Stats del rango -->
+        <h3 style="color:var(--text-secondary); font-size:0.9rem; margin-bottom:0.8rem;"><i class="fas fa-calendar"></i> PERÍODO: {{ fecha_desde }} a {{ fecha_hasta }}</h3>
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-receipt"></i></div>
+                <div class="stat-info">
+                    <h3>{{ stats.total_pedidos }}</h3>
+                    <p>Total pedidos</p>
+                </div>
+            </div>
+            <div class="stat-card stat-card-wallet">
+                <div class="stat-icon"><i class="fas fa-coins"></i></div>
+                <div class="stat-info">
+                    <h3>${{ '%.4f'|format(stats.total_ventas) }}</h3>
+                    <p>Total ventas</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="color:#10b981;"><i class="fas fa-check-circle"></i></div>
+                <div class="stat-info">
+                    <h3>{{ stats.completados }}</h3>
+                    <p>Completados</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="color:#f59e0b;"><i class="fas fa-clock"></i></div>
+                <div class="stat-info">
+                    <h3>{{ stats.procesando }}</h3>
+                    <p>Procesando</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="color:#ef4444;"><i class="fas fa-times-circle"></i></div>
+                <div class="stat-info">
+                    <h3>{{ stats.cancelados }}</h3>
+                    <p>Cancelados</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon"><i class="fas fa-users"></i></div>
+                <div class="stat-info">
+                    <h3>{{ stats.usuarios_activos }}</h3>
+                    <p>Usuarios activos</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="color:#8b5cf6;"><i class="fas fa-wallet"></i></div>
+                <div class="stat-info">
+                    <h3>{{ total_recargas.cantidad }}</h3>
+                    <p>Recargas de saldo</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon" style="color:#8b5cf6;"><i class="fas fa-money-bill-wave"></i></div>
+                <div class="stat-info">
+                    <h3>${{ '%.4f'|format(total_recargas.total) }}</h3>
+                    <p>Total recargado</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- Gráfico de ventas diarias -->
+{% if ventas_diarias|length > 1 %}
+<section class="section" style="padding-top:0;">
+    <div class="container">
+        <h2 class="section-title"><i class="fas fa-chart-line"></i> Ventas Diarias</h2>
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); padding:1.5rem; overflow-x:auto;">
+            <div style="display:flex; align-items:flex-end; gap:4px; height:220px; min-width:{{ ventas_diarias|length * 50 }}px;">
+                {% set max_monto = ventas_diarias|map(attribute='monto')|max or 1 %}
+                {% for d in ventas_diarias %}
+                <div style="flex:1; display:flex; flex-direction:column; align-items:center; min-width:40px;">
+                    <span style="font-size:0.65rem; color:var(--text-secondary); margin-bottom:2px;">{{ d.cantidad }}</span>
+                    <span style="font-size:0.7rem; color:var(--accent-primary); margin-bottom:4px;">${{ '%.2f'|format(d.monto) }}</span>
+                    <div style="width:100%; max-width:40px; background:linear-gradient(180deg, var(--accent-primary), var(--accent-secondary)); border-radius:4px 4px 0 0; height:{{ (d.monto / max_monto * 160)|int }}px; min-height:4px; transition:height 0.3s;" title="{{ d.dia }}: {{ d.cantidad }} pedidos - ${{ '%.4f'|format(d.monto) }}"></div>
+                    <span style="font-size:0.65rem; color:var(--text-secondary); margin-top:4px; writing-mode:vertical-rl; transform:rotate(180deg); height:50px; overflow:hidden;">{{ d.dia[5:] }}</span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<div class="container" style="display:grid; grid-template-columns:1fr 1fr; gap:2rem; margin-bottom:2rem;">
+    <!-- Top productos -->
+    {% if top_productos %}
+    <div>
+        <h2 class="section-title"><i class="fas fa-trophy"></i> Top Productos</h2>
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;">
+            {% for p in top_productos %}
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; {{ 'border-top:1px solid var(--border);' if not loop.first }}">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                    <span style="background:{% if loop.index == 1 %}#f59e0b{% elif loop.index == 2 %}#94a3b8{% elif loop.index == 3 %}#cd7f32{% else %}var(--accent-primary){% endif %}; color:#fff; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:700;">{{ loop.index }}</span>
+                    <span style="font-weight:500; font-size:0.9rem;">{{ p.nombre }}</span>
+                </div>
+                <div style="text-align:right;">
+                    <span style="font-weight:600; color:var(--accent-primary); font-size:0.9rem;">${{ '%.4f'|format(p.total_vendido) }}</span>
+                    <span style="color:var(--text-secondary); font-size:0.75rem; display:block;">{{ p.veces }} ventas</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Top usuarios -->
+    {% if top_usuarios %}
+    <div>
+        <h2 class="section-title"><i class="fas fa-user-crown"></i> Top Usuarios</h2>
+        <div style="background:var(--bg-card); border:1px solid var(--border); border-radius:var(--radius); overflow:hidden;">
+            {% for u in top_usuarios %}
+            <div style="display:flex; justify-content:space-between; align-items:center; padding:0.7rem 1rem; {{ 'border-top:1px solid var(--border);' if not loop.first }}">
+                <div style="display:flex; align-items:center; gap:0.6rem;">
+                    <span style="background:{% if loop.index == 1 %}#f59e0b{% elif loop.index == 2 %}#94a3b8{% elif loop.index == 3 %}#cd7f32{% else %}var(--bg-primary){% endif %}; color:#fff; width:26px; height:26px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.75rem; font-weight:700;">{{ loop.index }}</span>
+                    <div>
+                        <span style="font-weight:500; font-size:0.9rem;">{{ u.nombre }}</span>
+                        <span style="color:var(--text-secondary); font-size:0.75rem; display:block;">{{ u.email }}</span>
+                    </div>
+                </div>
+                <div style="text-align:right;">
+                    <span style="font-weight:600; color:var(--accent-primary); font-size:0.9rem;">${{ '%.4f'|format(u.total_gastado) }}</span>
+                    <span style="color:var(--text-secondary); font-size:0.75rem; display:block;">{{ u.pedidos }} pedidos</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<style>
+@media (max-width: 768px) {
+    .container > div[style*="grid-template-columns:1fr 1fr"] {
+        grid-template-columns: 1fr !important;
+    }
+}
+</style>
+{% endblock %}
