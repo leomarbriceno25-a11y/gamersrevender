@@ -929,13 +929,13 @@ def admin_estadisticas():
         (hoy,)
     ).fetchone()
 
-    # Top productos del rango
+    # Todos los productos vendidos del rango
     top_productos = db.execute(
         "SELECT pr.nombre, COUNT(*) as veces, SUM(p.total) as total_vendido "
         "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
         "WHERE p.estado = 'completado' "
         "AND date(p.fecha_pedido) >= ? AND date(p.fecha_pedido) <= ? "
-        "GROUP BY pr.id ORDER BY veces DESC LIMIT 10",
+        "GROUP BY pr.id ORDER BY veces DESC",
         (fecha_desde, fecha_hasta)
     ).fetchall()
 
