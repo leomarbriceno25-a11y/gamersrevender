@@ -71,6 +71,19 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
                 return {'ok': True, 'nombre': data['nickname']}
             return {'ok': False, 'error': 'ID no encontrado'}
 
+        elif tipo == 'freefire_id':
+            r = ext_requests.get(
+                f"https://freefire-api-six.vercel.app/get_player_personal_show?server=id&uid={player_id}",
+                timeout=15
+            )
+            if r.status_code == 200:
+                data = r.json()
+                basic = data.get('basicinfo', {})
+                nickname = basic.get('nickname', '')
+                if nickname:
+                    return {'ok': True, 'nombre': nickname}
+            return {'ok': False, 'error': 'ID no encontrado en servidor Indonesia'}
+
         elif tipo == 'bloodstrike':
             r = ext_requests.get(
                 f"https://pay.neteasegames.com/gameclub/bloodstrike/-1/login-role?roleid={player_id}&client_type=gameclub",
