@@ -27,16 +27,16 @@
             </div>
         </div>
 
-        {% if user.api_key %}
+        {% if user.api_key_prefix %}
         <div class="api-key-box">
             <h3><i class="fas fa-key"></i> Tu API Key</h3>
             <div class="api-key-value">
-                <code id="apiKey">{{ user.api_key }}</code>
-                <button class="btn btn-sm btn-secondary" onclick="navigator.clipboard.writeText(document.getElementById('apiKey').textContent); this.innerHTML='<i class=\'fas fa-check\'></i> Copiado';">
-                    <i class="fas fa-copy"></i> Copiar
-                </button>
+                <code id="apiKey">{{ user.api_key_prefix }}********************************</code>
+                <a href="{{ url_for('mi_api') }}" class="btn btn-sm btn-secondary">
+                    <i class="fas fa-key"></i> Ver/Regenerar
+                </a>
             </div>
-            <p class="api-key-hint">Usa esta key para conectarte vía API. Base URL: <code>/api/v1/</code></p>
+            <p class="api-key-hint">La clave completa solo se muestra al regenerarla en <a href="{{ url_for('mi_api') }}">Mi API</a>. Base URL: <code>/api/v1/</code></p>
         </div>
         {% endif %}
     </div>

@@ -6,10 +6,10 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from models import (
     init_db, get_db, get_user_by_id, get_user_by_email, get_user_by_api_key,
-    create_user, get_saldo, recargar_saldo, descontar_saldo
+    create_user, get_saldo, recargar_saldo, descontar_saldo, rotate_api_key,
+    encrypt_pin, decrypt_pin, mask_pin
 )
 import config
-import secrets
 import os
 from telegram_bot import notificar_recarga, notificar_stock_bajo
 import uuid
@@ -199,9 +199,9 @@ def admin_required(f):
 def api_key_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
+        api_key = request.headers.get('X-API-Key', '').strip()
         if not api_key:
-            return jsonify({'error': 'API key requerida'}), 401
+            return jsonify({'error': 'API key requerida en header X-API-Key'}), 401
         user = get_user_by_api_key(api_key)
         if not user:
             return jsonify({'error': 'API key inválida'}), 401
@@ -546,7 +546,7 @@ def comprar():
         pin_codes = []
         for pr in pin_rows:
             pin_ids.append(pr['id'])
-            pin_codes.append(pr['pin'])
+            pin_codes.append(decrypt_pin(pr['pin']))
             db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
                        (user_id, pedido_id, pr['id']))
         db.commit()
@@ -629,7 +629,7 @@ def comprar():
             for pin_row in pines_disponibles:
                 db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
                            (user_id, pedido_id, pin_row['id']))
-                codigos.append(pin_row['pin'])
+                codigos.append(decrypt_pin(pin_row['pin']))
             todos_codigos = '\n'.join(codigos)
             db.execute("UPDATE pedidos SET estado = 'completado', codigo_entregado = ? WHERE id = ?", (todos_codigos, pedido_id))
             db.commit()
@@ -1784,7 +1784,7 @@ def admin_almacen():
                 pines_list = [p.strip() for p in pines_text.split('\n') if p.strip()]
                 count = 0
                 for pin in pines_list:
-                    db.execute("INSERT INTO pines (producto_id, pin) VALUES (?, ?)", (producto_id, pin))
+                    db.execute("INSERT INTO pines (producto_id, pin) VALUES (?, ?)", (producto_id, encrypt_pin(pin)))
                     count += 1
                 db.commit()
                 flash(f'{count} PIN(es) agregados al almacén', 'success')
@@ -1825,8 +1825,15 @@ def admin_almacen():
     filtro = request.args.get('producto_id', '')
     if filtro:
         pines = db.execute("SELECT pi.*, pr.nombre as producto_nombre FROM pines pi JOIN productos pr ON pi.producto_id = pr.id WHERE pi.producto_id = ? ORDER BY pi.estado ASC, pi.fecha_agregado DESC", (int(filtro),)).fetchall()
+
+    pines_seg = []
+    for pin_row in pines:
+        p = dict(pin_row)
+        p['pin_mask'] = mask_pin(p.get('pin', ''))
+        pines_seg.append(p)
+
     db.close()
-    return render_template('admin/almacen.html', productos_api=productos_api, stock=stock, pines=pines, filtro=filtro)
+    return render_template('admin/almacen.html', productos_api=productos_api, stock=stock, pines=pines_seg, filtro=filtro)
 
 
 @app.route('/admin/pedidos')
@@ -1839,7 +1846,7 @@ def admin_pedidos():
     for ped in pedidos:
         pines = db.execute("SELECT id, pin FROM pines WHERE pedido_id = ?", (ped['id'],)).fetchall()
         if pines:
-            pines_por_pedido[ped['id']] = pines
+            pines_por_pedido[ped['id']] = [{'id': pin['id'], 'pin_mask': mask_pin(pin['pin'])} for pin in pines]
     db.close()
     return render_template('admin/pedidos.html', pedidos=pedidos, pines_por_pedido=pines_por_pedido)
 
@@ -1862,14 +1869,13 @@ def admin_cambiar_estado(id):
 def mi_api():
     db = get_db()
     user = db.execute("SELECT * FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+    generated_api_key = None
     if request.method == 'POST':
-        nueva_key = secrets.token_hex(32)
-        db.execute("UPDATE usuarios SET api_key = ? WHERE id = ?", (nueva_key, session['user_id']))
-        db.commit()
+        generated_api_key = rotate_api_key(session['user_id'])
         user = db.execute("SELECT * FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
-        flash('API Key generada exitosamente', 'success')
+        flash('API Key regenerada exitosamente. Guárdala ahora: no se mostrará completa otra vez.', 'success')
     db.close()
-    return render_template('mi_api.html', user=user)
+    return render_template('mi_api.html', user=user, generated_api_key=generated_api_key)
 
 
 @app.route('/api/docs')
@@ -2129,7 +2135,7 @@ def api_comprar():
         pin_codes = []
         for pr in pin_rows:
             pin_ids.append(pr['id'])
-            pin_codes.append(pr['pin'])
+            pin_codes.append(decrypt_pin(pr['pin']))
             db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
                        (user_id_api, pedido_id, pr['id']))
         db.commit()
@@ -2220,7 +2226,7 @@ def api_comprar():
             for pin_row in pines_disponibles:
                 db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
                            (user_id_api, pedido_id, pin_row['id']))
-                codigos.append(pin_row['pin'])
+                codigos.append(decrypt_pin(pin_row['pin']))
             todos_codigos = '\n'.join(codigos)
             db.execute("UPDATE pedidos SET estado = 'completado', codigo_entregado = ? WHERE id = ?", (todos_codigos, pedido_id))
             db.commit()

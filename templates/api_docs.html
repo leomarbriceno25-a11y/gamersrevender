@@ -73,15 +73,11 @@ if ($resp['ok']) {
         <!-- Autenticación -->
         <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
             <h2 style="margin-bottom:1rem; color:var(--accent-primary);"><i class="fas fa-lock"></i> Autenticación</h2>
-            <p>Todas las peticiones requieren tu <strong>API Key</strong>. Puedes enviarla de dos formas:</p>
+            <p>Todas las peticiones requieren tu <strong>API Key</strong> en el header HTTP:</p>
             <div style="margin:1rem 0;">
                 <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; margin-bottom:0.5rem; overflow-x:auto;">
-                    <strong style="color:var(--text-secondary); font-size:0.8rem;">Opción 1 — Header (recomendado):</strong><br>
+                    <strong style="color:var(--text-secondary); font-size:0.8rem;">Header requerido:</strong><br>
                     <code style="color:#7c3aed;">X-API-Key: TU_API_KEY_AQUI</code>
-                </div>
-                <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
-                    <strong style="color:var(--text-secondary); font-size:0.8rem;">Opción 2 — Query param:</strong><br>
-                    <code style="color:#7c3aed;">{{ request.host_url }}api/v1/saldo?api_key=TU_API_KEY_AQUI</code>
                 </div>
             </div>
             <p style="color:var(--text-secondary); font-size:0.9rem;">Obtén tu API Key en <a href="/mi-api">Mi API</a>.</p>

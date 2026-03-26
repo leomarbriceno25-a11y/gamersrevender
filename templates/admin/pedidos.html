@@ -38,7 +38,7 @@
                             {% if pines_por_pedido.get(p.id) %}
                             {% set pines_ped = pines_por_pedido[p.id] %}
                             {% for pin in pines_ped %}
-                            <span style="font-size:0.75rem; color:var(--primary);" title="{{ pin.pin }}">#{{ pin.id }}</span>{{ ', ' if not loop.last }}
+                            <span style="font-size:0.75rem; color:var(--primary);" title="{{ pin.pin_mask }}">#{{ pin.id }}</span>{{ ', ' if not loop.last }}
                             {% endfor %}
                             {% else %}-{% endif %}
                         </td>

@@ -79,7 +79,7 @@
                     </div>
                     <div style="padding:0.8rem; background:var(--bg-primary); border-radius:8px;">
                         <div style="font-size:0.8rem; color:var(--text-secondary);"><i class="fas fa-key"></i> API Key</div>
-                        <div style="font-weight:600; font-size:0.75rem; word-break:break-all;">{{ user.api_key[:16] }}...</div>
+                        <div style="font-weight:600; font-size:0.75rem; word-break:break-all;">{{ (user.api_key_prefix or 'no-key') }}********</div>
                     </div>
                 </div>
             </div>

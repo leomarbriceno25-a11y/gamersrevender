@@ -1,10 +1,64 @@
 import sqlite3
 import os
 import secrets
+import hashlib
+import base64
 from datetime import datetime
 from werkzeug.security import generate_password_hash, check_password_hash
+from cryptography.fernet import Fernet, InvalidToken
+import config
 
 DB_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), 'instance', 'tienda.db')
+
+
+def _hash_api_key(api_key):
+    return hashlib.sha256(api_key.encode('utf-8')).hexdigest()
+
+
+def generate_api_key():
+    """Genera una API key de 64 hex chars (32 bytes)."""
+    return secrets.token_hex(32)
+
+
+def _build_pin_cipher():
+    seed = f"{config.SECRET_KEY}|pin-v1".encode('utf-8')
+    key = base64.urlsafe_b64encode(hashlib.sha256(seed).digest())
+    return Fernet(key)
+
+
+_PIN_CIPHER = _build_pin_cipher()
+
+
+def encrypt_pin(pin):
+    pin = (pin or '').strip()
+    if not pin:
+        return ''
+    if pin.startswith('enc:v1:'):
+        return pin
+    token = _PIN_CIPHER.encrypt(pin.encode('utf-8')).decode('utf-8')
+    return f"enc:v1:{token}"
+
+
+def decrypt_pin(pin):
+    value = (pin or '').strip()
+    if not value:
+        return ''
+    if not value.startswith('enc:v1:'):
+        return value
+    token = value[len('enc:v1:'):]
+    try:
+        return _PIN_CIPHER.decrypt(token.encode('utf-8')).decode('utf-8')
+    except (InvalidToken, ValueError):
+        return ''
+
+
+def mask_pin(pin, head=4, tail=2):
+    raw = decrypt_pin(pin)
+    if not raw:
+        return '***'
+    if len(raw) <= head + tail:
+        return '*' * len(raw)
+    return f"{raw[:head]}{'*' * (len(raw) - head - tail)}{raw[-tail:]}"
 
 
 def get_db():
@@ -142,6 +196,14 @@ def init_db():
         db.execute("SELECT webhook_url FROM usuarios LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE usuarios ADD COLUMN webhook_url TEXT DEFAULT ''")
+    try:
+        db.execute("SELECT api_key_hash FROM usuarios LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE usuarios ADD COLUMN api_key_hash TEXT DEFAULT ''")
+    try:
+        db.execute("SELECT api_key_prefix FROM usuarios LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE usuarios ADD COLUMN api_key_prefix TEXT DEFAULT ''")
     # Restock automático de pines: producto origen (Gift Card), stock mínimo y objetivo
     try:
         db.execute("SELECT pin_origen_producto_id FROM productos LIMIT 1")
@@ -248,10 +310,31 @@ def init_db():
     # Crear admin si no existe
     admin = db.execute("SELECT id FROM usuarios WHERE email = ?", ('admin@gamersrev.com',)).fetchone()
     if not admin:
-        api_key = secrets.token_hex(32)
+        api_key = generate_api_key()
         db.execute(
-            "INSERT INTO usuarios (nombre, email, password, rol, api_key) VALUES (?, ?, ?, ?, ?)",
-            ('Admin', 'admin@gamersrev.com', generate_password_hash('admin123'), 'admin', api_key)
+            "INSERT INTO usuarios (nombre, email, password, rol, api_key, api_key_hash, api_key_prefix) VALUES (?, ?, ?, ?, ?, ?, ?)",
+            ('Admin', 'admin@gamersrev.com', generate_password_hash('admin123'), 'admin', '', _hash_api_key(api_key), api_key[:8])
+        )
+
+    # Migración en caliente: usuarios con api_key legada en texto plano -> hash
+    legacy_users = db.execute(
+        "SELECT id, api_key FROM usuarios WHERE api_key IS NOT NULL AND api_key != '' AND (api_key_hash IS NULL OR api_key_hash = '')"
+    ).fetchall()
+    for u in legacy_users:
+        raw = u['api_key']
+        db.execute(
+            "UPDATE usuarios SET api_key_hash = ?, api_key_prefix = ?, api_key = '' WHERE id = ?",
+            (_hash_api_key(raw), raw[:8], u['id'])
+        )
+
+    # Migración en caliente: PINes legados en texto plano -> cifrados
+    legacy_pines = db.execute(
+        "SELECT id, pin FROM pines WHERE pin IS NOT NULL AND pin != '' AND pin NOT LIKE 'enc:v1:%'"
+    ).fetchall()
+    for p in legacy_pines:
+        db.execute(
+            "UPDATE pines SET pin = ? WHERE id = ?",
+            (encrypt_pin(p['pin']), p['id'])
         )
 
     # Categorias (cada juego/plataforma es una categoría)
@@ -427,18 +510,52 @@ def get_user_by_email(email):
 
 def get_user_by_api_key(api_key):
     db = get_db()
-    user = db.execute("SELECT * FROM usuarios WHERE api_key = ? AND activo = 1", (api_key,)).fetchone()
+    key_hash = _hash_api_key(api_key)
+    user = db.execute(
+        "SELECT * FROM usuarios WHERE api_key_hash = ? AND activo = 1",
+        (key_hash,)
+    ).fetchone()
+
+    # Compatibilidad temporal para keys no migradas (si existiera alguna)
+    if not user:
+        legacy = db.execute(
+            "SELECT * FROM usuarios WHERE api_key = ? AND activo = 1",
+            (api_key,)
+        ).fetchone()
+        if legacy:
+            db.execute(
+                "UPDATE usuarios SET api_key_hash = ?, api_key_prefix = ?, api_key = '' WHERE id = ?",
+                (key_hash, api_key[:8], legacy['id'])
+            )
+            db.commit()
+            user = db.execute(
+                "SELECT * FROM usuarios WHERE id = ?",
+                (legacy['id'],)
+            ).fetchone()
     db.close()
     return user
 
 
+def rotate_api_key(user_id):
+    """Regenera API key de usuario y devuelve la key en texto plano (solo para mostrar una vez)."""
+    nueva_key = generate_api_key()
+    db = get_db()
+    db.execute(
+        "UPDATE usuarios SET api_key_hash = ?, api_key_prefix = ?, api_key = '' WHERE id = ?",
+        (_hash_api_key(nueva_key), nueva_key[:8], user_id)
+    )
+    db.commit()
+    db.close()
+    return nueva_key
+
+
 def create_user(nombre, email, password, telefono=''):
     db = get_db()
-    api_key = secrets.token_hex(32)
+    api_key = generate_api_key()
     try:
         db.execute(
-            "INSERT INTO usuarios (nombre, email, password, telefono, api_key, activo) VALUES (?, ?, ?, ?, ?, 0)",
-            (nombre, email, generate_password_hash(password), telefono, api_key)
+            "INSERT INTO usuarios (nombre, email, password, telefono, api_key, api_key_hash, api_key_prefix, activo) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+            (nombre, email, generate_password_hash(password), telefono, '', _hash_api_key(api_key), api_key[:8])
         )
         db.commit()
         user = db.execute("SELECT * FROM usuarios WHERE email = ?", (email,)).fetchone()
