@@ -313,7 +313,7 @@ def init_db():
         api_key = generate_api_key()
         db.execute(
             "INSERT INTO usuarios (nombre, email, password, rol, api_key, api_key_hash, api_key_prefix) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ('Admin', 'admin@gamersrev.com', generate_password_hash('admin123'), 'admin', '', _hash_api_key(api_key), api_key[:8])
+            ('Admin', 'admin@gamersrev.com', generate_password_hash('admin123'), 'admin', None, _hash_api_key(api_key), api_key[:8])
         )
 
     # Migración en caliente: usuarios con api_key legada en texto plano -> hash
@@ -323,7 +323,7 @@ def init_db():
     for u in legacy_users:
         raw = u['api_key']
         db.execute(
-            "UPDATE usuarios SET api_key_hash = ?, api_key_prefix = ?, api_key = '' WHERE id = ?",
+            "UPDATE usuarios SET api_key_hash = ?, api_key_prefix = ?, api_key = NULL WHERE id = ?",
             (_hash_api_key(raw), raw[:8], u['id'])
         )
 
@@ -524,7 +524,7 @@ def get_user_by_api_key(api_key):
         ).fetchone()
         if legacy:
             db.execute(
-                "UPDATE usuarios SET api_key_hash = ?, api_key_prefix = ?, api_key = '' WHERE id = ?",
+                "UPDATE usuarios SET api_key_hash = ?, api_key_prefix = ?, api_key = NULL WHERE id = ?",
                 (key_hash, api_key[:8], legacy['id'])
             )
             db.commit()
@@ -541,7 +541,7 @@ def rotate_api_key(user_id):
     nueva_key = generate_api_key()
     db = get_db()
     db.execute(
-        "UPDATE usuarios SET api_key_hash = ?, api_key_prefix = ?, api_key = '' WHERE id = ?",
+        "UPDATE usuarios SET api_key_hash = ?, api_key_prefix = ?, api_key = NULL WHERE id = ?",
         (_hash_api_key(nueva_key), nueva_key[:8], user_id)
     )
     db.commit()
@@ -555,7 +555,7 @@ def create_user(nombre, email, password, telefono=''):
     try:
         db.execute(
             "INSERT INTO usuarios (nombre, email, password, telefono, api_key, api_key_hash, api_key_prefix, activo) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
-            (nombre, email, generate_password_hash(password), telefono, '', _hash_api_key(api_key), api_key[:8])
+            (nombre, email, generate_password_hash(password), telefono, None, _hash_api_key(api_key), api_key[:8])
         )
         db.commit()
         user = db.execute("SELECT * FROM usuarios WHERE email = ?", (email,)).fetchone()
