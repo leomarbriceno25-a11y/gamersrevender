@@ -93,6 +93,28 @@
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
+                        <input type="checkbox" name="usa_razer" id="form-usa-razer" onchange="toggleRazer()"> <i class="fas fa-plug" style="color:#22c55e;"></i> Usa API Razer (adicional)
+                    </label>
+                </div>
+                <div class="form-group" id="razer-group" style="display:none;">
+                    <label><i class="fas fa-box-open" style="color:#22c55e;"></i> Paquete Razer</label>
+                    <select name="razer_paquete" id="form-razer-paquete" class="form-select">
+                        <option value="0">Sin paquete (no aplica)</option>
+                        <option value="1">Paq 1 - 110 diamantes</option>
+                        <option value="2">Paq 2 - 341 diamantes</option>
+                        <option value="3">Paq 3 - 520 diamantes</option>
+                        <option value="4">Paq 4 - 1060 diamantes</option>
+                        <option value="5">Paq 5 - 2180 diamantes</option>
+                        <option value="6">Paq 6 - 5600 diamantes</option>
+                        <option value="7">Paq 7 - Tarjeta Básica</option>
+                        <option value="8">Paq 8 - Membresía Semanal</option>
+                        <option value="9">Paq 9 - Membresía Mensual</option>
+                        <option value="10">Paq 10 - Pase Booyah</option>
+                    </select>
+                    <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.4rem;">Esta API es independiente de Hype. Selecciona el paquete exacto para este producto.</p>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
                         <input type="checkbox" id="form-usa-gamepoint" onchange="toggleGamepoint()"> <i class="fas fa-globe" style="color:#3b82f6;"></i> Usa GamePoint Club API (recarga directa sin PINes)
                     </label>
                 </div>
@@ -162,7 +184,7 @@
                 </thead>
                 <tbody>
                     {% for p in productos %}
-                    <tr id="row-{{ p.id }}" data-id="{{ p.id }}" data-gp-product="{{ p.gamepoint_product_id }}" data-gp-package="{{ p.gamepoint_package_id }}">
+                    <tr id="row-{{ p.id }}" data-id="{{ p.id }}" data-gp-product="{{ p.gamepoint_product_id }}" data-gp-package="{{ p.gamepoint_package_id }}" data-usa-razer="{{ p.usa_razer|default(0) }}" data-razer-paquete="{{ p.razer_paquete|default(0) }}">
                         <td><input type="checkbox" class="sel-prod" value="{{ p.id }}" onclick="actualizarConteoProd()"></td>
                         <td>
                             <div class="order-arrows">
@@ -176,6 +198,8 @@
                         <td>
                             {% if p.gamepoint_product_id %}
                             <span class="badge badge-completado"><i class="fas fa-globe"></i> GP</span>
+                            {% elif p.usa_razer|default(0) %}
+                            <span class="badge badge-completado"><i class="fas fa-plug"></i> Razer</span>
                             {% elif p.usa_api %}
                             <span class="badge badge-pendiente"><i class="fas fa-bolt"></i> Hype</span>
                             {% else %}
@@ -186,7 +210,7 @@
                         <td style="text-align:center;"><input type="checkbox" class="edit-manual" {{ 'checked' if p.recarga_manual|default(0) }} title="Recarga manual (proveedor confirma después)"></td>
                         <td>
                             <div class="action-btns">
-                                <button class="btn btn-sm btn-secondary" onclick="editarProducto({{ p.id }}, '{{ p.nombre|e }}', {{ p.precio }}, {{ p.categoria_id }}, '{{ p.icono }}', '{{ p.descripcion|e }}', {{ p.activo }}, {{ p.usa_api }}, {{ p.monto_api }}, {{ p.orden }}, {{ p.gamepoint_product_id }}, {{ p.gamepoint_package_id }}, {{ p.recarga_manual|default(0) }}, {{ p.pin_origen_producto_id|default(0) }}, {{ p.stock_minimo|default(0) }}, {{ p.stock_objetivo|default(0) }}, {{ p.canjes_por_compra|default(1) }})" title="Editar completo">
+                                <button class="btn btn-sm btn-secondary" onclick="editarProducto({{ p.id }}, '{{ p.nombre|e }}', {{ p.precio }}, {{ p.categoria_id }}, '{{ p.icono }}', '{{ p.descripcion|e }}', {{ p.activo }}, {{ p.usa_api }}, {{ p.monto_api }}, {{ p.usa_razer|default(0) }}, {{ p.razer_paquete|default(0) }}, {{ p.orden }}, {{ p.gamepoint_product_id }}, {{ p.gamepoint_package_id }}, {{ p.recarga_manual|default(0) }}, {{ p.pin_origen_producto_id|default(0) }}, {{ p.stock_minimo|default(0) }}, {{ p.stock_objetivo|default(0) }}, {{ p.canjes_por_compra|default(1) }})" title="Editar completo">
                                     <i class="fas fa-edit"></i>
                                 </button>
                                 <form method="POST" style="display:inline;">
@@ -220,6 +244,12 @@ function toggleMonto() {
     var show = document.getElementById('form-usa-api').checked;
     document.getElementById('monto-api-group').style.display = show ? 'block' : 'none';
     if (!show) document.getElementById('form-monto-api').value = '0';
+}
+
+function toggleRazer() {
+    var show = document.getElementById('form-usa-razer').checked;
+    document.getElementById('razer-group').style.display = show ? 'block' : 'none';
+    if (!show) document.getElementById('form-razer-paquete').value = '0';
 }
 
 function toggleGamepoint() {
@@ -361,7 +391,7 @@ function cargarCamposGP() {
         });
 }
 
-function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi, orden, gpProduct, gpPackage, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
+function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, orden, gpProduct, gpPackage, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
     document.getElementById('form-accion').value = 'editar';
     document.getElementById('form-producto-id').value = id;
     document.getElementById('form-nombre').value = nombre;
@@ -372,6 +402,8 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     document.getElementById('form-activo').checked = activo == 1;
     document.getElementById('form-usa-api').checked = usaApi == 1;
     document.getElementById('form-monto-api').value = montoApi;
+    document.getElementById('form-usa-razer').checked = usaRazer == 1;
+    document.getElementById('form-razer-paquete').value = razerPaquete || 0;
     document.getElementById('form-usa-gamepoint').checked = (gpProduct > 0);
     document.getElementById('form-gp-product').value = gpProduct || 0;
     document.getElementById('form-gp-package').value = gpPackage || 0;
@@ -381,6 +413,7 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     document.getElementById('form-stock-objetivo').value = stockObj || 0;
     document.getElementById('form-canjes').value = canjes || 1;
     toggleMonto();
+    toggleRazer();
     toggleGamepoint();
     if (gpProduct > 0) { cargarCamposGP(); }
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-edit"></i> Editar Producto #' + id;
@@ -401,6 +434,8 @@ function resetForm() {
     document.getElementById('form-activo').checked = true;
     document.getElementById('form-usa-api').checked = false;
     document.getElementById('form-monto-api').value = '0';
+    document.getElementById('form-usa-razer').checked = false;
+    document.getElementById('form-razer-paquete').value = '0';
     document.getElementById('form-usa-gamepoint').checked = false;
     document.getElementById('form-recarga-manual').checked = false;
     document.getElementById('form-gp-product').value = '0';
@@ -413,6 +448,7 @@ function resetForm() {
     document.getElementById('gp-fields-preview').style.display = 'none';
     document.getElementById('gp-packages-preview').style.display = 'none';
     toggleMonto();
+    toggleRazer();
     toggleGamepoint();
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-plus-circle"></i> Nuevo Producto';
     document.getElementById('form-btn-text').textContent = 'Crear Producto';

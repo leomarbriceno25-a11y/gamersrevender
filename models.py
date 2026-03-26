@@ -108,6 +108,8 @@ def init_db():
             activo INTEGER DEFAULT 1,
             usa_api INTEGER DEFAULT 0,
             monto_api INTEGER DEFAULT 0,
+            usa_razer INTEGER DEFAULT 0,
+            razer_paquete INTEGER DEFAULT 0,
             gamepoint_product_id INTEGER DEFAULT 0,
             gamepoint_package_id INTEGER DEFAULT 0,
             gamepoint_fields TEXT DEFAULT '',
@@ -222,6 +224,14 @@ def init_db():
         db.execute("SELECT canjes_por_compra FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN canjes_por_compra INTEGER DEFAULT 1")
+    try:
+        db.execute("SELECT usa_razer FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN usa_razer INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT razer_paquete FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN razer_paquete INTEGER DEFAULT 0")
     # Bonus por monto de recarga
     try:
         db.execute("SELECT id FROM bonus_recarga LIMIT 1")

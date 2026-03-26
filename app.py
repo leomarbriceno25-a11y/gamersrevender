@@ -397,6 +397,12 @@ def comprar():
         db.close()
         return redirect(url_for('catalogo'))
 
+    usa_razer = prod['usa_razer'] if 'usa_razer' in prod.keys() else 0
+    if (prod['usa_api'] or usa_razer) and not id_juego:
+        flash('Debes ingresar el ID del jugador para esta recarga.', 'error')
+        db.close()
+        return redirect(url_for('producto', id=producto_id))
+
     total = prod['precio'] * cantidad
     user_id = session['user_id']
 
@@ -510,6 +516,56 @@ def comprar():
                 recargar_saldo(user_id, total, f"Reembolso: Excepción GamePoint pedido #{pedido_id}")
                 flash(f'Error inesperado en la recarga. Se reembolsó ${total:.4f} a tu cartera.', 'error')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
+
+    # Si el producto usa API Razer (separada), recarga directa por paquete
+    elif (prod['usa_razer'] if 'usa_razer' in prod.keys() else 0) and id_juego:
+        from razer_api import recargar_paquete
+
+        paquete = int((prod['razer_paquete'] if 'razer_paquete' in prod.keys() else 0) or 0)
+        if paquete <= 0:
+            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db.commit()
+            db.close()
+            recargar_saldo(user_id, total, f"Reembolso: Paquete Razer no configurado pedido #{pedido_id}")
+            flash('Este producto no tiene paquete Razer configurado. Se reembolsó tu saldo.', 'error')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
+
+        db.close()
+        exitosas = 0
+        nickname = ''
+        error_msg = ''
+        for _ in range(max(1, cantidad)):
+            resultado_api = recargar_paquete(id_juego, paquete)
+            if resultado_api.get('ok'):
+                exitosas += 1
+                nickname = resultado_api.get('nickname', '') or nickname
+            else:
+                error_msg = resultado_api.get('error', 'Proveedor Razer rechazó la recarga')
+                break
+
+        db2 = get_db()
+        if exitosas == cantidad:
+            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nickname or id_juego, pedido_id))
+            db2.commit()
+            db2.close()
+            flash(f'Pedido #{pedido_id} completado. {exitosas} recarga(s) aplicada(s) a {nickname or id_juego}.', 'success')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
+
+        if exitosas > 0:
+            monto_parcial = (total / cantidad) * (cantidad - exitosas)
+            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (f"{nickname or id_juego} (parcial {exitosas}/{cantidad})", pedido_id))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id, monto_parcial, f"Reembolso parcial Razer: {exitosas}/{cantidad} recargas OK pedido #{pedido_id}")
+            flash(f'Pedido #{pedido_id}: {exitosas}/{cantidad} recargas completadas. Reembolso parcial: ${monto_parcial:.4f}.', 'warning')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
+
+        db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+        db2.commit()
+        db2.close()
+        recargar_saldo(user_id, total, f"Reembolso: Error API Razer pedido #{pedido_id}")
+        flash(f'Error en recarga Razer: {error_msg}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
+        return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Hype Games (Free Fire), canjear PIN(es) automáticamente
     elif prod['usa_api'] and id_juego:
@@ -1325,6 +1381,8 @@ def admin_productos():
             icono = request.form.get('icono', 'fa-gem').strip()
             usa_api = 1 if request.form.get('usa_api') else 0
             monto_api = int(request.form.get('monto_api', 0))
+            usa_razer = 1 if request.form.get('usa_razer') else 0
+            razer_paquete = int(request.form.get('razer_paquete', 0))
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
@@ -1335,8 +1393,8 @@ def admin_productos():
             stock_objetivo = int(request.form.get('stock_objetivo', 0))
             canjes_por_compra = int(request.form.get('canjes_por_compra', 1)) or 1
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -1348,6 +1406,8 @@ def admin_productos():
             activo = 1 if request.form.get('activo') else 0
             usa_api = 1 if request.form.get('usa_api') else 0
             monto_api = int(request.form.get('monto_api', 0))
+            usa_razer = 1 if request.form.get('usa_razer') else 0
+            razer_paquete = int(request.form.get('razer_paquete', 0))
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
@@ -1358,8 +1418,8 @@ def admin_productos():
             stock_objetivo = int(request.form.get('stock_objetivo', 0))
             canjes_por_compra = int(request.form.get('canjes_por_compra', 1)) or 1
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -1911,12 +1971,14 @@ def api_saldo():
 def api_productos():
     import json as _json
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.gamepoint_product_id, p.gamepoint_fields, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.usa_razer, p.razer_paquete, p.gamepoint_product_id, p.gamepoint_fields, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
         d = dict(p)
         usa_api_hype = d.pop('usa_api', 0)
+        usa_api_razer = d.pop('usa_razer', 0)
+        razer_paquete = d.pop('razer_paquete', 0)
         # Parsear campos requeridos para que el revendedor sepa qué enviar
         fields_raw = d.pop('gamepoint_fields', '') or ''
         campos = []
@@ -1929,9 +1991,13 @@ def api_productos():
             d['campos_requeridos'] = [{'nombre': f['name'], 'descripcion': f['desc'], 'tipo': f['type'], 'opciones': f.get('options', [])} for f in campos]
         elif usa_api_hype:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador en Free Fire', 'tipo': 'string', 'opciones': []}]
+        elif usa_api_razer:
+            d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador para API Razer (paquete {razer_paquete})', 'tipo': 'string', 'opciones': []}]
         else:
             d['campos_requeridos'] = []
         d['usa_gamepoint'] = bool(d.pop('gamepoint_product_id', 0))
+        d['usa_razer'] = bool(usa_api_razer)
+        d['razer_paquete'] = int(razer_paquete or 0)
         d['procesamiento_manual'] = bool(d.pop('recarga_manual', 0))
         result.append(d)
     return jsonify({'ok': True, 'productos': result})
@@ -1959,7 +2025,8 @@ def api_comprar():
         gp_fields_raw = prod['gamepoint_fields'] or ''
     except Exception:
         pass
-    requiere_id = prod['usa_api'] or (prod['gamepoint_product_id'] and gp_fields_raw)
+    usa_razer = prod['usa_razer'] if 'usa_razer' in prod.keys() else 0
+    requiere_id = prod['usa_api'] or usa_razer or (prod['gamepoint_product_id'] and gp_fields_raw)
     if requiere_id and not id_juego:
         db.close()
         return jsonify({'ok': False, 'error': 'Se requiere id_juego (Player ID)'}), 400
@@ -2097,6 +2164,69 @@ def api_comprar():
                     'ok': False, 'error': str(e), 'pedido_id': pedido_id,
                     'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
                 }), 500
+
+    # API Razer separada (recarga directa)
+    elif (prod['usa_razer'] if 'usa_razer' in prod.keys() else 0) and id_juego:
+        from razer_api import recargar_paquete
+
+        paquete = int((prod['razer_paquete'] if 'razer_paquete' in prod.keys() else 0) or 0)
+        if paquete <= 0:
+            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db.commit()
+            db.close()
+            recargar_saldo(user_id_api, total, f"Reembolso API: Paquete Razer no configurado pedido #{pedido_id}")
+            return jsonify({
+                'ok': False, 'error': 'El producto no tiene paquete Razer configurado',
+                'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
+            }), 400
+
+        db.close()
+        exitosas = 0
+        nickname = ''
+        error_msg = ''
+        for _ in range(max(1, int(cantidad))):
+            resultado_api = recargar_paquete(id_juego, paquete)
+            if resultado_api.get('ok'):
+                exitosas += 1
+                nickname = resultado_api.get('nickname', '') or nickname
+            else:
+                error_msg = resultado_api.get('error', 'Proveedor Razer rechazó la recarga')
+                break
+
+        db2 = get_db()
+        if exitosas == cantidad:
+            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nickname or id_juego, pedido_id))
+            db2.commit()
+            db2.close()
+            return jsonify({
+                'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
+                'total': total, 'saldo_restante': get_saldo(user_id_api),
+                'nombre_jugador': nickname or id_juego, 'recargas_realizadas': exitosas,
+                'mensaje': f'{exitosas} recarga(s) aplicada(s) a {nickname or id_juego}'
+            })
+
+        if exitosas > 0:
+            monto_parcial = (total / cantidad) * (cantidad - exitosas)
+            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (f"{nickname or id_juego} (parcial {exitosas}/{cantidad})", pedido_id))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id_api, monto_parcial, f"Reembolso parcial API Razer: {exitosas}/{cantidad} recargas OK pedido #{pedido_id}")
+            return jsonify({
+                'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
+                'total': total, 'saldo_restante': get_saldo(user_id_api),
+                'nombre_jugador': nickname or id_juego, 'recargas_realizadas': exitosas,
+                'recargas_esperadas': cantidad, 'reembolso_parcial': monto_parcial,
+                'mensaje': f'{exitosas}/{cantidad} recargas completadas. Reembolso parcial: ${monto_parcial:.4f}'
+            })
+
+        db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+        db2.commit()
+        db2.close()
+        recargar_saldo(user_id_api, total, f"Reembolso API: Error recarga Razer pedido #{pedido_id}")
+        return jsonify({
+            'ok': False, 'error': error_msg, 'pedido_id': pedido_id,
+            'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
+        }), 400
 
     # Hype Games API (Free Fire con PINes) - Multi-canje
     elif prod['usa_api'] and id_juego:
