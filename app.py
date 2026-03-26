@@ -397,11 +397,6 @@ def comprar():
         db.close()
         return redirect(url_for('catalogo'))
 
-    if prod['usa_api'] and not id_juego:
-        flash('Debes ingresar el ID del jugador para esta recarga.', 'error')
-        db.close()
-        return redirect(url_for('producto', id=producto_id))
-
     total = prod['precio'] * cantidad
     user_id = session['user_id']
 
@@ -516,55 +511,128 @@ def comprar():
                 flash(f'Error inesperado en la recarga. Se reembolsó ${total:.4f} a tu cartera.', 'error')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
 
-    # Si el producto usa API Razer (Free Fire), recargar automáticamente
+    # Si el producto usa API Hype Games (Free Fire), canjear PIN(es) automáticamente
     elif prod['usa_api'] and id_juego:
-        from razer_api import recargar_paquete
-        paquete = int(prod['monto_api'] or 0)
-        if paquete <= 0:
+        from hype_api import canjear_pin_completo
+        # Restock automático si el stock está bajo
+        restock_pines(producto_id)
+        try:
+            num_canjes = prod['canjes_por_compra'] or 1
+        except (IndexError, KeyError):
+            num_canjes = 1
+        monto_api = prod['monto_api']
+
+        # Determinar de qué producto tomar los pines
+        pin_producto_id = producto_id
+        if num_canjes > 1:
+            try:
+                origen = prod['pin_origen_producto_id'] or 0
+            except (IndexError, KeyError):
+                origen = 0
+            if origen > 0:
+                pin_producto_id = origen
+            else:
+                base = db.execute(
+                    "SELECT id FROM productos WHERE usa_api = 1 AND monto_api = ? AND canjes_por_compra = 1 AND id != ? LIMIT 1",
+                    (monto_api, producto_id)
+                ).fetchone()
+                if base:
+                    pin_producto_id = base['id']
+            restock_pines(pin_producto_id)
+
+        # Reservar N PINes atómicamente
+        db.execute("BEGIN IMMEDIATE")
+        pin_rows = db.execute(
+            "SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' ORDER BY fecha_agregado ASC LIMIT ?",
+            (pin_producto_id, num_canjes)
+        ).fetchall()
+
+        if len(pin_rows) < num_canjes:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
             db.close()
-            recargar_saldo(user_id, total, f"Reembolso: Paquete API no configurado pedido #{pedido_id}")
-            flash('Este producto no tiene paquete API configurado. Se reembolsó tu saldo.', 'error')
+            recargar_saldo(user_id, total, f"Reembolso: Sin PINes suficientes pedido #{pedido_id} (necesarios: {num_canjes}, disponibles: {len(pin_rows)})")
+            flash(f'No hay suficientes PINes para este producto ({len(pin_rows)}/{num_canjes}). Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
+        # Marcar todos los pines como usados
+        pin_ids = []
+        pin_codes = []
+        for pr in pin_rows:
+            pin_ids.append(pr['id'])
+            pin_codes.append(decrypt_pin(pr['pin']))
+            db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
+                       (user_id, pedido_id, pr['id']))
+        db.commit()
         db.close()
-        exitosas = 0
-        nickname = ''
-        error_msg = ''
 
-        for _ in range(max(1, cantidad)):
-            resultado_api = recargar_paquete(id_juego, paquete)
-            if resultado_api.get('ok'):
-                exitosas += 1
-                nickname = resultado_api.get('nickname', '') or nickname
-            else:
-                error_msg = resultado_api.get('error', 'Proveedor rechazó la recarga')
+        # Ejecutar canjes secuencialmente
+        canjes_ok = 0
+        nombre_jugador = ''
+        error_msg = ''
+        for i, pin_code in enumerate(pin_codes):
+            try:
+                resultado_api = canjear_pin_completo(pin_code, id_juego, monto_api)
+                if resultado_api.get('ok'):
+                    canjes_ok += 1
+                    nombre_jugador = resultado_api.get('username', '') or nombre_jugador
+                else:
+                    paso_error = resultado_api.get('paso', 0)
+                    db_fix = get_db()
+                    if paso_error < 3:
+                        db_fix.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[i],))
+                    else:
+                        db_fix.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_ids[i],))
+                    db_fix.commit()
+                    db_fix.close()
+                    error_msg = resultado_api.get('error', 'Error en canje')
+                    break
+            except Exception as e:
+                db_fix = get_db()
+                db_fix.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[i],))
+                db_fix.commit()
+                db_fix.close()
+                error_msg = str(e)
                 break
 
-        db2 = get_db()
-        if exitosas == cantidad:
-            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nickname or id_juego, pedido_id))
-            db2.commit()
-            db2.close()
-            flash(f'Pedido #{pedido_id} completado. {exitosas} recarga(s) aplicada(s) a {nickname or id_juego}.', 'success')
+        db3 = get_db()
+        if canjes_ok == num_canjes:
+            db3.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador, pedido_id))
+            db3.commit()
+            db3.close()
+            verificar_stock_bajo(pin_producto_id)
+            flash(f'Pedido #{pedido_id} completado. {canjes_ok} recarga(s) aplicada(s) a {nombre_jugador} (ID: {id_juego}).', 'success')
             return redirect(url_for('pedido_detalle', id=pedido_id))
-
-        if exitosas > 0:
-            monto_parcial = (total / cantidad) * (cantidad - exitosas)
-            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (f"{nickname or id_juego} (parcial {exitosas}/{cantidad})", pedido_id))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id, monto_parcial, f"Reembolso parcial: {exitosas}/{cantidad} recargas OK pedido #{pedido_id}")
-            flash(f'Pedido #{pedido_id}: {exitosas}/{cantidad} recargas completadas. Reembolso parcial: ${monto_parcial:.4f}.', 'warning')
+        elif canjes_ok > 0:
+            # Parcialmente completado: no reembolsar lo que sí se canjeó
+            monto_parcial = (total / num_canjes) * (num_canjes - canjes_ok)
+            db3.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?",
+                       (f"{nombre_jugador} (parcial {canjes_ok}/{num_canjes})", pedido_id))
+            db3.commit()
+            db3.close()
+            # Devolver pines no canjeados
+            db4 = get_db()
+            for j in range(canjes_ok, len(pin_ids)):
+                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[j],))
+            db4.commit()
+            db4.close()
+            recargar_saldo(user_id, monto_parcial, f"Reembolso parcial: {canjes_ok}/{num_canjes} canjes OK pedido #{pedido_id}")
+            verificar_stock_bajo(pin_producto_id)
+            flash(f'Pedido #{pedido_id}: {canjes_ok}/{num_canjes} recargas completadas. Se reembolsó ${monto_parcial:.4f} por las fallidas.', 'warning')
             return redirect(url_for('pedido_detalle', id=pedido_id))
-
-        db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-        db2.commit()
-        db2.close()
-        recargar_saldo(user_id, total, f"Reembolso: Error API recarga pedido #{pedido_id}")
-        flash(f'Error en recarga automática: {error_msg}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
-        return redirect(url_for('pedido_detalle', id=pedido_id))
+        else:
+            db3.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db3.commit()
+            db3.close()
+            # Devolver todos los pines
+            db4 = get_db()
+            for pid in pin_ids:
+                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pid,))
+            db4.commit()
+            db4.close()
+            recargar_saldo(user_id, total, f"Reembolso: Error canje pedido #{pedido_id}")
+            flash(f'Error en canje automático: {error_msg}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Producto de categoría Gift Card — verificar si tiene pines en almacén para entregar
     if prod['categoria_tipo'] == 'giftcards':
@@ -2030,67 +2098,138 @@ def api_comprar():
                     'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
                 }), 500
 
-    # API Razer (Free Fire) - recarga directa
+    # Hype Games API (Free Fire con PINes) - Multi-canje
     elif prod['usa_api'] and id_juego:
-        from razer_api import recargar_paquete
-        paquete = int(prod['monto_api'] or 0)
-        if paquete <= 0:
+        from hype_api import canjear_pin_completo
+        # Restock automático si el stock está bajo
+        restock_pines(producto_id)
+        try:
+            num_canjes = prod['canjes_por_compra'] or 1
+        except (IndexError, KeyError):
+            num_canjes = 1
+        monto_api = prod['monto_api']
+
+        # Determinar de qué producto tomar los pines
+        pin_producto_id = producto_id
+        if num_canjes > 1:
+            try:
+                origen = prod['pin_origen_producto_id'] or 0
+            except (IndexError, KeyError):
+                origen = 0
+            if origen > 0:
+                pin_producto_id = origen
+            else:
+                base = db.execute(
+                    "SELECT id FROM productos WHERE usa_api = 1 AND monto_api = ? AND canjes_por_compra = 1 AND id != ? LIMIT 1",
+                    (monto_api, producto_id)
+                ).fetchone()
+                if base:
+                    pin_producto_id = base['id']
+            restock_pines(pin_producto_id)
+
+        # Reservar N PINes atómicamente
+        db.execute("BEGIN IMMEDIATE")
+        pin_rows = db.execute(
+            "SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' ORDER BY fecha_agregado ASC LIMIT ?",
+            (pin_producto_id, num_canjes)
+        ).fetchall()
+
+        if len(pin_rows) < num_canjes:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
             db.close()
-            recargar_saldo(user_id_api, total, f"Reembolso API: Paquete no configurado pedido #{pedido_id}")
+            recargar_saldo(user_id_api, total, f"Reembolso API: Sin PINes suficientes pedido #{pedido_id} ({len(pin_rows)}/{num_canjes})")
             return jsonify({
-                'ok': False, 'error': 'El producto no tiene paquete configurado',
+                'ok': False, 'error': f'No hay suficientes PINes ({len(pin_rows)}/{num_canjes})',
                 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
             }), 400
 
+        # Marcar todos los pines como usados
+        pin_ids = []
+        pin_codes = []
+        for pr in pin_rows:
+            pin_ids.append(pr['id'])
+            pin_codes.append(decrypt_pin(pr['pin']))
+            db.execute("UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
+                       (user_id_api, pedido_id, pr['id']))
+        db.commit()
         db.close()
-        exitosas = 0
-        nickname = ''
+
+        # Ejecutar canjes secuencialmente
+        canjes_ok = 0
+        nombre_jugador = ''
         error_msg = ''
-        for _ in range(max(1, int(cantidad))):
-            resultado_api = recargar_paquete(id_juego, paquete)
-            if resultado_api.get('ok'):
-                exitosas += 1
-                nickname = resultado_api.get('nickname', '') or nickname
-            else:
-                error_msg = resultado_api.get('error', 'Proveedor rechazó la recarga')
+        for i, pin_code in enumerate(pin_codes):
+            try:
+                resultado_api = canjear_pin_completo(pin_code, id_juego, monto_api)
+                if resultado_api.get('ok'):
+                    canjes_ok += 1
+                    nombre_jugador = resultado_api.get('username', '') or nombre_jugador
+                else:
+                    paso_error = resultado_api.get('paso', 0)
+                    db_fix = get_db()
+                    if paso_error < 3:
+                        db_fix.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[i],))
+                    else:
+                        db_fix.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_ids[i],))
+                    db_fix.commit()
+                    db_fix.close()
+                    error_msg = resultado_api.get('error', 'Error en canje')
+                    break
+            except Exception as e:
+                db_fix = get_db()
+                db_fix.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[i],))
+                db_fix.commit()
+                db_fix.close()
+                error_msg = str(e)
                 break
 
-        db2 = get_db()
-        if exitosas == cantidad:
-            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nickname or id_juego, pedido_id))
-            db2.commit()
-            db2.close()
+        db3 = get_db()
+        if canjes_ok == num_canjes:
+            db3.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nombre_jugador, pedido_id))
+            db3.commit()
+            db3.close()
+            verificar_stock_bajo(pin_producto_id)
             return jsonify({
                 'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
                 'total': total, 'saldo_restante': get_saldo(user_id_api),
-                'nombre_jugador': nickname or id_juego, 'recargas_realizadas': exitosas,
-                'mensaje': f'{exitosas} recarga(s) aplicada(s) a {nickname or id_juego}'
+                'nombre_jugador': nombre_jugador, 'canjes_realizados': canjes_ok,
+                'mensaje': f'{canjes_ok} recarga(s) aplicada(s) a {nombre_jugador} (ID: {id_juego})'
             })
-
-        if exitosas > 0:
-            monto_parcial = (total / cantidad) * (cantidad - exitosas)
-            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (f"{nickname or id_juego} (parcial {exitosas}/{cantidad})", pedido_id))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id_api, monto_parcial, f"Reembolso parcial API: {exitosas}/{cantidad} recargas OK pedido #{pedido_id}")
+        elif canjes_ok > 0:
+            monto_parcial = (total / num_canjes) * (num_canjes - canjes_ok)
+            db3.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?",
+                       (f"{nombre_jugador} (parcial {canjes_ok}/{num_canjes})", pedido_id))
+            db3.commit()
+            db3.close()
+            db4 = get_db()
+            for j in range(canjes_ok, len(pin_ids)):
+                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[j],))
+            db4.commit()
+            db4.close()
+            recargar_saldo(user_id_api, monto_parcial, f"Reembolso parcial API: {canjes_ok}/{num_canjes} canjes OK pedido #{pedido_id}")
+            verificar_stock_bajo(pin_producto_id)
             return jsonify({
                 'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
                 'total': total, 'saldo_restante': get_saldo(user_id_api),
-                'nombre_jugador': nickname or id_juego, 'recargas_realizadas': exitosas,
-                'recargas_esperadas': cantidad, 'reembolso_parcial': monto_parcial,
-                'mensaje': f'{exitosas}/{cantidad} recargas completadas. Reembolso parcial: ${monto_parcial:.4f}'
+                'nombre_jugador': nombre_jugador, 'canjes_realizados': canjes_ok,
+                'canjes_esperados': num_canjes, 'reembolso_parcial': monto_parcial,
+                'mensaje': f'{canjes_ok}/{num_canjes} recargas completadas. Reembolso parcial: ${monto_parcial:.4f}'
             })
-
-        db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-        db2.commit()
-        db2.close()
-        recargar_saldo(user_id_api, total, f"Reembolso API: Error recarga pedido #{pedido_id}")
-        return jsonify({
-            'ok': False, 'error': error_msg, 'pedido_id': pedido_id,
-            'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
-        }), 400
+        else:
+            db3.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db3.commit()
+            db3.close()
+            db4 = get_db()
+            for pid in pin_ids:
+                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pid,))
+            db4.commit()
+            db4.close()
+            recargar_saldo(user_id_api, total, f"Reembolso API: Error canje pedido #{pedido_id}")
+            return jsonify({
+                'ok': False, 'error': error_msg, 'pedido_id': pedido_id,
+                'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
+            }), 400
 
     # Producto de categoría Gift Card — verificar si tiene pines en almacén para entregar
     if prod['categoria_tipo'] == 'giftcards':

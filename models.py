@@ -367,12 +367,12 @@ def init_db():
         cid = get_cat('freefire')
         if cid:
             for nombre, desc, precio, monto in [
-                ('Paq 1 - 110 diamantes', 'Recarga API Razer: Paquete 1 (110 diamantes)', 1.50, 1),
-                ('Paq 2 - 341 diamantes', 'Recarga API Razer: Paquete 2 (341 diamantes)', 3.00, 2),
-                ('Paq 3 - 520 diamantes', 'Recarga API Razer: Paquete 3 (520 diamantes)', 5.50, 3),
-                ('Paq 4 - 1060 diamantes', 'Recarga API Razer: Paquete 4 (1060 diamantes)', 12.00, 4),
-                ('Paq 5 - 2180 diamantes', 'Recarga API Razer: Paquete 5 (2180 diamantes)', 23.00, 5),
-                ('Paq 6 - 5600 diamantes', 'Recarga API Razer: Paquete 6 (5600 diamantes)', 55.00, 6),
+                ('100+10 Diamantes', 'Recarga de 110 diamantes Free Fire', 1.50, 1),
+                ('310+31 Diamantes', 'Recarga de 341 diamantes Free Fire', 3.00, 2),
+                ('520+52 Diamantes', 'Recarga de 572 diamantes Free Fire', 5.50, 3),
+                ('1060+106 Diamantes', 'Recarga de 1166 diamantes Free Fire', 12.00, 4),
+                ('2180+196 Diamantes', 'Recarga de 2376 diamantes Free Fire', 23.00, 5),
+                ('5600+538 Diamantes', 'Recarga de 6138 diamantes Free Fire', 55.00, 6),
             ]:
                 db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api) VALUES (?,?,?,?,?,?,?)",
                            (nombre, desc, precio, cid, 'fa-gem', 1, monto))

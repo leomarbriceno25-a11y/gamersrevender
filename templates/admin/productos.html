@@ -48,30 +48,26 @@
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
-                        <input type="checkbox" name="usa_api" id="form-usa-api" onchange="toggleMonto()"> <i class="fas fa-bolt" style="color:#fbbf24;"></i> Usa API Razer (recarga directa)
+                        <input type="checkbox" name="usa_api" id="form-usa-api" onchange="toggleMonto()"> <i class="fas fa-bolt" style="color:#fbbf24;"></i> Usa API Hype Games (canje automático con PINes del almacén)
                     </label>
                 </div>
                 <div class="form-group" id="monto-api-group" style="display:none;">
-                    <label><i class="fas fa-gem" style="color:#fbbf24;"></i> Paquete API Razer</label>
+                    <label><i class="fas fa-gem" style="color:#fbbf24;"></i> Monto API (paquete de diamantes)</label>
                     <select name="monto_api" id="form-monto-api" class="form-select">
-                        <option value="0">Sin paquete (no aplica)</option>
-                        <option value="1">Paq 1 - 110 diamantes</option>
-                        <option value="2">Paq 2 - 341 diamantes</option>
-                        <option value="3">Paq 3 - 520 diamantes</option>
-                        <option value="4">Paq 4 - 1060 diamantes</option>
-                        <option value="5">Paq 5 - 2180 diamantes</option>
-                        <option value="6">Paq 6 - 5600 diamantes</option>
-                        <option value="7">Paq 7 - Tarjeta Básica</option>
-                        <option value="8">Paq 8 - Membresía Semanal</option>
-                        <option value="9">Paq 9 - Membresía Mensual</option>
-                        <option value="10">Paq 10 - Pase Booyah</option>
+                        <option value="0">Sin monto (no aplica)</option>
+                        <option value="1">1 - 110 diamantes (100+10)</option>
+                        <option value="2">2 - 341 diamantes (310+31)</option>
+                        <option value="3">3 - 572 diamantes (520+52)</option>
+                        <option value="4">4 - 1166 diamantes (1060+106)</option>
+                        <option value="5">5 - 2376 diamantes (2180+196)</option>
+                        <option value="6">6 - 6138 diamantes (5600+538)</option>
                     </select>
-                    <div class="form-group" style="margin-top:0.6rem; display:none;">
+                    <div class="form-group" style="margin-top:0.6rem;">
                         <label><i class="fas fa-layer-group" style="color:#f59e0b;"></i> Canjes por compra (PINes a consumir)</label>
                         <input type="number" name="canjes_por_compra" id="form-canjes" value="1" min="1" max="10" class="form-input" style="max-width:120px;">
                         <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Ej: 2 para 200 diamantes (2 canjes de 100). Por defecto: 1</small>
                     </div>
-                    <div style="margin-top:0.8rem; padding:0.8rem; background:var(--bg-primary); border-radius:8px; border:1px solid var(--border-color); display:none;">
+                    <div style="margin-top:0.8rem; padding:0.8rem; background:var(--bg-primary); border-radius:8px; border:1px solid var(--border-color);">
                         <label style="margin-bottom:0.5rem;display:block;"><i class="fas fa-sync-alt" style="color:#10b981;"></i> <strong>Restock Automático</strong></label>
                         <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">Reabastecer pines automáticamente desde un producto Gift Card cuando el stock baje del mínimo</p>
                         <div class="form-group">
@@ -181,7 +177,7 @@
                             {% if p.gamepoint_product_id %}
                             <span class="badge badge-completado"><i class="fas fa-globe"></i> GP</span>
                             {% elif p.usa_api %}
-                            <span class="badge badge-pendiente"><i class="fas fa-bolt"></i> Razer</span>
+                            <span class="badge badge-pendiente"><i class="fas fa-bolt"></i> Hype</span>
                             {% else %}
                             <span style="color:var(--text-secondary);">-</span>
                             {% endif %}
