@@ -200,6 +200,20 @@ def api_key_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         api_key = request.headers.get('X-API-Key', '').strip()
+
+        # Compatibilidad: algunos clientes usan Authorization: Bearer <API_KEY>
+        if not api_key:
+            auth_header = request.headers.get('Authorization', '').strip()
+            if auth_header.lower().startswith('bearer '):
+                api_key = auth_header[7:].strip()
+
+        # Compatibilidad temporal para integraciones legadas
+        if not api_key:
+            api_key = (request.args.get('api_key') or '').strip()
+        if not api_key and request.method in ('POST', 'PUT', 'PATCH'):
+            body = request.get_json(silent=True) or {}
+            api_key = (body.get('api_key') or '').strip()
+
         if not api_key:
             return jsonify({'error': 'API key requerida en header X-API-Key'}), 401
         user = get_user_by_api_key(api_key)
