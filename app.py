@@ -14,6 +14,7 @@ import os
 from telegram_bot import notificar_recarga, notificar_stock_bajo
 import uuid
 import sqlite3
+import threading
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -170,6 +171,57 @@ def verificar_stock_bajo(producto_id):
         db.close()
     except Exception as e:
         print(f"[STOCK] Error verificando stock: {e}")
+
+
+def procesar_pedido_razer_background(pedido_id, user_id, total, id_juego, paquete, cantidad):
+    """Ejecuta recarga Razer en segundo plano y actualiza el pedido al estado final."""
+    from razer_api import recargar_paquete
+
+    exitosas = 0
+    nickname = ''
+    error_msg = ''
+
+    try:
+        db_init = get_db()
+        db_init.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+        db_init.commit()
+        db_init.close()
+
+        for _ in range(max(1, int(cantidad))):
+            resultado_api = recargar_paquete(id_juego, paquete)
+            if resultado_api.get('ok'):
+                exitosas += 1
+                nickname = resultado_api.get('nickname', '') or nickname
+            else:
+                error_msg = resultado_api.get('error', 'Proveedor Razer rechazó la recarga')
+                break
+
+        db = get_db()
+        if exitosas == cantidad:
+            db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nickname or id_juego, pedido_id))
+            db.commit()
+            db.close()
+            return
+
+        if exitosas > 0:
+            monto_parcial = (total / cantidad) * (cantidad - exitosas)
+            db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (f"{nickname or id_juego} (parcial {exitosas}/{cantidad})", pedido_id))
+            db.commit()
+            db.close()
+            recargar_saldo(user_id, monto_parcial, f"Reembolso parcial Razer: {exitosas}/{cantidad} recargas OK pedido #{pedido_id}")
+            return
+
+        db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+        db.commit()
+        db.close()
+        recargar_saldo(user_id, total, f"Reembolso: Error API Razer pedido #{pedido_id}")
+    except Exception as e:
+        db_err = get_db()
+        db_err.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+        db_err.commit()
+        db_err.close()
+        recargar_saldo(user_id, total, f"Reembolso: Excepción API Razer pedido #{pedido_id}")
+        print(f"[RAZER-BG] Pedido #{pedido_id} cancelado por excepción: {error_msg or str(e)}")
 
 
 # ===== DECORADORES =====
@@ -519,8 +571,6 @@ def comprar():
 
     # Si el producto usa API Razer (separada), recarga directa por paquete
     elif (prod['usa_razer'] if 'usa_razer' in prod.keys() else 0) and id_juego:
-        from razer_api import recargar_paquete
-
         paquete = int((prod['razer_paquete'] if 'razer_paquete' in prod.keys() else 0) or 0)
         if paquete <= 0:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
@@ -530,41 +580,15 @@ def comprar():
             flash('Este producto no tiene paquete Razer configurado. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
+        db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
+        db.commit()
         db.close()
-        exitosas = 0
-        nickname = ''
-        error_msg = ''
-        for _ in range(max(1, cantidad)):
-            resultado_api = recargar_paquete(id_juego, paquete)
-            if resultado_api.get('ok'):
-                exitosas += 1
-                nickname = resultado_api.get('nickname', '') or nickname
-            else:
-                error_msg = resultado_api.get('error', 'Proveedor Razer rechazó la recarga')
-                break
-
-        db2 = get_db()
-        if exitosas == cantidad:
-            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nickname or id_juego, pedido_id))
-            db2.commit()
-            db2.close()
-            flash(f'Pedido #{pedido_id} completado. {exitosas} recarga(s) aplicada(s) a {nickname or id_juego}.', 'success')
-            return redirect(url_for('pedido_detalle', id=pedido_id))
-
-        if exitosas > 0:
-            monto_parcial = (total / cantidad) * (cantidad - exitosas)
-            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (f"{nickname or id_juego} (parcial {exitosas}/{cantidad})", pedido_id))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id, monto_parcial, f"Reembolso parcial Razer: {exitosas}/{cantidad} recargas OK pedido #{pedido_id}")
-            flash(f'Pedido #{pedido_id}: {exitosas}/{cantidad} recargas completadas. Reembolso parcial: ${monto_parcial:.4f}.', 'warning')
-            return redirect(url_for('pedido_detalle', id=pedido_id))
-
-        db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-        db2.commit()
-        db2.close()
-        recargar_saldo(user_id, total, f"Reembolso: Error API Razer pedido #{pedido_id}")
-        flash(f'Error en recarga Razer: {error_msg}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
+        threading.Thread(
+            target=procesar_pedido_razer_background,
+            args=(pedido_id, user_id, total, id_juego, paquete, cantidad),
+            daemon=True,
+        ).start()
+        flash(f'Pedido #{pedido_id} en procesamiento. Revisa Mis pedidos para ver si fue aprobado o rechazado.', 'warning')
         return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Hype Games (Free Fire), canjear PIN(es) automáticamente
@@ -2167,8 +2191,6 @@ def api_comprar():
 
     # API Razer separada (recarga directa)
     elif (prod['usa_razer'] if 'usa_razer' in prod.keys() else 0) and id_juego:
-        from razer_api import recargar_paquete
-
         paquete = int((prod['razer_paquete'] if 'razer_paquete' in prod.keys() else 0) or 0)
         if paquete <= 0:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
@@ -2180,53 +2202,21 @@ def api_comprar():
                 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
             }), 400
 
+        db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
+        db.commit()
         db.close()
-        exitosas = 0
-        nickname = ''
-        error_msg = ''
-        for _ in range(max(1, int(cantidad))):
-            resultado_api = recargar_paquete(id_juego, paquete)
-            if resultado_api.get('ok'):
-                exitosas += 1
-                nickname = resultado_api.get('nickname', '') or nickname
-            else:
-                error_msg = resultado_api.get('error', 'Proveedor Razer rechazó la recarga')
-                break
-
-        db2 = get_db()
-        if exitosas == cantidad:
-            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nickname or id_juego, pedido_id))
-            db2.commit()
-            db2.close()
-            return jsonify({
-                'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
-                'total': total, 'saldo_restante': get_saldo(user_id_api),
-                'nombre_jugador': nickname or id_juego, 'recargas_realizadas': exitosas,
-                'mensaje': f'{exitosas} recarga(s) aplicada(s) a {nickname or id_juego}'
-            })
-
-        if exitosas > 0:
-            monto_parcial = (total / cantidad) * (cantidad - exitosas)
-            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (f"{nickname or id_juego} (parcial {exitosas}/{cantidad})", pedido_id))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id_api, monto_parcial, f"Reembolso parcial API Razer: {exitosas}/{cantidad} recargas OK pedido #{pedido_id}")
-            return jsonify({
-                'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
-                'total': total, 'saldo_restante': get_saldo(user_id_api),
-                'nombre_jugador': nickname or id_juego, 'recargas_realizadas': exitosas,
-                'recargas_esperadas': cantidad, 'reembolso_parcial': monto_parcial,
-                'mensaje': f'{exitosas}/{cantidad} recargas completadas. Reembolso parcial: ${monto_parcial:.4f}'
-            })
-
-        db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-        db2.commit()
-        db2.close()
-        recargar_saldo(user_id_api, total, f"Reembolso API: Error recarga Razer pedido #{pedido_id}")
+        threading.Thread(
+            target=procesar_pedido_razer_background,
+            args=(pedido_id, user_id_api, total, id_juego, paquete, cantidad),
+            daemon=True,
+        ).start()
         return jsonify({
-            'ok': False, 'error': error_msg, 'pedido_id': pedido_id,
-            'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
-        }), 400
+            'ok': True,
+            'pedido_id': pedido_id,
+            'estado': 'pendiente',
+            'saldo_restante': get_saldo(user_id_api),
+            'mensaje': 'Recarga en segundo plano. Consulta el pedido para ver si fue aprobado o rechazado.'
+        })
 
     # Hype Games API (Free Fire con PINes) - Multi-canje
     elif prod['usa_api'] and id_juego:

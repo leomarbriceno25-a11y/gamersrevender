@@ -9,6 +9,7 @@
 
 <section class="section">
     <div class="container">
+        {% set estado_label = 'Aprobado' if pedido.estado == 'completado' else ('Rechazado' if pedido.estado == 'cancelado' else 'Procesando') %}
         <div class="result-card result-{{ 'success' if pedido.estado == 'completado' else 'pending' }}">
             <div class="result-icon">
                 {% if pedido.estado == 'completado' %}
@@ -20,7 +21,7 @@
                 {% endif %}
             </div>
             <h1>Pedido #{{ pedido.id }}</h1>
-            <p class="result-status">Estado: <span class="badge badge-{{ pedido.estado }}">{{ pedido.estado|capitalize }}</span></p>
+            <p class="result-status">Estado: <span class="badge badge-{{ pedido.estado }}">{{ estado_label }}</span></p>
 
             <div class="order-summary" style="max-width: 400px; margin: 1.5rem auto;">
                 <div class="summary-row">
@@ -56,4 +57,11 @@
         </div>
     </div>
 </section>
+{% if pedido.estado in ['pendiente', 'procesando'] %}
+<script>
+setTimeout(function() {
+    window.location.reload();
+}, 8000);
+</script>
+{% endif %}
 {% endblock %}

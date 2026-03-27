@@ -22,13 +22,14 @@
                 </thead>
                 <tbody>
                     {% for p in pedidos %}
+                    {% set estado_label = 'Aprobado' if p.estado == 'completado' else ('Rechazado' if p.estado == 'cancelado' else 'Procesando') %}
                     <tr>
                         <td>{{ p.id }}</td>
                         <td>{{ p.producto_nombre }}</td>
                         <td>{{ p.id_juego or '-' }}</td>
                         <td>x{{ p.cantidad }}</td>
                         <td>${{ '%.4f'|format(p.total) }}</td>
-                        <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
+                        <td><span class="badge badge-{{ p.estado }}">{{ estado_label }}</span></td>
                         <td>{{ p.fecha_pedido }}</td>
                     </tr>
                     {% endfor %}
@@ -38,10 +39,11 @@
         <!-- Mobile cards -->
         <div class="d-only-mobile pedidos-cards">
             {% for p in pedidos %}
+            {% set estado_label = 'Aprobado' if p.estado == 'completado' else ('Rechazado' if p.estado == 'cancelado' else 'Procesando') %}
             <div class="pedido-card pedido-card-item">
                 <div class="pedido-card-header">
                     <span class="pedido-card-id">#{{ p.id }}</span>
-                    <span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span>
+                    <span class="badge badge-{{ p.estado }}">{{ estado_label }}</span>
                 </div>
                 <div class="pedido-card-body">
                     <div class="pedido-card-producto">{{ p.producto_nombre }}</div>

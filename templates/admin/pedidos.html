@@ -26,6 +26,7 @@
                 </thead>
                 <tbody>
                     {% for p in pedidos %}
+                    {% set estado_label = 'Aprobado' if p.estado == 'completado' else ('Rechazado' if p.estado == 'cancelado' else 'Procesando') %}
                     <tr>
                         <td>{{ p.id }}</td>
                         <td>{{ p.usuario_nombre }}</td>
@@ -54,7 +55,7 @@
                             {% endif %}
                             {% else %}-{% endif %}
                         </td>
-                        <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
+                        <td><span class="badge badge-{{ p.estado }}">{{ estado_label }}</span></td>
                         <td>{{ p.fecha_pedido }}</td>
                         <td>
                             <form method="POST" action="{{ url_for('admin_cambiar_estado', id=p.id) }}" style="display:flex;gap:0.3rem;">
