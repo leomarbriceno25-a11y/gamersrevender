@@ -255,6 +255,88 @@ def procesar_pedido_razer_background(pedido_id, user_id, total, id_juego, paquet
         print(f"[RAZER-BG] Pedido #{pedido_id} cancelado por excepción: {error_msg or str(e)}")
 
 
+def procesar_pedido_deltaforce_background(pedido_id, user_id, total, id_juego, paquete, cantidad):
+    """Ejecuta recarga Delta Force en segundo plano y actualiza el pedido al estado final."""
+    from deltaforce_api import recargar_paquete
+
+    exitosas = 0
+    nickname = ''
+    error_msg = ''
+
+    try:
+        db_init = get_db()
+        db_init.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+        db_init.commit()
+        db_init.close()
+
+        for _ in range(max(1, int(cantidad))):
+            resultado_api = recargar_paquete(id_juego, paquete)
+            if resultado_api.get('ok'):
+                exitosas += 1
+                nickname = resultado_api.get('nickname', '') or nickname
+            else:
+                error_msg = resultado_api.get('error', 'Proveedor Delta Force rechazó la recarga')
+                break
+
+        db = get_db()
+        if exitosas == cantidad:
+            db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nickname or id_juego, pedido_id))
+            db.commit()
+            db.close()
+            enviar_webhook(user_id, {
+                'evento': 'pedido_actualizado',
+                'pedido_id': pedido_id,
+                'estado': 'completado',
+                'nombre_jugador': nickname or id_juego,
+                'mensaje': f'Delta Force aprobada ({exitosas}/{cantidad})'
+            })
+            return
+
+        if exitosas > 0:
+            monto_parcial = (total / cantidad) * (cantidad - exitosas)
+            db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (f"{nickname or id_juego} (parcial {exitosas}/{cantidad})", pedido_id))
+            db.commit()
+            db.close()
+            recargar_saldo(user_id, monto_parcial, f"Reembolso parcial Delta Force: {exitosas}/{cantidad} recargas OK pedido #{pedido_id}")
+            enviar_webhook(user_id, {
+                'evento': 'pedido_actualizado',
+                'pedido_id': pedido_id,
+                'estado': 'completado',
+                'nombre_jugador': nickname or id_juego,
+                'reembolso_parcial': monto_parcial,
+                'mensaje': f'Delta Force aprobada parcial ({exitosas}/{cantidad})'
+            })
+            return
+
+        db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+        db.commit()
+        db.close()
+        recargar_saldo(user_id, total, f"Reembolso: Error API Delta Force pedido #{pedido_id}")
+        enviar_webhook(user_id, {
+            'evento': 'pedido_actualizado',
+            'pedido_id': pedido_id,
+            'estado': 'cancelado',
+            'razon': error_msg or 'Proveedor Delta Force rechazó la recarga',
+            'reembolsado': True,
+            'mensaje': 'Delta Force rechazada'
+        })
+    except Exception as e:
+        db_err = get_db()
+        db_err.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+        db_err.commit()
+        db_err.close()
+        recargar_saldo(user_id, total, f"Reembolso: Excepción API Delta Force pedido #{pedido_id}")
+        enviar_webhook(user_id, {
+            'evento': 'pedido_actualizado',
+            'pedido_id': pedido_id,
+            'estado': 'cancelado',
+            'razon': str(e),
+            'reembolsado': True,
+            'mensaje': 'Delta Force rechazada por excepción'
+        })
+        print(f"[DELTAFORCE-BG] Pedido #{pedido_id} cancelado por excepción: {error_msg or str(e)}")
+
+
 # ===== DECORADORES =====
 def login_required(f):
     @wraps(f)
@@ -481,7 +563,8 @@ def comprar():
         return redirect(url_for('catalogo'))
 
     usa_razer = prod['usa_razer'] if 'usa_razer' in prod.keys() else 0
-    if (prod['usa_api'] or usa_razer) and not id_juego:
+    usa_deltaforce = prod['usa_deltaforce'] if 'usa_deltaforce' in prod.keys() else 0
+    if (prod['usa_api'] or usa_razer or usa_deltaforce) and not id_juego:
         flash('Debes ingresar el ID del jugador para esta recarga.', 'error')
         db.close()
         return redirect(url_for('producto', id=producto_id))
@@ -620,6 +703,28 @@ def comprar():
             daemon=True,
         ).start()
         flash(f'Pedido #{pedido_id} en procesamiento. Revisa Mis pedidos para ver si fue aprobado o rechazado.', 'warning')
+        return redirect(url_for('pedido_detalle', id=pedido_id))
+
+    # Si el producto usa API Delta Force (separada), recarga directa por paquete
+    elif (prod['usa_deltaforce'] if 'usa_deltaforce' in prod.keys() else 0) and id_juego:
+        paquete = int((prod['deltaforce_paquete'] if 'deltaforce_paquete' in prod.keys() else 0) or 0)
+        if paquete <= 0:
+            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db.commit()
+            db.close()
+            recargar_saldo(user_id, total, f"Reembolso: Paquete Delta Force no configurado pedido #{pedido_id}")
+            flash('Este producto no tiene paquete Delta Force configurado. Se reembolsó tu saldo.', 'error')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
+
+        db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
+        db.commit()
+        db.close()
+        threading.Thread(
+            target=procesar_pedido_deltaforce_background,
+            args=(pedido_id, user_id, total, id_juego, paquete, cantidad),
+            daemon=True,
+        ).start()
+        flash(f'Pedido #{pedido_id} en procesamiento Delta Force. Revisa Mis pedidos para ver si fue aprobado o rechazado.', 'warning')
         return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Hype Games (Free Fire), canjear PIN(es) automáticamente
@@ -1438,6 +1543,8 @@ def admin_productos():
             monto_api = int(request.form.get('monto_api', 0))
             usa_razer = 1 if request.form.get('usa_razer') else 0
             razer_paquete = int(request.form.get('razer_paquete', 0))
+            usa_deltaforce = 1 if request.form.get('usa_deltaforce') else 0
+            deltaforce_paquete = int(request.form.get('deltaforce_paquete', 0))
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
@@ -1448,8 +1555,8 @@ def admin_productos():
             stock_objetivo = int(request.form.get('stock_objetivo', 0))
             canjes_por_compra = int(request.form.get('canjes_por_compra', 1)) or 1
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -1463,6 +1570,8 @@ def admin_productos():
             monto_api = int(request.form.get('monto_api', 0))
             usa_razer = 1 if request.form.get('usa_razer') else 0
             razer_paquete = int(request.form.get('razer_paquete', 0))
+            usa_deltaforce = 1 if request.form.get('usa_deltaforce') else 0
+            deltaforce_paquete = int(request.form.get('deltaforce_paquete', 0))
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
@@ -1473,8 +1582,8 @@ def admin_productos():
             stock_objetivo = int(request.form.get('stock_objetivo', 0))
             canjes_por_compra = int(request.form.get('canjes_por_compra', 1)) or 1
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, usa_deltaforce=?, deltaforce_paquete=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -2026,7 +2135,7 @@ def api_saldo():
 def api_productos():
     import json as _json
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.usa_razer, p.razer_paquete, p.gamepoint_product_id, p.gamepoint_fields, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.gamepoint_product_id, p.gamepoint_fields, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
@@ -2034,6 +2143,8 @@ def api_productos():
         usa_api_hype = d.pop('usa_api', 0)
         usa_api_razer = d.pop('usa_razer', 0)
         razer_paquete = d.pop('razer_paquete', 0)
+        usa_api_deltaforce = d.pop('usa_deltaforce', 0)
+        deltaforce_paquete = d.pop('deltaforce_paquete', 0)
         # Parsear campos requeridos para que el revendedor sepa qué enviar
         fields_raw = d.pop('gamepoint_fields', '') or ''
         campos = []
@@ -2048,11 +2159,15 @@ def api_productos():
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador en Free Fire', 'tipo': 'string', 'opciones': []}]
         elif usa_api_razer:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador para API Razer (paquete {razer_paquete})', 'tipo': 'string', 'opciones': []}]
+        elif usa_api_deltaforce:
+            d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador para API Delta Force (paquete {deltaforce_paquete})', 'tipo': 'string', 'opciones': []}]
         else:
             d['campos_requeridos'] = []
         d['usa_gamepoint'] = bool(d.pop('gamepoint_product_id', 0))
         d['usa_razer'] = bool(usa_api_razer)
         d['razer_paquete'] = int(razer_paquete or 0)
+        d['usa_deltaforce'] = bool(usa_api_deltaforce)
+        d['deltaforce_paquete'] = int(deltaforce_paquete or 0)
         d['procesamiento_manual'] = bool(d.pop('recarga_manual', 0))
         result.append(d)
     return jsonify({'ok': True, 'productos': result})
@@ -2081,7 +2196,8 @@ def api_comprar():
     except Exception:
         pass
     usa_razer = prod['usa_razer'] if 'usa_razer' in prod.keys() else 0
-    requiere_id = prod['usa_api'] or usa_razer or (prod['gamepoint_product_id'] and gp_fields_raw)
+    usa_deltaforce = prod['usa_deltaforce'] if 'usa_deltaforce' in prod.keys() else 0
+    requiere_id = prod['usa_api'] or usa_razer or usa_deltaforce or (prod['gamepoint_product_id'] and gp_fields_raw)
     if requiere_id and not id_juego:
         db.close()
         return jsonify({'ok': False, 'error': 'Se requiere id_juego (Player ID)'}), 400
@@ -2247,6 +2363,35 @@ def api_comprar():
             'estado': 'pendiente',
             'saldo_restante': get_saldo(user_id_api),
             'mensaje': 'Recarga en segundo plano. Consulta el pedido para ver si fue aprobado o rechazado.'
+        })
+
+    # API Delta Force separada (recarga directa)
+    elif (prod['usa_deltaforce'] if 'usa_deltaforce' in prod.keys() else 0) and id_juego:
+        paquete = int((prod['deltaforce_paquete'] if 'deltaforce_paquete' in prod.keys() else 0) or 0)
+        if paquete <= 0:
+            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db.commit()
+            db.close()
+            recargar_saldo(user_id_api, total, f"Reembolso API: Paquete Delta Force no configurado pedido #{pedido_id}")
+            return jsonify({
+                'ok': False, 'error': 'El producto no tiene paquete Delta Force configurado',
+                'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
+            }), 400
+
+        db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
+        db.commit()
+        db.close()
+        threading.Thread(
+            target=procesar_pedido_deltaforce_background,
+            args=(pedido_id, user_id_api, total, id_juego, paquete, cantidad),
+            daemon=True,
+        ).start()
+        return jsonify({
+            'ok': True,
+            'pedido_id': pedido_id,
+            'estado': 'pendiente',
+            'saldo_restante': get_saldo(user_id_api),
+            'mensaje': 'Recarga Delta Force en segundo plano. Consulta el pedido para ver si fue aprobado o rechazado.'
         })
 
     # Hype Games API (Free Fire con PINes) - Multi-canje

@@ -110,6 +110,8 @@ def init_db():
             monto_api INTEGER DEFAULT 0,
             usa_razer INTEGER DEFAULT 0,
             razer_paquete INTEGER DEFAULT 0,
+            usa_deltaforce INTEGER DEFAULT 0,
+            deltaforce_paquete INTEGER DEFAULT 0,
             gamepoint_product_id INTEGER DEFAULT 0,
             gamepoint_package_id INTEGER DEFAULT 0,
             gamepoint_fields TEXT DEFAULT '',
@@ -232,6 +234,14 @@ def init_db():
         db.execute("SELECT razer_paquete FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN razer_paquete INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT usa_deltaforce FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN usa_deltaforce INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT deltaforce_paquete FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN deltaforce_paquete INTEGER DEFAULT 0")
     # Bonus por monto de recarga
     try:
         db.execute("SELECT id FROM bonus_recarga LIMIT 1")
