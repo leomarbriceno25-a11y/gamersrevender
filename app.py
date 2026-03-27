@@ -201,6 +201,13 @@ def procesar_pedido_razer_background(pedido_id, user_id, total, id_juego, paquet
             db.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ? WHERE id = ?", (nickname or id_juego, pedido_id))
             db.commit()
             db.close()
+            enviar_webhook(user_id, {
+                'evento': 'pedido_actualizado',
+                'pedido_id': pedido_id,
+                'estado': 'completado',
+                'nombre_jugador': nickname or id_juego,
+                'mensaje': f'Recarga aprobada ({exitosas}/{cantidad})'
+            })
             return
 
         if exitosas > 0:
@@ -209,18 +216,42 @@ def procesar_pedido_razer_background(pedido_id, user_id, total, id_juego, paquet
             db.commit()
             db.close()
             recargar_saldo(user_id, monto_parcial, f"Reembolso parcial Razer: {exitosas}/{cantidad} recargas OK pedido #{pedido_id}")
+            enviar_webhook(user_id, {
+                'evento': 'pedido_actualizado',
+                'pedido_id': pedido_id,
+                'estado': 'completado',
+                'nombre_jugador': nickname or id_juego,
+                'reembolso_parcial': monto_parcial,
+                'mensaje': f'Recarga aprobada parcial ({exitosas}/{cantidad})'
+            })
             return
 
         db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
         db.commit()
         db.close()
         recargar_saldo(user_id, total, f"Reembolso: Error API Razer pedido #{pedido_id}")
+        enviar_webhook(user_id, {
+            'evento': 'pedido_actualizado',
+            'pedido_id': pedido_id,
+            'estado': 'cancelado',
+            'razon': error_msg or 'Proveedor Razer rechazó la recarga',
+            'reembolsado': True,
+            'mensaje': 'Recarga rechazada'
+        })
     except Exception as e:
         db_err = get_db()
         db_err.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
         db_err.commit()
         db_err.close()
         recargar_saldo(user_id, total, f"Reembolso: Excepción API Razer pedido #{pedido_id}")
+        enviar_webhook(user_id, {
+            'evento': 'pedido_actualizado',
+            'pedido_id': pedido_id,
+            'estado': 'cancelado',
+            'razon': str(e),
+            'reembolsado': True,
+            'mensaje': 'Recarga rechazada por excepción'
+        })
         print(f"[RAZER-BG] Pedido #{pedido_id} cancelado por excepción: {error_msg or str(e)}")
 
 
