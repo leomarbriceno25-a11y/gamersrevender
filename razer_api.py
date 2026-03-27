@@ -51,14 +51,10 @@ def recargar_paquete(id_jugador, paquete):
     mensaje_original = str(data.get('mensaje', '') or '').strip()
     mensaje_lower = mensaje_original.lower()
     nickname = str(data.get('nickname', '') or '').strip()
-    nickname_valido = bool(nickname) and nickname.lower() not in ('null', 'none', '-')
 
-    ok = alerta == 'green'
-
-    # Ajuste por comportamiento del proveedor:
-    # en algunos casos la recarga se aplica pero responden "error desconocido" con nickname válido.
-    if not ok and nickname_valido and 'error desconocido' in mensaje_lower:
-        ok = True
+    # Modo estricto:
+    # solo tomar como éxito cuando el proveedor indica green + mensaje de recarga exitosa.
+    ok = (alerta == 'green') and ('recarga exitosa' in mensaje_lower)
 
     mensaje_final = 'Recarga exitosa' if ok else (mensaje_original or 'Recarga rechazada por proveedor')
 
