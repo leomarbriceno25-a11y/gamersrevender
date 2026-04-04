@@ -16,6 +16,8 @@ import uuid
 import sqlite3
 import threading
 
+PINCENTRAL_RESTOCK_LOCK = threading.Lock()
+
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
@@ -156,6 +158,99 @@ def restock_pines(producto_id=None):
 
     db.close()
     return transferidos_total
+
+
+def restock_pincentral_almacen(producto_id):
+    """Reabastece pines desde PinCentral cuando el stock local baja del mínimo."""
+    from pincentral_api import autorizar_pins, capturar_pins
+
+    with PINCENTRAL_RESTOCK_LOCK:
+        db = get_db()
+        prod = db.execute(
+            "SELECT id, nombre, usa_pincentral, pincentral_product_code, stock_minimo, stock_objetivo "
+            "FROM productos WHERE id = ? AND activo = 1",
+            (producto_id,),
+        ).fetchone()
+
+        if not prod:
+            db.close()
+            return 0
+
+        usa_pincentral = int(prod['usa_pincentral'] or 0)
+        codigo = str(prod['pincentral_product_code'] or '').strip()
+        stock_minimo = int(prod['stock_minimo'] or 0)
+        stock_objetivo = int(prod['stock_objetivo'] or 0)
+
+        if not usa_pincentral or not codigo or stock_minimo <= 0:
+            db.close()
+            return 0
+
+        stock_actual = db.execute(
+            "SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'",
+            (producto_id,),
+        ).fetchone()['c']
+
+        if stock_actual >= stock_minimo:
+            db.close()
+            return 0
+
+        objetivo = stock_objetivo if stock_objetivo > stock_minimo else stock_minimo
+        necesarios = objetivo - stock_actual
+        if necesarios <= 0:
+            db.close()
+            return 0
+
+        agregados = 0
+        lote_n = 0
+
+        while necesarios > 0:
+            lote_n += 1
+            lote = min(10, necesarios)
+            order_id = f"RSTK_{producto_id}_{uuid.uuid4().hex[:10]}_{lote_n}"
+
+            auth = autorizar_pins(codigo, lote, order_id)
+            auth_data = auth.get('data', {}) if isinstance(auth.get('data', {}), dict) else {}
+            auth_status = str(auth_data.get('status', '')).strip().lower().replace(' ', '')
+            tx_id = str(auth_data.get('id', '') or '').strip()
+
+            if (not auth.get('ok')) or auth_status != 'authorized' or not tx_id:
+                print(f"[PINCENTRAL-RESTOCK] Autorización fallida producto #{producto_id}: {auth.get('error') or auth_data}")
+                break
+
+            cap = capturar_pins(tx_id)
+            cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
+            cap_status = str(cap_data.get('status', '')).strip().lower().replace(' ', '')
+            pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
+
+            if (not cap.get('ok')) or cap_status != 'captured' or not pins:
+                print(f"[PINCENTRAL-RESTOCK] Captura fallida producto #{producto_id}: {cap.get('error') or cap_data}")
+                break
+
+            nuevos = 0
+            for p in pins:
+                if not isinstance(p, dict):
+                    continue
+                key = str(p.get('key', '') or '').strip()
+                serial = str(p.get('serial', '') or '').strip()
+                valor = key or serial
+                if not valor:
+                    continue
+                db.execute(
+                    "INSERT INTO pines (producto_id, pin, estado) VALUES (?,?, 'disponible')",
+                    (producto_id, encrypt_pin(valor)),
+                )
+                nuevos += 1
+
+            db.commit()
+            agregados += nuevos
+            necesarios -= nuevos
+            if nuevos == 0:
+                break
+
+        db.close()
+        if agregados > 0:
+            print(f"[PINCENTRAL-RESTOCK] {agregados} PINs agregados a '{prod['nombre']}'")
+        return agregados
 
 
 # ===== HELPERS =====
@@ -834,8 +929,8 @@ def comprar():
         flash(f'Pedido #{pedido_id} en procesamiento Delta Force. Revisa Mis pedidos para ver si fue aprobado o rechazado.', 'warning')
         return redirect(url_for('pedido_detalle', id=pedido_id))
 
-    # Si el producto usa API PinCentral (PINs remotos)
-    elif (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
+    # Si el producto usa API PinCentral (PINs remotos) y no es giftcard de almacén
+    elif (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0) and prod['categoria_tipo'] != 'giftcards':
         product_code = str((prod['pincentral_product_code'] if 'pincentral_product_code' in prod.keys() else '') or '').strip()
         if not product_code:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
@@ -981,8 +1076,15 @@ def comprar():
 
     # Producto de categoría Gift Card — verificar si tiene pines en almacén para entregar
     if prod['categoria_tipo'] == 'giftcards':
+        if (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
+            restock_pincentral_almacen(producto_id)
         cant_pines = min(cantidad, 50)
         pines_disponibles = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT ?", (producto_id, cant_pines)).fetchall()
+        if len(pines_disponibles) < cant_pines and (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
+            db.close()
+            restock_pincentral_almacen(producto_id)
+            db = get_db()
+            pines_disponibles = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT ?", (producto_id, cant_pines)).fetchall()
         if len(pines_disponibles) >= cant_pines:
             codigos = []
             for pin_row in pines_disponibles:
@@ -994,6 +1096,8 @@ def comprar():
             db.commit()
             db.close()
             verificar_stock_bajo(producto_id)
+            if (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
+                restock_pincentral_almacen(producto_id)
             flash(f'Pedido #{pedido_id} completado. {len(codigos)} código(s) entregado(s).', 'success')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         else:
@@ -2533,8 +2637,8 @@ def api_comprar():
             'mensaje': 'Recarga Delta Force en segundo plano. Consulta el pedido para ver si fue aprobado o rechazado.'
         })
 
-    # API PinCentral (solo PINs remotos)
-    elif (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
+    # API PinCentral (solo PINs remotos) para productos no giftcard
+    elif (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0) and prod['categoria_tipo'] != 'giftcards':
         product_code = str((prod['pincentral_product_code'] if 'pincentral_product_code' in prod.keys() else '') or '').strip()
         if not product_code:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
@@ -2697,8 +2801,15 @@ def api_comprar():
 
     # Producto de categoría Gift Card — verificar si tiene pines en almacén para entregar
     if prod['categoria_tipo'] == 'giftcards':
+        if (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
+            restock_pincentral_almacen(producto_id)
         cant_pines = min(cantidad, 50)
         pines_disponibles = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT ?", (producto_id, cant_pines)).fetchall()
+        if len(pines_disponibles) < cant_pines and (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
+            db.close()
+            restock_pincentral_almacen(producto_id)
+            db = get_db()
+            pines_disponibles = db.execute("SELECT * FROM pines WHERE producto_id = ? AND estado = 'disponible' LIMIT ?", (producto_id, cant_pines)).fetchall()
         if len(pines_disponibles) >= cant_pines:
             codigos = []
             for pin_row in pines_disponibles:
@@ -2710,6 +2821,8 @@ def api_comprar():
             db.commit()
             db.close()
             verificar_stock_bajo(producto_id)
+            if (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
+                restock_pincentral_almacen(producto_id)
             return jsonify({
                 'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
                 'total': total, 'saldo_restante': get_saldo(user_id_api),
