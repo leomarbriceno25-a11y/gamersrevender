@@ -139,6 +139,16 @@
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
+                        <input type="checkbox" name="usa_pincentral" id="form-usa-pincentral" onchange="togglePinCentral()"> <i class="fas fa-ticket" style="color:#14b8a6;"></i> Usa API PinCentral (PINs remotos)
+                    </label>
+                </div>
+                <div class="form-group" id="pincentral-group" style="display:none;">
+                    <label><i class="fas fa-barcode" style="color:#14b8a6;"></i> Código producto PinCentral</label>
+                    <input type="text" name="pincentral_product_code" id="form-pincentral-code" class="form-input" placeholder="Ej: RZRG100">
+                    <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.4rem;">Se usa para autorizar y capturar PINs en PinCentral.</p>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
                         <input type="checkbox" id="form-usa-gamepoint" onchange="toggleGamepoint()"> <i class="fas fa-globe" style="color:#3b82f6;"></i> Usa GamePoint Club API (recarga directa sin PINes)
                     </label>
                 </div>
@@ -208,7 +218,7 @@
                 </thead>
                 <tbody>
                     {% for p in productos %}
-                    <tr id="row-{{ p.id }}" data-id="{{ p.id }}" data-gp-product="{{ p.gamepoint_product_id }}" data-gp-package="{{ p.gamepoint_package_id }}" data-usa-razer="{{ p.usa_razer|default(0) }}" data-razer-paquete="{{ p.razer_paquete|default(0) }}" data-usa-deltaforce="{{ p.usa_deltaforce|default(0) }}" data-deltaforce-paquete="{{ p.deltaforce_paquete|default(0) }}">
+                    <tr id="row-{{ p.id }}" data-id="{{ p.id }}" data-gp-product="{{ p.gamepoint_product_id }}" data-gp-package="{{ p.gamepoint_package_id }}" data-usa-razer="{{ p.usa_razer|default(0) }}" data-razer-paquete="{{ p.razer_paquete|default(0) }}" data-usa-deltaforce="{{ p.usa_deltaforce|default(0) }}" data-deltaforce-paquete="{{ p.deltaforce_paquete|default(0) }}" data-usa-pincentral="{{ p.usa_pincentral|default(0) }}" data-pincentral-code="{{ p.pincentral_product_code|default('')|e }}">
                         <td><input type="checkbox" class="sel-prod" value="{{ p.id }}" onclick="actualizarConteoProd()"></td>
                         <td>
                             <div class="order-arrows">
@@ -226,6 +236,8 @@
                             <span class="badge badge-completado"><i class="fas fa-plug"></i> Razer</span>
                             {% elif p.usa_deltaforce|default(0) %}
                             <span class="badge badge-completado"><i class="fas fa-crosshairs"></i> Delta</span>
+                            {% elif p.usa_pincentral|default(0) %}
+                            <span class="badge badge-completado"><i class="fas fa-ticket"></i> PinCentral</span>
                             {% elif p.usa_api %}
                             <span class="badge badge-pendiente"><i class="fas fa-bolt"></i> Hype</span>
                             {% else %}
@@ -236,7 +248,7 @@
                         <td style="text-align:center;"><input type="checkbox" class="edit-manual" {{ 'checked' if p.recarga_manual|default(0) }} title="Recarga manual (proveedor confirma después)"></td>
                         <td>
                             <div class="action-btns">
-                                <button class="btn btn-sm btn-secondary" onclick="editarProducto({{ p.id }}, '{{ p.nombre|e }}', {{ p.precio }}, {{ p.categoria_id }}, '{{ p.icono }}', '{{ p.descripcion|e }}', {{ p.activo }}, {{ p.usa_api }}, {{ p.monto_api }}, {{ p.usa_razer|default(0) }}, {{ p.razer_paquete|default(0) }}, {{ p.usa_deltaforce|default(0) }}, {{ p.deltaforce_paquete|default(0) }}, {{ p.orden }}, {{ p.gamepoint_product_id }}, {{ p.gamepoint_package_id }}, {{ p.recarga_manual|default(0) }}, {{ p.pin_origen_producto_id|default(0) }}, {{ p.stock_minimo|default(0) }}, {{ p.stock_objetivo|default(0) }}, {{ p.canjes_por_compra|default(1) }})" title="Editar completo">
+                                <button class="btn btn-sm btn-secondary" onclick="editarProducto({{ p.id }}, '{{ p.nombre|e }}', {{ p.precio }}, {{ p.categoria_id }}, '{{ p.icono }}', '{{ p.descripcion|e }}', {{ p.activo }}, {{ p.usa_api }}, {{ p.monto_api }}, {{ p.usa_razer|default(0) }}, {{ p.razer_paquete|default(0) }}, {{ p.usa_deltaforce|default(0) }}, {{ p.deltaforce_paquete|default(0) }}, {{ p.usa_pincentral|default(0) }}, {{ p.pincentral_product_code|default('')|tojson }}, {{ p.orden }}, {{ p.gamepoint_product_id }}, {{ p.gamepoint_package_id }}, {{ p.recarga_manual|default(0) }}, {{ p.pin_origen_producto_id|default(0) }}, {{ p.stock_minimo|default(0) }}, {{ p.stock_objetivo|default(0) }}, {{ p.canjes_por_compra|default(1) }})" title="Editar completo">
                                     <i class="fas fa-edit"></i>
                                 </button>
                                 <form method="POST" style="display:inline;">
@@ -282,6 +294,12 @@ function toggleDeltaforce() {
     var show = document.getElementById('form-usa-deltaforce').checked;
     document.getElementById('deltaforce-group').style.display = show ? 'block' : 'none';
     if (!show) document.getElementById('form-deltaforce-paquete').value = '0';
+}
+
+function togglePinCentral() {
+    var show = document.getElementById('form-usa-pincentral').checked;
+    document.getElementById('pincentral-group').style.display = show ? 'block' : 'none';
+    if (!show) document.getElementById('form-pincentral-code').value = '';
 }
 
 function toggleGamepoint() {
@@ -423,7 +441,7 @@ function cargarCamposGP() {
         });
 }
 
-function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, usaDeltaforce, deltaforcePaquete, orden, gpProduct, gpPackage, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
+function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, orden, gpProduct, gpPackage, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
     document.getElementById('form-accion').value = 'editar';
     document.getElementById('form-producto-id').value = id;
     document.getElementById('form-nombre').value = nombre;
@@ -438,6 +456,8 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     document.getElementById('form-razer-paquete').value = razerPaquete || 0;
     document.getElementById('form-usa-deltaforce').checked = usaDeltaforce == 1;
     document.getElementById('form-deltaforce-paquete').value = deltaforcePaquete || 0;
+    document.getElementById('form-usa-pincentral').checked = usaPincentral == 1;
+    document.getElementById('form-pincentral-code').value = pincentralCode || '';
     document.getElementById('form-usa-gamepoint').checked = (gpProduct > 0);
     document.getElementById('form-gp-product').value = gpProduct || 0;
     document.getElementById('form-gp-package').value = gpPackage || 0;
@@ -449,6 +469,7 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     toggleMonto();
     toggleRazer();
     toggleDeltaforce();
+    togglePinCentral();
     toggleGamepoint();
     if (gpProduct > 0) { cargarCamposGP(); }
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-edit"></i> Editar Producto #' + id;
@@ -473,6 +494,8 @@ function resetForm() {
     document.getElementById('form-razer-paquete').value = '0';
     document.getElementById('form-usa-deltaforce').checked = false;
     document.getElementById('form-deltaforce-paquete').value = '0';
+    document.getElementById('form-usa-pincentral').checked = false;
+    document.getElementById('form-pincentral-code').value = '';
     document.getElementById('form-usa-gamepoint').checked = false;
     document.getElementById('form-recarga-manual').checked = false;
     document.getElementById('form-gp-product').value = '0';
@@ -487,6 +510,7 @@ function resetForm() {
     toggleMonto();
     toggleRazer();
     toggleDeltaforce();
+    togglePinCentral();
     toggleGamepoint();
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-plus-circle"></i> Nuevo Producto';
     document.getElementById('form-btn-text').textContent = 'Crear Producto';

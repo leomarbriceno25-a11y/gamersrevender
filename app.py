@@ -337,6 +337,113 @@ def procesar_pedido_deltaforce_background(pedido_id, user_id, total, id_juego, p
         print(f"[DELTAFORCE-BG] Pedido #{pedido_id} cancelado por excepción: {error_msg or str(e)}")
 
 
+def _formatear_pins_pincentral(pins):
+    lineas = []
+    for idx, pin in enumerate(pins or [], start=1):
+        if not isinstance(pin, dict):
+            continue
+        serial = str(pin.get('serial', '') or '').strip()
+        key = str(pin.get('key', '') or '').strip()
+        if key and serial:
+            lineas.append(f"{idx}) Serial: {serial} | Key: {key}")
+        elif key:
+            lineas.append(f"{idx}) {key}")
+        elif serial:
+            lineas.append(f"{idx}) {serial}")
+    return '\n'.join(lineas)
+
+
+def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_code, cantidad):
+    """Ejecuta autorización + captura de PINs PinCentral en segundo plano."""
+    from pincentral_api import autorizar_pins, capturar_pins
+
+    db_init = get_db()
+    db_init.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+    user = db_init.execute("SELECT nombre, email FROM usuarios WHERE id = ?", (user_id,)).fetchone()
+    db_init.commit()
+    db_init.close()
+
+    client_name = (user['nombre'] if user else '') or ''
+    client_email = (user['email'] if user else '') or ''
+    order_id = f"PC{pedido_id}"
+
+    try:
+        auth = autorizar_pins(product_code, int(cantidad), order_id, client_name=client_name, client_email=client_email)
+        auth_data = auth.get('data', {}) if isinstance(auth.get('data', {}), dict) else {}
+        auth_status = str(auth_data.get('status', '')).strip().lower().replace(' ', '')
+        tx_id = str(auth_data.get('id', '') or '').strip()
+
+        if (not auth.get('ok')) or auth_status != 'authorized' or not tx_id:
+            error_msg = auth.get('error') or auth_data.get('message') or f"Estado autorización: {auth_data.get('status', 'desconocido')}"
+            db_err = get_db()
+            db_err.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db_err.commit()
+            db_err.close()
+            recargar_saldo(user_id, total, f"Reembolso: Error API PinCentral pedido #{pedido_id}")
+            enviar_webhook(user_id, {
+                'evento': 'pedido_actualizado',
+                'pedido_id': pedido_id,
+                'estado': 'cancelado',
+                'razon': error_msg,
+                'reembolsado': True,
+                'mensaje': 'PinCentral rechazó autorización de PINs'
+            })
+            return
+
+        cap = capturar_pins(tx_id)
+        cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
+        cap_status = str(cap_data.get('status', '')).strip().lower().replace(' ', '')
+        pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
+        codigos = _formatear_pins_pincentral(pins)
+
+        if (not cap.get('ok')) or cap_status != 'captured' or not codigos:
+            error_msg = cap.get('error') or cap_data.get('message') or f"Estado captura: {cap_data.get('status', 'desconocido')}"
+            db_err = get_db()
+            db_err.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db_err.commit()
+            db_err.close()
+            recargar_saldo(user_id, total, f"Reembolso: Error captura PinCentral pedido #{pedido_id}")
+            enviar_webhook(user_id, {
+                'evento': 'pedido_actualizado',
+                'pedido_id': pedido_id,
+                'estado': 'cancelado',
+                'razon': error_msg,
+                'reembolsado': True,
+                'mensaje': 'PinCentral rechazó captura de PINs'
+            })
+            return
+
+        db_ok = get_db()
+        db_ok.execute(
+            "UPDATE pedidos SET estado = 'completado', codigo_entregado = ?, referencia_externa = ? WHERE id = ?",
+            (codigos, tx_id, pedido_id),
+        )
+        db_ok.commit()
+        db_ok.close()
+        enviar_webhook(user_id, {
+            'evento': 'pedido_actualizado',
+            'pedido_id': pedido_id,
+            'estado': 'completado',
+            'referencia': tx_id,
+            'cantidad_codigos': len([l for l in codigos.split('\n') if l.strip()]),
+            'mensaje': 'PINs PinCentral entregados'
+        })
+    except Exception as e:
+        db_err = get_db()
+        db_err.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+        db_err.commit()
+        db_err.close()
+        recargar_saldo(user_id, total, f"Reembolso: Excepción API PinCentral pedido #{pedido_id}")
+        enviar_webhook(user_id, {
+            'evento': 'pedido_actualizado',
+            'pedido_id': pedido_id,
+            'estado': 'cancelado',
+            'razon': str(e),
+            'reembolsado': True,
+            'mensaje': 'PinCentral rechazado por excepción'
+        })
+
+
 # ===== DECORADORES =====
 def login_required(f):
     @wraps(f)
@@ -725,6 +832,28 @@ def comprar():
             daemon=True,
         ).start()
         flash(f'Pedido #{pedido_id} en procesamiento Delta Force. Revisa Mis pedidos para ver si fue aprobado o rechazado.', 'warning')
+        return redirect(url_for('pedido_detalle', id=pedido_id))
+
+    # Si el producto usa API PinCentral (PINs remotos)
+    elif (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
+        product_code = str((prod['pincentral_product_code'] if 'pincentral_product_code' in prod.keys() else '') or '').strip()
+        if not product_code:
+            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db.commit()
+            db.close()
+            recargar_saldo(user_id, total, f"Reembolso: Código de producto PinCentral no configurado pedido #{pedido_id}")
+            flash('Este producto no tiene código PinCentral configurado. Se reembolsó tu saldo.', 'error')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
+
+        db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
+        db.commit()
+        db.close()
+        threading.Thread(
+            target=procesar_pedido_pincentral_background,
+            args=(pedido_id, user_id, total, product_code, cantidad),
+            daemon=True,
+        ).start()
+        flash(f'Pedido #{pedido_id} enviado a PinCentral. Revisa Mis pedidos para ver cuándo se entregan los PINs.', 'warning')
         return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Hype Games (Free Fire), canjear PIN(es) automáticamente
@@ -1545,6 +1674,8 @@ def admin_productos():
             razer_paquete = int(request.form.get('razer_paquete', 0))
             usa_deltaforce = 1 if request.form.get('usa_deltaforce') else 0
             deltaforce_paquete = int(request.form.get('deltaforce_paquete', 0))
+            usa_pincentral = 1 if request.form.get('usa_pincentral') else 0
+            pincentral_product_code = request.form.get('pincentral_product_code', '').strip()
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
@@ -1555,8 +1686,8 @@ def admin_productos():
             stock_objetivo = int(request.form.get('stock_objetivo', 0))
             canjes_por_compra = int(request.form.get('canjes_por_compra', 1)) or 1
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -1572,6 +1703,8 @@ def admin_productos():
             razer_paquete = int(request.form.get('razer_paquete', 0))
             usa_deltaforce = 1 if request.form.get('usa_deltaforce') else 0
             deltaforce_paquete = int(request.form.get('deltaforce_paquete', 0))
+            usa_pincentral = 1 if request.form.get('usa_pincentral') else 0
+            pincentral_product_code = request.form.get('pincentral_product_code', '').strip()
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
@@ -1582,8 +1715,8 @@ def admin_productos():
             stock_objetivo = int(request.form.get('stock_objetivo', 0))
             canjes_por_compra = int(request.form.get('canjes_por_compra', 1)) or 1
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, usa_deltaforce=?, deltaforce_paquete=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -2135,7 +2268,7 @@ def api_saldo():
 def api_productos():
     import json as _json
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.gamepoint_product_id, p.gamepoint_fields, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
@@ -2145,6 +2278,8 @@ def api_productos():
         razer_paquete = d.pop('razer_paquete', 0)
         usa_api_deltaforce = d.pop('usa_deltaforce', 0)
         deltaforce_paquete = d.pop('deltaforce_paquete', 0)
+        usa_api_pincentral = d.pop('usa_pincentral', 0)
+        pincentral_product_code = (d.pop('pincentral_product_code', '') or '').strip()
         # Parsear campos requeridos para que el revendedor sepa qué enviar
         fields_raw = d.pop('gamepoint_fields', '') or ''
         campos = []
@@ -2161,6 +2296,8 @@ def api_productos():
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador para API Razer (paquete {razer_paquete})', 'tipo': 'string', 'opciones': []}]
         elif usa_api_deltaforce:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador para API Delta Force (paquete {deltaforce_paquete})', 'tipo': 'string', 'opciones': []}]
+        elif usa_api_pincentral:
+            d['campos_requeridos'] = []
         else:
             d['campos_requeridos'] = []
         d['usa_gamepoint'] = bool(d.pop('gamepoint_product_id', 0))
@@ -2168,6 +2305,8 @@ def api_productos():
         d['razer_paquete'] = int(razer_paquete or 0)
         d['usa_deltaforce'] = bool(usa_api_deltaforce)
         d['deltaforce_paquete'] = int(deltaforce_paquete or 0)
+        d['usa_pincentral'] = bool(usa_api_pincentral)
+        d['pincentral_product_code'] = pincentral_product_code
         d['procesamiento_manual'] = bool(d.pop('recarga_manual', 0))
         result.append(d)
     return jsonify({'ok': True, 'productos': result})
@@ -2392,6 +2531,35 @@ def api_comprar():
             'estado': 'pendiente',
             'saldo_restante': get_saldo(user_id_api),
             'mensaje': 'Recarga Delta Force en segundo plano. Consulta el pedido para ver si fue aprobado o rechazado.'
+        })
+
+    # API PinCentral (solo PINs remotos)
+    elif (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
+        product_code = str((prod['pincentral_product_code'] if 'pincentral_product_code' in prod.keys() else '') or '').strip()
+        if not product_code:
+            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db.commit()
+            db.close()
+            recargar_saldo(user_id_api, total, f"Reembolso API: Código PinCentral no configurado pedido #{pedido_id}")
+            return jsonify({
+                'ok': False, 'error': 'El producto no tiene código PinCentral configurado',
+                'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
+            }), 400
+
+        db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
+        db.commit()
+        db.close()
+        threading.Thread(
+            target=procesar_pedido_pincentral_background,
+            args=(pedido_id, user_id_api, total, product_code, cantidad),
+            daemon=True,
+        ).start()
+        return jsonify({
+            'ok': True,
+            'pedido_id': pedido_id,
+            'estado': 'pendiente',
+            'saldo_restante': get_saldo(user_id_api),
+            'mensaje': 'Pedido PinCentral en segundo plano. Consulta el pedido para ver códigos entregados.'
         })
 
     # Hype Games API (Free Fire con PINes) - Multi-canje

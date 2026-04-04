@@ -35,6 +35,12 @@ DELTAFORCE_API_TOKEN = os.environ.get('DELTAFORCE_API_TOKEN', '')
 # Usa mismo comportamiento SSL del proveedor Razer por defecto
 DELTAFORCE_VERIFY_SSL = os.environ.get('DELTAFORCE_VERIFY_SSL', '0') == '1'
 
+# API PinCentral (solo PINs)
+PINCENTRAL_API_URL = os.environ.get('PINCENTRAL_API_URL', 'https://pincentral.baul.pro')
+PINCENTRAL_API_KEY = os.environ.get('PINCENTRAL_API_KEY', '')
+PINCENTRAL_API_SECRET = os.environ.get('PINCENTRAL_API_SECRET', '')
+PINCENTRAL_VERIFY_SSL = os.environ.get('PINCENTRAL_VERIFY_SSL', '1') == '1'
+
 # GamePoint Club API
 GAMEPOINT_PARTNER_ID = os.environ.get('GAMEPOINT_PARTNER_ID', '8e444f41-3c46-4226-b90d-2fb8db46fbed')
 GAMEPOINT_SECRET_KEY = os.environ.get('GAMEPOINT_SECRET_KEY', '4d642026a78b03d66710')
