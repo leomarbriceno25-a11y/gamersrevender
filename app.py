@@ -1933,6 +1933,33 @@ def admin_gamepoint_catalogo():
     return render_template('admin/gamepoint.html')
 
 
+@app.route('/admin/pincentral')
+@admin_required
+def admin_pincentral_catalogo():
+    db = get_db()
+    productos_locales = db.execute(
+        "SELECT p.id, p.nombre, p.pincentral_product_code, p.stock_minimo, p.stock_objetivo, "
+        "(SELECT COUNT(*) FROM pines pi WHERE pi.producto_id = p.id AND pi.estado = 'disponible') as stock_disponible "
+        "FROM productos p WHERE p.activo = 1 AND p.usa_pincentral = 1 "
+        "ORDER BY p.nombre"
+    ).fetchall()
+    db.close()
+    return render_template('admin/pincentral.html', productos_locales=productos_locales)
+
+
+@app.route('/admin/pincentral/productos', methods=['GET'])
+@admin_required
+def admin_pincentral_productos():
+    from pincentral_api import listar_productos, consultar_stock
+
+    product_code = (request.args.get('product') or '').strip()
+    productos = listar_productos()
+    if product_code:
+        stock = consultar_stock(product_code)
+        return jsonify({'productos': productos, 'stock': stock})
+    return jsonify({'productos': productos})
+
+
 @app.route('/admin/gamepoint/productos', methods=['GET'])
 @admin_required
 def admin_gamepoint_productos():
@@ -2287,8 +2314,12 @@ def admin_almacen():
                 flash(f'Alerta Telegram para "{prod_nombre["nombre"]}" configurada: stock mínimo = {stock_min}', 'success')
         return redirect(url_for('admin_almacen'))
 
-    # Productos de categoría Gift Card + productos usa_api (Free Fire)
-    productos_api = db.execute("SELECT p.* FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 AND (c.tipo = 'giftcards' OR p.usa_api = 1) ORDER BY p.nombre").fetchall()
+    # Productos de categoría Gift Card + productos con APIs que consumen/entregan pines
+    productos_api = db.execute(
+        "SELECT p.* FROM productos p JOIN categorias c ON p.categoria_id = c.id "
+        "WHERE p.activo = 1 AND (c.tipo = 'giftcards' OR p.usa_api = 1 OR p.usa_pincentral = 1) "
+        "ORDER BY p.nombre"
+    ).fetchall()
     # Stock por producto
     stock = {}
     for p in productos_api:

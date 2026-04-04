@@ -1,0 +1,173 @@
+{% extends 'base.html' %}
+{% block title %}PinCentral API - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-ticket"></i> PinCentral API</h1>
+        <p>Catálogo de productos PIN y consulta de stock</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="admin-card" style="margin-bottom:1rem;">
+            <h2 style="margin-bottom:0.75rem;"><i class="fas fa-database"></i> Productos locales PinCentral</h2>
+            {% if productos_locales %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr><th>ID</th><th>Producto</th><th>Código PinCentral</th><th>Stock</th><th>Mín</th><th>Objetivo</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for p in productos_locales %}
+                        <tr>
+                            <td>{{ p.id }}</td>
+                            <td>{{ p.nombre }}</td>
+                            <td><code>{{ p.pincentral_product_code or '-' }}</code></td>
+                            <td><strong>{{ p.stock_disponible }}</strong></td>
+                            <td>{{ p.stock_minimo or 0 }}</td>
+                            <td>{{ p.stock_objetivo or 0 }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin-top:0.5rem;">Los códigos entregados se ven en <a href="{{ url_for('admin_almacen') }}">Almacén</a> (columna PIN enmascarado).</p>
+            {% else %}
+            <p style="color:var(--text-secondary);">No hay productos configurados con PinCentral en Productos.</p>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="admin-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:0.5rem; margin-bottom:1rem;">
+                <h2 style="margin:0;"><i class="fas fa-list"></i> Productos disponibles en PinCentral</h2>
+                <button class="btn btn-primary btn-sm" onclick="cargarProductos()"><i class="fas fa-sync"></i> Actualizar</button>
+            </div>
+
+            <div id="pc-loading" style="text-align:center; padding:1.5rem;">
+                <div class="spinner" style="width:40px; height:40px; border:3px solid var(--border); border-top:3px solid #14b8a6; border-radius:50%; animation:spin 1s linear infinite; margin:0 auto 0.75rem;"></div>
+                <p style="color:var(--text-secondary);">Consultando productos PinCentral...</p>
+            </div>
+
+            <div class="table-responsive" id="pc-tabla" style="display:none;">
+                <table class="table">
+                    <thead>
+                        <tr><th>Código</th><th>Producto</th><th>Precio</th><th>Stock API</th><th>Acción</th></tr>
+                    </thead>
+                    <tbody id="pc-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
+<style>
+@keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+</style>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function textoSeguro(v) {
+    if (v === null || v === undefined) return '';
+    return String(v);
+}
+
+function parseProductos(data) {
+    if (!data || !data.ok) return [];
+    var payload = data.data;
+    if (Array.isArray(payload)) return payload;
+    if (payload && Array.isArray(payload.products)) return payload.products;
+    if (payload && Array.isArray(payload.data)) return payload.data;
+    return [];
+}
+
+function obtenerCodigo(p) {
+    return textoSeguro(p.code || p.product || p.id || p.sku).trim();
+}
+
+function obtenerNombre(p) {
+    return textoSeguro(p.name || p.nombre || p.description || p.title || 'Sin nombre');
+}
+
+function obtenerPrecio(p) {
+    var precio = p.price || p.amount || p.cost || '';
+    return textoSeguro(precio);
+}
+
+function cargarProductos() {
+    document.getElementById('pc-loading').style.display = 'block';
+    document.getElementById('pc-tabla').style.display = 'none';
+
+    fetch('/admin/pincentral/productos')
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var lista = parseProductos(data.productos);
+            var html = '';
+
+            if (!lista.length) {
+                var err = (data.productos && data.productos.error) ? data.productos.error : 'Sin datos';
+                html = '<tr><td colspan="5" style="text-align:center; color:#ef4444;">' + err + '</td></tr>';
+                document.getElementById('pc-body').innerHTML = html;
+                document.getElementById('pc-loading').style.display = 'none';
+                document.getElementById('pc-tabla').style.display = 'block';
+                return;
+            }
+
+            for (var i = 0; i < lista.length; i++) {
+                var p = lista[i] || {};
+                var code = obtenerCodigo(p);
+                var nombre = obtenerNombre(p);
+                var precio = obtenerPrecio(p);
+                html += '<tr>';
+                html += '<td><code>' + (code || '-') + '</code></td>';
+                html += '<td>' + nombre + '</td>';
+                html += '<td>' + (precio || '-') + '</td>';
+                html += '<td id="stock-' + i + '">-</td>';
+                if (code) {
+                    html += '<td><button class="btn btn-sm btn-secondary" onclick="consultarStock(' + i + ', \'' + code.replace(/'/g, "\\'") + '\')"><i class="fas fa-search"></i> Ver stock</button></td>';
+                } else {
+                    html += '<td><span style="color:var(--text-secondary);">Sin código</span></td>';
+                }
+                html += '</tr>';
+            }
+
+            document.getElementById('pc-body').innerHTML = html;
+            document.getElementById('pc-loading').style.display = 'none';
+            document.getElementById('pc-tabla').style.display = 'block';
+        })
+        .catch(function(e) {
+            document.getElementById('pc-loading').innerHTML = '<p style="color:#ef4444;">Error de conexión: ' + e.message + '</p>';
+        });
+}
+
+function consultarStock(idx, code) {
+    var celda = document.getElementById('stock-' + idx);
+    if (!celda) return;
+    celda.textContent = 'Consultando...';
+
+    fetch('/admin/pincentral/productos?product=' + encodeURIComponent(code))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var stockObj = data.stock || {};
+            if (!stockObj.ok) {
+                celda.innerHTML = '<span style="color:#ef4444;">' + (stockObj.error || 'Error') + '</span>';
+                return;
+            }
+            var d = stockObj.data || {};
+            var qty = (d.quantity !== undefined) ? d.quantity : (d.stock !== undefined ? d.stock : (d.available !== undefined ? d.available : JSON.stringify(d)));
+            celda.innerHTML = '<strong>' + qty + '</strong>';
+        })
+        .catch(function(e) {
+            celda.innerHTML = '<span style="color:#ef4444;">' + e.message + '</span>';
+        });
+}
+
+cargarProductos();
+</script>
+{% endblock %}

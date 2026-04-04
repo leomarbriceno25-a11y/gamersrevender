@@ -88,6 +88,10 @@ def consultar_stock(product_code):
     return _request('POST', '/api/pins/stock', {'product': str(product_code).strip()})
 
 
+def listar_productos():
+    return _request('GET', '/api/products')
+
+
 def autorizar_pins(product_code, quantity, order_id, client_name='', client_email=''):
     payload = {
         'product': str(product_code).strip(),
