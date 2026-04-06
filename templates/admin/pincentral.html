@@ -17,7 +17,7 @@
             <div class="table-responsive">
                 <table class="table">
                     <thead>
-                        <tr><th>ID</th><th>Producto</th><th>Código PinCentral</th><th>Stock</th><th>Mín</th><th>Objetivo</th></tr>
+                        <tr><th>ID</th><th>Producto</th><th>Código PinCentral</th><th>Stock</th><th>Mín</th><th>Objetivo</th><th>Acción</th></tr>
                     </thead>
                     <tbody>
                         {% for p in productos_locales %}
@@ -26,8 +26,18 @@
                             <td>{{ p.nombre }}</td>
                             <td><code>{{ p.pincentral_product_code or '-' }}</code></td>
                             <td><strong>{{ p.stock_disponible }}</strong></td>
-                            <td>{{ p.stock_minimo or 0 }}</td>
-                            <td>{{ p.stock_objetivo or 0 }}</td>
+                            <td>
+                                <input type="number" name="stock_minimo" value="{{ p.stock_minimo or 0 }}" min="0" class="form-input" style="width:90px;" form="form-stock-{{ p.id }}">
+                            </td>
+                            <td>
+                                <input type="number" name="stock_objetivo" value="{{ p.stock_objetivo or 0 }}" min="0" class="form-input" style="width:90px;" form="form-stock-{{ p.id }}">
+                            </td>
+                            <td>
+                                <form id="form-stock-{{ p.id }}" method="POST" style="display:inline;">
+                                    <input type="hidden" name="producto_id" value="{{ p.id }}">
+                                </form>
+                                <button type="submit" class="btn btn-sm btn-primary" form="form-stock-{{ p.id }}"><i class="fas fa-save"></i> Guardar</button>
+                            </td>
                         </tr>
                         {% endfor %}
                     </tbody>

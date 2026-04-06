@@ -2305,10 +2305,29 @@ def admin_gamepoint_catalogo():
     return render_template('admin/gamepoint.html')
 
 
-@app.route('/admin/pincentral')
+@app.route('/admin/pincentral', methods=['GET', 'POST'])
 @admin_required
 def admin_pincentral_catalogo():
     db = get_db()
+    if request.method == 'POST':
+        prod_id = int(request.form.get('producto_id', 0) or 0)
+        stock_minimo = int(request.form.get('stock_minimo', 0) or 0)
+        stock_objetivo = int(request.form.get('stock_objetivo', 0) or 0)
+
+        if prod_id > 0:
+            if stock_minimo < 0:
+                stock_minimo = 0
+            if stock_objetivo < 0:
+                stock_objetivo = 0
+            db.execute(
+                "UPDATE productos SET stock_minimo = ?, stock_objetivo = ? WHERE id = ? AND usa_pincentral = 1",
+                (stock_minimo, stock_objetivo, prod_id),
+            )
+            db.commit()
+            flash(f'Stock actualizado en producto #{prod_id}', 'success')
+        else:
+            flash('Producto inválido para actualizar stock', 'error')
+
     productos_locales = db.execute(
         "SELECT p.id, p.nombre, p.pincentral_product_code, p.stock_minimo, p.stock_objetivo, "
         "(SELECT COUNT(*) FROM pines pi WHERE pi.producto_id = p.id AND pi.estado = 'disponible') as stock_disponible "
