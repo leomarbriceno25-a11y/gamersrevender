@@ -341,19 +341,37 @@ def restock_pincentral_almacen(producto_id):
 
             auth = autorizar_pins(codigo, lote, order_id)
             auth_data = auth.get('data', {}) if isinstance(auth.get('data', {}), dict) else {}
-            auth_status = str(auth_data.get('status', '')).strip().lower().replace(' ', '')
+            auth_status = _pincentral_status_normalizado(auth_data.get('status', ''))
             tx_id = str(auth_data.get('id', '') or '').strip()
 
-            if (not auth.get('ok')) or auth_status != 'authorized' or not tx_id:
+            if (not auth.get('ok')) or (not _pincentral_autorizado(auth_status)) or not tx_id:
+                _registrar_incidente_pincentral(
+                    contexto='restock_auth',
+                    producto_id=producto_id,
+                    product_code=codigo,
+                    order_id=order_id,
+                    transaction_id=tx_id,
+                    detalle=f"Autorización restock no válida. status={auth_data.get('status', '')}, ok={auth.get('ok')}",
+                    payload=auth_data or auth,
+                )
                 print(f"[PINCENTRAL-RESTOCK] Autorización fallida producto #{producto_id}: {auth.get('error') or auth_data}")
                 break
 
             cap = capturar_pins(tx_id)
             cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
-            cap_status = str(cap_data.get('status', '')).strip().lower().replace(' ', '')
+            cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
             pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
 
-            if (not cap.get('ok')) or cap_status != 'captured' or not pins:
+            if (not cap.get('ok')) or (not _pincentral_capturado(cap_status)) or not pins:
+                _registrar_incidente_pincentral(
+                    contexto='restock_capture',
+                    producto_id=producto_id,
+                    product_code=codigo,
+                    order_id=order_id,
+                    transaction_id=tx_id,
+                    detalle=f"Captura restock no válida. status={cap_data.get('status', '')}, ok={cap.get('ok')}",
+                    payload=cap_data or cap,
+                )
                 print(f"[PINCENTRAL-RESTOCK] Captura fallida producto #{producto_id}: {cap.get('error') or cap_data}")
                 break
 
@@ -605,6 +623,18 @@ def _formatear_pins_pincentral(pins):
     return '\n'.join(lineas)
 
 
+def _pincentral_status_normalizado(status):
+    return str(status or '').strip().lower().replace(' ', '')
+
+
+def _pincentral_autorizado(status):
+    return _pincentral_status_normalizado(status) in {'authorized', 'autorizado'}
+
+
+def _pincentral_capturado(status):
+    return _pincentral_status_normalizado(status) in {'captured', 'capturado'}
+
+
 def _registrar_incidente_pincentral(
     contexto,
     detalle,
@@ -721,10 +751,10 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
     try:
         auth = autorizar_pins(product_code, int(cantidad), order_id, client_name=client_name, client_email=client_email)
         auth_data = auth.get('data', {}) if isinstance(auth.get('data', {}), dict) else {}
-        auth_status = str(auth_data.get('status', '')).strip().lower().replace(' ', '')
+        auth_status = _pincentral_status_normalizado(auth_data.get('status', ''))
         tx_id = str(auth_data.get('id', '') or '').strip()
 
-        if (not auth.get('ok')) or auth_status != 'authorized' or not tx_id:
+        if (not auth.get('ok')) or (not _pincentral_autorizado(auth_status)) or not tx_id:
             error_msg = auth.get('error') or auth_data.get('message') or f"Estado autorización: {auth_data.get('status', 'desconocido')}"
             db_err = get_db()
             db_err.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
@@ -743,7 +773,7 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
 
         cap = capturar_pins(tx_id)
         cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
-        cap_status = str(cap_data.get('status', '')).strip().lower().replace(' ', '')
+        cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
         pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
         errores_key = _pincentral_detectar_key_vacia(
             pins,
@@ -756,7 +786,7 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
         )
         codigos = _formatear_pins_pincentral(pins)
 
-        if (not cap.get('ok')) or cap_status != 'captured' or not codigos or errores_key:
+        if (not cap.get('ok')) or (not _pincentral_capturado(cap_status)) or not codigos or errores_key:
             error_msg = cap.get('error') or cap_data.get('message') or f"Estado captura: {cap_data.get('status', 'desconocido')}"
             if errores_key:
                 error_msg = f"PinCentral devolvió key vacío: {'; '.join(errores_key)}"
