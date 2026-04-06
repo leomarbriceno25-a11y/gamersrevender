@@ -1524,7 +1524,22 @@ def solicitar_recarga():
                 'nota': config.get(f'metodo_{key}_nota', ''),
             })
     bonuses_list = [{'monto_minimo': b['monto_minimo'], 'porcentaje_bonus': b['porcentaje_bonus']} for b in bonuses]
-    return render_template('solicitar_recarga.html', solicitudes=solicitudes, saldo=saldo, metodos=metodos, bonuses=bonuses_list, recarga_minima=recarga_minima)
+    solicitudes_view = []
+    for s in solicitudes:
+        d = dict(s)
+        monto_s = float(d.get('monto', 0) or 0)
+        bonus_pct = 0
+        if d.get('estado') == 'aprobada':
+            for tier in bonuses_list:
+                if monto_s >= float(tier.get('monto_minimo', 0) or 0):
+                    bonus_pct = float(tier.get('porcentaje_bonus', 0) or 0)
+        bonus_monto = round(monto_s * bonus_pct / 100, 4) if bonus_pct > 0 else 0
+        d['bonus_pct'] = bonus_pct
+        d['bonus_monto'] = bonus_monto
+        d['monto_total'] = round(monto_s + bonus_monto, 4)
+        solicitudes_view.append(d)
+
+    return render_template('solicitar_recarga.html', solicitudes=solicitudes_view, saldo=saldo, metodos=metodos, bonuses=bonuses_list, recarga_minima=recarga_minima)
 
 
 # ===== ADMIN =====

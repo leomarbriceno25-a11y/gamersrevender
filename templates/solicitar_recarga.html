@@ -99,6 +99,12 @@
                     <span class="badge badge-cancelado"><i class="fas fa-times"></i> Rechazada</span>
                     {% endif %}
                 </div>
+                {% if s.estado == 'aprobada' and (s.bonus_pct|default(0)) > 0 %}
+                <div style="font-size:0.85rem; color:#10b981; margin-bottom:0.35rem; font-weight:600;">
+                    <i class="fas fa-gift"></i> +{{ '%.0f'|format(s.bonus_pct) }}% bonus = ${{ '%.4f'|format(s.bonus_monto|default(0)) }}
+                    <span style="color:var(--text-secondary); font-weight:500;">→ Total recibido: ${{ '%.4f'|format(s.monto_total|default(s.monto)) }}</span>
+                </div>
+                {% endif %}
                 <div style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:0.3rem;">
                     <i class="fas fa-credit-card"></i> {{ s.metodo_pago }}
                     {% if s.referencia %} — Ref: {{ s.referencia }}{% endif %}
