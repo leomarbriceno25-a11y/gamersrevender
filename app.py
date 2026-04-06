@@ -15,6 +15,9 @@ from telegram_bot import notificar_recarga, notificar_stock_bajo
 import uuid
 import sqlite3
 import threading
+from decimal import Decimal, InvalidOperation
+
+import requests
 
 PINCENTRAL_RESTOCK_LOCK = threading.Lock()
 
@@ -58,6 +61,133 @@ def save_upload(file):
 
 
 init_db()
+
+
+def _extraer_digitos(texto):
+    return ''.join(ch for ch in str(texto or '') if ch.isdigit())
+
+
+def _normalizar_metodo(metodo_pago):
+    raw = str(metodo_pago or '').strip().lower()
+    return raw.replace(' ', '').replace('_', '').replace('-', '')
+
+
+def _es_binance(metodo_pago):
+    m = _normalizar_metodo(metodo_pago)
+    return 'binance' in m
+
+
+def _obtener_movimientos_binance():
+    api_url = (config.BINANCE_MOV_API_URL or '').strip()
+    token = (config.BINANCE_MOV_API_TOKEN or '').strip()
+    if not api_url or not token:
+        return {'ok': False, 'error': 'API de verificación Binance no configurada', 'movimientos': []}
+
+    try:
+        resp = requests.get(
+            api_url,
+            params={'token': token},
+            timeout=30,
+            verify=config.BINANCE_MOV_VERIFY_SSL,
+        )
+        data = resp.json()
+    except Exception as e:
+        return {'ok': False, 'error': f'Error consultando API Binance: {e}', 'movimientos': []}
+
+    if not isinstance(data, dict):
+        return {'ok': False, 'error': 'Respuesta inválida de API Binance', 'movimientos': []}
+
+    movimientos = data.get('movimientos', [])
+    if not isinstance(movimientos, list):
+        movimientos = []
+
+    return {
+        'ok': True,
+        'movimientos': movimientos,
+        'mensaje': data.get('mensaje', ''),
+        'fecha_corte': data.get('fecha_corte', ''),
+    }
+
+
+def _verificar_pago_binance_solicitud(db, sol):
+    """Verifica pago por Binance con monto exacto USDT + coincidencia últimos 8 dígitos referencia."""
+    referencia_ingresada = str(sol['referencia'] or '').strip()
+    ref_digits = _extraer_digitos(referencia_ingresada)
+    if len(ref_digits) < 8:
+        return {
+            'ok': False,
+            'error': 'La referencia debe contener al menos 8 dígitos para verificar pago Binance.',
+        }
+    suffix8 = ref_digits[-8:]
+
+    try:
+        monto_objetivo = Decimal(str(sol['monto']))
+    except (InvalidOperation, TypeError):
+        return {'ok': False, 'error': 'Monto de solicitud inválido para verificación Binance.'}
+
+    api = _obtener_movimientos_binance()
+    if not api.get('ok'):
+        return {'ok': False, 'error': api.get('error') or 'No se pudo consultar API Binance.'}
+
+    match = None
+    for mov in api.get('movimientos', []):
+        if not isinstance(mov, dict):
+            continue
+        if str(mov.get('tipo', '')).strip().lower() != 'credito':
+            continue
+        if str(mov.get('moneda', '')).strip().upper() != 'USDT':
+            continue
+
+        referencia_full = str(mov.get('referencia', '') or '').strip()
+        ref_full_digits = _extraer_digitos(referencia_full)
+        if not ref_full_digits or not ref_full_digits.endswith(suffix8):
+            continue
+
+        try:
+            monto_mov = Decimal(str(mov.get('monto', '0')))
+        except (InvalidOperation, TypeError):
+            continue
+        if monto_mov != monto_objetivo:
+            continue
+
+        match = {
+            'referencia_full': referencia_full,
+            'referencia_suffix8': suffix8,
+            'monto': float(monto_mov),
+            'fecha': str(mov.get('fecha', '') or ''),
+        }
+        break
+
+    if not match:
+        return {
+            'ok': False,
+            'error': f'No se encontró movimiento Binance que coincida con monto exacto {monto_objetivo} USDT y referencia *{suffix8}.',
+        }
+
+    usada = db.execute(
+        "SELECT id, usuario_id FROM referencias_pago_usadas WHERE referencia_full = ? LIMIT 1",
+        (match['referencia_full'],),
+    ).fetchone()
+    if usada:
+        if int(usada['usuario_id']) != int(sol['usuario_id']):
+            return {'ok': False, 'error': 'Esta referencia ya fue utilizada por otro cliente.'}
+        return {'ok': False, 'error': 'Esta referencia ya fue utilizada anteriormente.'}
+
+    db.execute(
+        "INSERT INTO referencias_pago_usadas (solicitud_id, usuario_id, referencia_ingresada, referencia_suffix8, referencia_full, monto, moneda, fecha_movimiento) "
+        "VALUES (?,?,?,?,?,?,?,?)",
+        (
+            int(sol['id']),
+            int(sol['usuario_id']),
+            referencia_ingresada,
+            match['referencia_suffix8'],
+            match['referencia_full'],
+            match['monto'],
+            'USDT',
+            match['fecha'],
+        ),
+    )
+    return {'ok': True, 'match': match}
 
 
 def verificar_nombre_jugador(tipo, player_id, zone_id=''):
@@ -205,7 +335,7 @@ def restock_pincentral_almacen(producto_id):
 
         while necesarios > 0:
             lote_n += 1
-            lote = min(10, necesarios)
+            lote = 1
             order_id = f"RSTK_{producto_id}_{uuid.uuid4().hex[:10]}_{lote_n}"
 
             auth = autorizar_pins(codigo, lote, order_id)
@@ -1304,6 +1434,12 @@ def solicitar_recarga():
             db.close()
             flash('Selecciona un método de pago', 'error')
             return redirect(url_for('solicitar_recarga'))
+        if _es_binance(metodo_pago):
+            ref_digits = _extraer_digitos(referencia)
+            if len(ref_digits) < 8:
+                db.close()
+                flash('Para Binance debes ingresar una referencia con al menos 8 dígitos.', 'error')
+                return redirect(url_for('solicitar_recarga'))
         # Verificar que no tenga otra solicitud pendiente
         pendiente = db.execute("SELECT id FROM solicitudes_recarga WHERE usuario_id = ? AND estado = 'pendiente'", (session['user_id'],)).fetchone()
         if pendiente:
@@ -1460,6 +1596,17 @@ def admin_aprobar_solicitud(id):
         flash('Solicitud no encontrada o ya procesada', 'error')
         return redirect(url_for('admin_solicitudes'))
     nota = request.form.get('nota', '').strip()
+    if _es_binance(sol['metodo_pago']):
+        verif = _verificar_pago_binance_solicitud(db, sol)
+        if not verif.get('ok'):
+            db.close()
+            flash(f"No se pudo aprobar solicitud #{id}: {verif.get('error')}", 'error')
+            return redirect(url_for('admin_solicitudes'))
+        match = verif.get('match', {})
+        if match:
+            extra = f" [Binance OK ref: {match.get('referencia_full', '')}]"
+            nota = (nota + extra).strip()
+
     monto_base = sol['monto']
     # Calcular bonus si aplica
     bonus_row = db.execute(

@@ -326,6 +326,29 @@ def init_db():
             );
         """)
 
+    # Referencias Binance usadas para evitar reutilización entre clientes
+    try:
+        db.execute("SELECT id FROM referencias_pago_usadas LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS referencias_pago_usadas (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                solicitud_id INTEGER NOT NULL,
+                usuario_id INTEGER NOT NULL,
+                referencia_ingresada TEXT NOT NULL,
+                referencia_suffix8 TEXT NOT NULL,
+                referencia_full TEXT NOT NULL UNIQUE,
+                monto REAL NOT NULL,
+                moneda TEXT NOT NULL DEFAULT 'USDT',
+                fecha_movimiento TEXT DEFAULT '',
+                fecha_verificacion TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (solicitud_id) REFERENCES solicitudes_recarga(id),
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_ref_pago_suffix8 ON referencias_pago_usadas(referencia_suffix8);
+            CREATE INDEX IF NOT EXISTS idx_ref_pago_usuario ON referencias_pago_usadas(usuario_id);
+        """)
+
     # Verificación de nombre de jugador por categoría
     try:
         db.execute("SELECT verificar_nombre FROM categorias LIMIT 1")
