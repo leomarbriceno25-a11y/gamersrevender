@@ -26,6 +26,8 @@ PINCENTRAL_SCAN_THREAD_GUARD = threading.Lock()
 PINCENTRAL_SCAN_THREAD_STARTED = False
 PINCENTRAL_SCAN_INTERVAL_SECONDS = 60
 PINCENTRAL_SCAN_LOCK_TTL_SECONDS = 180
+PINCENTRAL_RESTOCK_CAPTURE_MAX_ATTEMPTS = 3
+PINCENTRAL_RESTOCK_CAPTURE_RETRY_DELAY_SECONDS = 2
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -369,7 +371,8 @@ def restock_pincentral_almacen(producto_id):
             cap_error = ''
             capture_ok = False
 
-            for intento in range(1, 3):
+            max_attempts = max(1, int(PINCENTRAL_RESTOCK_CAPTURE_MAX_ATTEMPTS or 1))
+            for intento in range(1, max_attempts + 1):
                 cap = capturar_pins(tx_id)
                 cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
                 cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
@@ -380,8 +383,8 @@ def restock_pincentral_almacen(producto_id):
                 if capture_ok:
                     break
 
-                if intento < 2 and _pincentral_capture_retryable(cap_status, cap_error):
-                    time.sleep(2)
+                if intento < max_attempts and _pincentral_capture_retryable(cap_status, cap_error):
+                    time.sleep(max(1, int(PINCENTRAL_RESTOCK_CAPTURE_RETRY_DELAY_SECONDS or 2)))
                     continue
                 break
 
