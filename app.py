@@ -1446,8 +1446,54 @@ def solicitar_recarga():
             db.close()
             flash('Ya tienes una solicitud de recarga pendiente. Espera a que sea procesada.', 'error')
             return redirect(url_for('solicitar_recarga'))
-        db.execute("INSERT INTO solicitudes_recarga (usuario_id, monto, metodo_pago, referencia) VALUES (?,?,?,?)",
-                   (session['user_id'], monto, metodo_pago, referencia))
+        cur = db.execute("INSERT INTO solicitudes_recarga (usuario_id, monto, metodo_pago, referencia) VALUES (?,?,?,?)",
+                         (session['user_id'], monto, metodo_pago, referencia))
+        solicitud_id = cur.lastrowid
+
+        # Binance se procesa automáticamente: match exacto -> aprobar, sin match -> rechazar
+        if _es_binance(metodo_pago):
+            sol = db.execute("SELECT * FROM solicitudes_recarga WHERE id = ?", (solicitud_id,)).fetchone()
+            verif = _verificar_pago_binance_solicitud(db, sol)
+            if verif.get('ok'):
+                monto_base = float(sol['monto'])
+                bonus_row = db.execute(
+                    "SELECT porcentaje_bonus FROM bonus_recarga WHERE activo = 1 AND monto_minimo <= ? ORDER BY monto_minimo DESC LIMIT 1",
+                    (monto_base,)
+                ).fetchone()
+                bonus_pct = bonus_row['porcentaje_bonus'] if bonus_row else 0
+                monto_bonus = round(monto_base * bonus_pct / 100, 4) if bonus_pct > 0 else 0
+                monto_total = monto_base + monto_bonus
+
+                desc_recarga = f"Recarga auto-aprobada Binance (solicitud #{solicitud_id})"
+                if monto_bonus > 0:
+                    desc_recarga += f" + Bonus {bonus_pct}% (${monto_bonus:.4f})"
+                recargar_saldo(sol['usuario_id'], monto_total, desc_recarga)
+
+                match = verif.get('match', {})
+                nota_auto = f"Aprobada automáticamente por API Binance. Ref: {match.get('referencia_full', '')}"
+                db.execute(
+                    "UPDATE solicitudes_recarga SET estado = 'aprobada', nota_admin = ?, fecha_respuesta = datetime('now','localtime') WHERE id = ?",
+                    (nota_auto, solicitud_id),
+                )
+                db.commit()
+                db.close()
+
+                msg = f'Pago Binance verificado automáticamente. Recarga aplicada por ${monto_base:.4f}'
+                if monto_bonus > 0:
+                    msg += f' + Bonus {bonus_pct}% (${monto_bonus:.4f}) = ${monto_total:.4f}'
+                flash(msg, 'success')
+                return redirect(url_for('solicitar_recarga'))
+
+            nota_auto = f"Rechazada automáticamente: {verif.get('error', 'No coincide con movimientos Binance')}"
+            db.execute(
+                "UPDATE solicitudes_recarga SET estado = 'rechazada', nota_admin = ?, fecha_respuesta = datetime('now','localtime') WHERE id = ?",
+                (nota_auto, solicitud_id),
+            )
+            db.commit()
+            db.close()
+            flash(f'Pago Binance rechazado automáticamente: {verif.get("error", "No coincide")}', 'error')
+            return redirect(url_for('solicitar_recarga'))
+
         db.commit()
         usuario = db.execute("SELECT nombre FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
         db.close()
