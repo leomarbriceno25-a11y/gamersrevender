@@ -1449,12 +1449,15 @@ def solicitar_recarga():
         cur = db.execute("INSERT INTO solicitudes_recarga (usuario_id, monto, metodo_pago, referencia) VALUES (?,?,?,?)",
                          (session['user_id'], monto, metodo_pago, referencia))
         solicitud_id = cur.lastrowid
+        db.commit()
 
         # Binance se procesa automáticamente: match exacto -> aprobar, sin match -> rechazar
         if _es_binance(metodo_pago):
             sol = db.execute("SELECT * FROM solicitudes_recarga WHERE id = ?", (solicitud_id,)).fetchone()
             verif = _verificar_pago_binance_solicitud(db, sol)
             if verif.get('ok'):
+                # Liberar escritura pendiente antes de abrir otra conexión en recargar_saldo
+                db.commit()
                 monto_base = float(sol['monto'])
                 bonus_row = db.execute(
                     "SELECT porcentaje_bonus FROM bonus_recarga WHERE activo = 1 AND monto_minimo <= ? ORDER BY monto_minimo DESC LIMIT 1",
