@@ -105,18 +105,31 @@
 
         <!-- Filtros -->
         <div class="cat-filters" style="margin-bottom: 1rem;">
-            <a href="{{ url_for('admin_almacen') }}" class="btn {{ 'btn-primary' if not filtro else 'btn-secondary' }} btn-sm">
+            <a href="{{ url_for('admin_almacen', q=q) }}" class="btn {{ 'btn-primary' if not filtro else 'btn-secondary' }} btn-sm">
                 <i class="fas fa-th"></i> Todos
             </a>
             {% for p in productos_api %}
-            <a href="{{ url_for('admin_almacen', producto_id=p.id) }}" class="btn {{ 'btn-primary' if filtro == p.id|string else 'btn-secondary' }} btn-sm">
+            <a href="{{ url_for('admin_almacen', producto_id=p.id, q=q) }}" class="btn {{ 'btn-primary' if filtro == p.id|string else 'btn-secondary' }} btn-sm">
                 <i class="fas fa-gem"></i> {{ p.nombre }} ({{ stock.get(p.id, 0) }})
             </a>
             {% endfor %}
         </div>
 
         <div style="margin-bottom:1rem;">
-            <input type="text" id="filtroPines" class="form-input" placeholder="Buscar por # de PIN, código, producto, estado..." style="max-width:500px;" oninput="filtrarPines()">
+            <form method="GET" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                {% if filtro %}
+                <input type="hidden" name="producto_id" value="{{ filtro }}">
+                {% endif %}
+                <input type="text" name="q" value="{{ q or '' }}" class="form-input" placeholder="Buscar por # de PIN, producto, estado, usado por, fecha..." style="max-width:500px;">
+                <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-search"></i> Buscar</button>
+                {% if q %}
+                {% if filtro %}
+                <a href="{{ url_for('admin_almacen', producto_id=filtro) }}" class="btn btn-secondary btn-sm"><i class="fas fa-times"></i> Limpiar</a>
+                {% else %}
+                <a href="{{ url_for('admin_almacen') }}" class="btn btn-secondary btn-sm"><i class="fas fa-times"></i> Limpiar</a>
+                {% endif %}
+                {% endif %}
+            </form>
         </div>
 
         {% if filtro and productos_api %}
@@ -179,16 +192,16 @@
             <div style="display:flex; gap:0.5rem;">
                 {% if has_prev %}
                     {% if filtro %}
-                    <a href="{{ url_for('admin_almacen', producto_id=filtro, page=page-1) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
+                    <a href="{{ url_for('admin_almacen', producto_id=filtro, page=page-1, q=q) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
                     {% else %}
-                    <a href="{{ url_for('admin_almacen', page=page-1) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
+                    <a href="{{ url_for('admin_almacen', page=page-1, q=q) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
                     {% endif %}
                 {% endif %}
                 {% if has_more %}
                     {% if filtro %}
-                    <a href="{{ url_for('admin_almacen', producto_id=filtro, page=page+1) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
+                    <a href="{{ url_for('admin_almacen', producto_id=filtro, page=page+1, q=q) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
                     {% else %}
-                    <a href="{{ url_for('admin_almacen', page=page+1) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
+                    <a href="{{ url_for('admin_almacen', page=page+1, q=q) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
                     {% endif %}
                 {% endif %}
             </div>
@@ -204,14 +217,3 @@
 </section>
 {% endblock %}
 
-{% block scripts %}
-<script>
-function filtrarPines() {
-    var texto = document.getElementById('filtroPines').value.toLowerCase();
-    var filas = document.querySelectorAll('#tablaPines tbody tr');
-    filas.forEach(function(fila) {
-        fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
-    });
-}
-</script>
-{% endblock %}

@@ -17,7 +17,13 @@
         </div>
         {% if pedidos %}
         <div style="margin-bottom:1rem;">
-            <input type="text" id="filtroPedidos" class="form-input" placeholder="Buscar por #, usuario, producto, ID juego, estado..." style="max-width:500px;" oninput="filtrarPedidos()">
+            <form method="GET" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <input type="text" name="q" value="{{ q or '' }}" class="form-input" placeholder="Buscar por #, usuario, producto, ID juego, referencia, código, estado..." style="max-width:500px;">
+                <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-search"></i> Buscar</button>
+                {% if q %}
+                <a href="{{ url_for('admin_pedidos') }}" class="btn btn-secondary btn-sm"><i class="fas fa-times"></i> Limpiar</a>
+                {% endif %}
+            </form>
         </div>
         <div class="table-responsive">
             <table class="table" id="tablaPedidos">
@@ -78,10 +84,10 @@
             </div>
             <div style="display:flex; gap:0.5rem;">
                 {% if has_prev %}
-                <a href="{{ url_for('admin_pedidos', page=page-1) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
+                <a href="{{ url_for('admin_pedidos', page=page-1, q=q) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
                 {% endif %}
                 {% if has_more %}
-                <a href="{{ url_for('admin_pedidos', page=page+1) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
+                <a href="{{ url_for('admin_pedidos', page=page+1, q=q) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
                 {% endif %}
             </div>
         </div>
@@ -122,13 +128,6 @@
             var btn = document.getElementById('btn-copiar-todos');
             btn.innerHTML = '<i class="fas fa-check"></i> Copiados!';
             setTimeout(function(){ btn.innerHTML = '<i class="fas fa-copy"></i> Copiar todos'; }, 1500);
-        }
-        function filtrarPedidos(){
-            var texto = document.getElementById('filtroPedidos').value.toLowerCase();
-            var filas = document.querySelectorAll('#tablaPedidos tbody tr');
-            filas.forEach(function(fila){
-                fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
-            });
         }
         </script>
         {% else %}

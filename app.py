@@ -1641,13 +1641,35 @@ def admin_estadisticas():
 @admin_required
 def admin_solicitudes():
     db = get_db()
+    try:
+        page = int(request.args.get('page', '1'))
+    except (ValueError, TypeError):
+        page = 1
+    if page < 1:
+        page = 1
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    total_solicitudes = db.execute("SELECT COUNT(*) as c FROM solicitudes_recarga").fetchone()['c']
     solicitudes = db.execute(
         "SELECT s.*, u.nombre as usuario_nombre, u.email as usuario_email "
         "FROM solicitudes_recarga s JOIN usuarios u ON s.usuario_id = u.id "
-        "ORDER BY CASE s.estado WHEN 'pendiente' THEN 0 ELSE 1 END, s.fecha_solicitud DESC"
+        "ORDER BY CASE s.estado WHEN 'pendiente' THEN 0 ELSE 1 END, s.fecha_solicitud DESC "
+        "LIMIT ? OFFSET ?",
+        (per_page, offset)
     ).fetchall()
+    has_prev = page > 1
+    has_more = (offset + len(solicitudes)) < total_solicitudes
     db.close()
-    return render_template('admin/solicitudes.html', solicitudes=solicitudes)
+    return render_template(
+        'admin/solicitudes.html',
+        solicitudes=solicitudes,
+        page=page,
+        per_page=per_page,
+        total_solicitudes=total_solicitudes,
+        has_prev=has_prev,
+        has_more=has_more,
+    )
 
 
 @app.route('/admin/solicitud/<int:id>/aprobar', methods=['POST'])
@@ -2551,6 +2573,7 @@ def admin_almacen():
         stock[p['id']] = count['c']
     # Filtro por producto
     filtro = request.args.get('producto_id', '')
+    q = request.args.get('q', '').strip()
     try:
         page = int(request.args.get('page', '1'))
     except (ValueError, TypeError):
@@ -2560,28 +2583,31 @@ def admin_almacen():
     per_page = 20
     offset = (page - 1) * per_page
 
-    total_pines = 0
+    where_clauses = []
+    params = []
     if filtro:
-        filtro_id = int(filtro)
-        total_pines = db.execute(
-            "SELECT COUNT(*) as c FROM pines WHERE producto_id = ?",
-            (filtro_id,)
-        ).fetchone()['c']
-        pines = db.execute(
-            "SELECT pi.*, pr.nombre as producto_nombre "
-            "FROM pines pi JOIN productos pr ON pi.producto_id = pr.id "
-            "WHERE pi.producto_id = ? "
-            "ORDER BY pi.estado ASC, pi.fecha_agregado DESC LIMIT ? OFFSET ?",
-            (filtro_id, per_page, offset)
-        ).fetchall()
-    else:
-        total_pines = db.execute("SELECT COUNT(*) as c FROM pines").fetchone()['c']
-        pines = db.execute(
-            "SELECT pi.*, pr.nombre as producto_nombre "
-            "FROM pines pi JOIN productos pr ON pi.producto_id = pr.id "
-            "ORDER BY pi.estado ASC, pi.fecha_agregado DESC LIMIT ? OFFSET ?",
-            (per_page, offset)
-        ).fetchall()
+        where_clauses.append("pi.producto_id = ?")
+        params.append(int(filtro))
+    if q:
+        like_q = f"%{q}%"
+        where_clauses.append(
+            "(CAST(pi.id AS TEXT) LIKE ? OR pr.nombre LIKE ? OR pi.estado LIKE ? OR "
+            "IFNULL(pi.usado_por, '') LIKE ? OR IFNULL(pi.fecha_agregado, '') LIKE ? OR IFNULL(pi.pedido_id, '') LIKE ?)"
+        )
+        params.extend([like_q, like_q, like_q, like_q, like_q, like_q])
+    where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ''
+
+    total_pines = db.execute(
+        "SELECT COUNT(*) as c FROM pines pi JOIN productos pr ON pi.producto_id = pr.id" + where_sql,
+        tuple(params)
+    ).fetchone()['c']
+
+    pines = db.execute(
+        "SELECT pi.*, pr.nombre as producto_nombre "
+        "FROM pines pi JOIN productos pr ON pi.producto_id = pr.id" + where_sql +
+        " ORDER BY pi.estado ASC, pi.fecha_agregado DESC LIMIT ? OFFSET ?",
+        tuple(params + [per_page, offset])
+    ).fetchall()
 
     pines_seg = []
     for pin_row in pines:
@@ -2599,6 +2625,7 @@ def admin_almacen():
         stock=stock,
         pines=pines_seg,
         filtro=filtro,
+        q=q,
         page=page,
         per_page=per_page,
         total_pines=total_pines,
@@ -2611,6 +2638,7 @@ def admin_almacen():
 @admin_required
 def admin_pedidos():
     db = get_db()
+    q = request.args.get('q', '').strip()
     try:
         page = int(request.args.get('page', '1'))
     except (ValueError, TypeError):
@@ -2620,14 +2648,30 @@ def admin_pedidos():
     per_page = 20
     offset = (page - 1) * per_page
 
-    total_pedidos = db.execute("SELECT COUNT(*) as c FROM pedidos").fetchone()['c']
+    where_sql = ''
+    params = []
+    if q:
+        like_q = f"%{q}%"
+        where_sql = (
+            " WHERE (CAST(p.id AS TEXT) LIKE ? OR u.nombre LIKE ? OR pr.nombre LIKE ? OR "
+            "IFNULL(p.id_juego, '') LIKE ? OR IFNULL(p.codigo_entregado, '') LIKE ? OR "
+            "IFNULL(p.referencia_externa, '') LIKE ? OR p.estado LIKE ?)"
+        )
+        params = [like_q, like_q, like_q, like_q, like_q, like_q, like_q]
+
+    total_pedidos = db.execute(
+        "SELECT COUNT(*) as c FROM pedidos p "
+        "JOIN usuarios u ON p.usuario_id = u.id "
+        "JOIN productos pr ON p.producto_id = pr.id" + where_sql,
+        tuple(params)
+    ).fetchone()['c']
     pedidos = db.execute(
         "SELECT p.*, u.nombre as usuario_nombre, pr.nombre as producto_nombre "
         "FROM pedidos p "
         "JOIN usuarios u ON p.usuario_id = u.id "
-        "JOIN productos pr ON p.producto_id = pr.id "
-        "ORDER BY p.fecha_pedido DESC LIMIT ? OFFSET ?",
-        (per_page, offset)
+        "JOIN productos pr ON p.producto_id = pr.id" + where_sql +
+        " ORDER BY p.fecha_pedido DESC LIMIT ? OFFSET ?",
+        tuple(params + [per_page, offset])
     ).fetchall()
 
     # Obtener PINes usados por cada pedido
@@ -2652,6 +2696,7 @@ def admin_pedidos():
         'admin/pedidos.html',
         pedidos=pedidos,
         pines_por_pedido=pines_por_pedido,
+        q=q,
         page=page,
         per_page=per_page,
         total_pedidos=total_pedidos,
