@@ -5,7 +5,7 @@
     <div class="container">
         <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
         <h1><i class="fas fa-gift"></i> Bonus de Recarga</h1>
-        <p>Configura porcentajes de bonus por monto mínimo de recarga</p>
+        <p>Configura ajustes por porcentaje (bonus o descuento) según monto de recarga</p>
     </div>
 </section>
 
@@ -18,11 +18,11 @@
                 <input type="hidden" name="accion" value="agregar">
                 <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
                     <label style="font-size:0.85rem;"><i class="fas fa-dollar-sign"></i> Monto mínimo (USD)</label>
-                    <input type="number" name="monto_minimo" step="0.01" min="0.01" placeholder="Ej: 50.00" required>
+                    <input type="number" name="monto_minimo" step="0.01" min="0" placeholder="Ej: 50.00" required>
                 </div>
                 <div class="form-group" style="flex:1; min-width:150px; margin-bottom:0;">
-                    <label style="font-size:0.85rem;"><i class="fas fa-percent"></i> Bonus (%)</label>
-                    <input type="number" name="porcentaje_bonus" step="0.01" min="0.01" max="100" placeholder="Ej: 5" required>
+                    <label style="font-size:0.85rem;"><i class="fas fa-percent"></i> Ajuste (%)</label>
+                    <input type="number" name="porcentaje_bonus" step="0.01" min="-100" max="100" placeholder="Ej: 5 o -2" required>
                 </div>
                 <button type="submit" class="btn btn-primary" style="height:42px; white-space:nowrap;">
                     <i class="fas fa-plus"></i> Agregar
@@ -40,7 +40,11 @@
                     <div>
                         <div style="font-size:1.1rem; font-weight:700; color:var(--text-primary);">
                             <i class="fas fa-gift" style="color:var(--primary);"></i>
-                            +{{ '%.1f'|format(b.porcentaje_bonus) }}% bonus
+                            {% if b.porcentaje_bonus > 0 %}
+                            <span style="color:#10b981;">{{ '%+.1f'|format(b.porcentaje_bonus) }}% bonus</span>
+                            {% else %}
+                            <span style="color:#ef4444;">{{ '%+.1f'|format(b.porcentaje_bonus) }}% descuento</span>
+                            {% endif %}
                         </div>
                         <div style="font-size:0.9rem; color:var(--text-secondary); margin-top:0.25rem;">
                             En recargas de <strong>${{ '%.2f'|format(b.monto_minimo) }}</strong> o más
@@ -72,8 +76,8 @@
 
         <div style="margin-top:1.5rem; padding:1rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:10px; font-size:0.9rem; color:var(--text-secondary);">
             <i class="fas fa-info-circle" style="color:var(--primary);"></i>
-            <strong>¿Cómo funciona?</strong> Al aprobar una solicitud de recarga, se aplica automáticamente el bonus más alto que corresponda según el monto. 
-            Ejemplo: si el usuario recarga $50 y hay un bonus de 5% para recargas >= $50, recibirá $50 + $2.50 = $52.50 en su cartera.
+            <strong>¿Cómo funciona?</strong> Al aprobar una solicitud de recarga, se aplica automáticamente el ajuste del nivel más alto que corresponda según el monto.
+            Ejemplo: si para >=$0 tienes -2%, para >=$50 tienes -1% y para >=$100 tienes +1%, entonces una recarga de $40 recibe -2%, de $70 recibe -1% y de $120 recibe +1%.
         </div>
         {% else %}
         <div class="empty-state" style="padding:2rem;">

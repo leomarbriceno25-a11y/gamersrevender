@@ -20,8 +20,8 @@
                 </div>
                 <div class="form-group" style="margin-bottom:0;">
                     <label style="font-size:0.85rem;"><i class="fas fa-arrow-down"></i> Monto mínimo para solicitar recarga (USD)</label>
-                    <input type="number" name="recarga_minima" value="{{ recarga_minima }}" step="0.01" min="0.01" placeholder="Ej: 1.00" style="font-size:0.95rem; max-width:200px;">
-                    <small style="color:var(--text-secondary); font-size:0.8rem;">Los usuarios no podrán solicitar recargas menores a este monto</small>
+                    <input type="number" name="recarga_minima" value="{{ recarga_minima }}" step="0.01" min="0" placeholder="Ej: 0.00" style="font-size:0.95rem; max-width:200px;">
+                    <small style="color:var(--text-secondary); font-size:0.8rem;">Coloca 0 para permitir recargas sin mínimo.</small>
                 </div>
             </div>
 

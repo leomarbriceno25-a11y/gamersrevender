@@ -1424,11 +1424,9 @@ def solicitar_recarga():
         except (ValueError, TypeError):
             monto = 0
         db = get_db()
-        recarga_min_row = db.execute("SELECT valor FROM configuracion WHERE clave = 'recarga_minima'").fetchone()
-        recarga_min = float(recarga_min_row['valor']) if recarga_min_row else 0.50
-        if monto < recarga_min:
+        if monto <= 0:
             db.close()
-            flash(f'El monto mínimo de recarga es ${recarga_min:.2f}', 'error')
+            flash('El monto debe ser mayor a 0', 'error')
             return redirect(url_for('solicitar_recarga'))
         if not metodo_pago:
             db.close()
@@ -1464,12 +1462,13 @@ def solicitar_recarga():
                     (monto_base,)
                 ).fetchone()
                 bonus_pct = bonus_row['porcentaje_bonus'] if bonus_row else 0
-                monto_bonus = round(monto_base * bonus_pct / 100, 4) if bonus_pct > 0 else 0
+                monto_bonus = round(monto_base * bonus_pct / 100, 4) if bonus_pct != 0 else 0
                 monto_total = monto_base + monto_bonus
 
                 desc_recarga = f"Recarga auto-aprobada Binance (solicitud #{solicitud_id})"
-                if monto_bonus > 0:
-                    desc_recarga += f" + Bonus {bonus_pct}% (${monto_bonus:.4f})"
+                if monto_bonus != 0:
+                    accion = 'Bonus' if monto_bonus > 0 else 'Descuento'
+                    desc_recarga += f" + {accion} {bonus_pct}% (${monto_bonus:.4f})"
                 recargar_saldo(sol['usuario_id'], monto_total, desc_recarga)
 
                 match = verif.get('match', {})
@@ -1482,8 +1481,9 @@ def solicitar_recarga():
                 db.close()
 
                 msg = f'Pago Binance verificado automáticamente. Recarga aplicada por ${monto_base:.4f}'
-                if monto_bonus > 0:
-                    msg += f' + Bonus {bonus_pct}% (${monto_bonus:.4f}) = ${monto_total:.4f}'
+                if monto_bonus != 0:
+                    accion = 'Bonus' if monto_bonus > 0 else 'Descuento'
+                    msg += f' + {accion} {bonus_pct}% (${monto_bonus:.4f}) = ${monto_total:.4f}'
                 flash(msg, 'success')
                 return redirect(url_for('solicitar_recarga'))
 
@@ -1509,7 +1509,7 @@ def solicitar_recarga():
     # Cargar config completa
     config_rows = db.execute("SELECT clave, valor FROM configuracion").fetchall()
     config = {r['clave']: r['valor'] for r in config_rows}
-    recarga_minima = config.get('recarga_minima', '0.50')
+    recarga_minima = config.get('recarga_minima', '0')
     # Cargar bonuses activos
     bonuses = db.execute("SELECT monto_minimo, porcentaje_bonus FROM bonus_recarga WHERE activo = 1 ORDER BY monto_minimo ASC").fetchall()
     db.close()
@@ -1533,7 +1533,7 @@ def solicitar_recarga():
             for tier in bonuses_list:
                 if monto_s >= float(tier.get('monto_minimo', 0) or 0):
                     bonus_pct = float(tier.get('porcentaje_bonus', 0) or 0)
-        bonus_monto = round(monto_s * bonus_pct / 100, 4) if bonus_pct > 0 else 0
+        bonus_monto = round(monto_s * bonus_pct / 100, 4) if bonus_pct != 0 else 0
         d['bonus_pct'] = bonus_pct
         d['bonus_monto'] = bonus_monto
         d['monto_total'] = round(monto_s + bonus_monto, 4)
@@ -1678,20 +1678,22 @@ def admin_aprobar_solicitud(id):
         (monto_base,)
     ).fetchone()
     bonus_pct = bonus_row['porcentaje_bonus'] if bonus_row else 0
-    monto_bonus = round(monto_base * bonus_pct / 100, 4) if bonus_pct > 0 else 0
+    monto_bonus = round(monto_base * bonus_pct / 100, 4) if bonus_pct != 0 else 0
     monto_total = monto_base + monto_bonus
     # Aplicar la recarga al saldo del usuario
     desc_recarga = f"Recarga aprobada (solicitud #{id}) - {sol['metodo_pago']}"
-    if monto_bonus > 0:
-        desc_recarga += f" + Bonus {bonus_pct}% (${monto_bonus:.4f})"
+    if monto_bonus != 0:
+        accion = 'Bonus' if monto_bonus > 0 else 'Descuento'
+        desc_recarga += f" + {accion} {bonus_pct}% (${monto_bonus:.4f})"
     recargar_saldo(sol['usuario_id'], monto_total, desc_recarga, admin_id=session['user_id'])
     db.execute("UPDATE solicitudes_recarga SET estado = 'aprobada', admin_id = ?, nota_admin = ?, fecha_respuesta = datetime('now','localtime') WHERE id = ?",
                (session['user_id'], nota, id))
     db.commit()
     db.close()
     msg = f'Solicitud #{id} aprobada. Recarga: ${monto_base:.4f}'
-    if monto_bonus > 0:
-        msg += f' + Bonus {bonus_pct}% (${monto_bonus:.4f}) = ${monto_total:.4f}'
+    if monto_bonus != 0:
+        accion = 'Bonus' if monto_bonus > 0 else 'Descuento'
+        msg += f' + {accion} {bonus_pct}% (${monto_bonus:.4f}) = ${monto_total:.4f}'
     flash(msg, 'success')
     return redirect(url_for('admin_solicitudes'))
 
@@ -1736,7 +1738,14 @@ def admin_metodos_pago():
                 else:
                     db.execute("INSERT INTO configuracion (clave, valor) VALUES (?,?)", (clave, valor))
         # Recarga mínima
-        recarga_min = request.form.get('recarga_minima', '0.50').strip()
+        recarga_min_raw = request.form.get('recarga_minima', '0').strip()
+        try:
+            recarga_min_num = float(recarga_min_raw)
+        except (ValueError, TypeError):
+            recarga_min_num = 0.0
+        if recarga_min_num < 0:
+            recarga_min_num = 0.0
+        recarga_min = f"{recarga_min_num:.2f}"
         existing = db.execute("SELECT id FROM configuracion WHERE clave = 'recarga_minima'").fetchone()
         if existing:
             db.execute("UPDATE configuracion SET valor = ? WHERE clave = 'recarga_minima'", (recarga_min,))
@@ -1749,7 +1758,7 @@ def admin_metodos_pago():
     config_rows = db.execute("SELECT clave, valor FROM configuracion").fetchall()
     config = {r['clave']: r['valor'] for r in config_rows}
     db.close()
-    recarga_minima = config.get('recarga_minima', '0.50')
+    recarga_minima = config.get('recarga_minima', '0')
     metodos = []
     for key, icono, color in [('pago_movil', 'fa-mobile-alt', '#4CAF50'), ('binance', 'fa-coins', '#F0B90B'), ('zinli', 'fa-wallet', '#6C63FF'), ('zelle', 'fa-university', '#6D1ED4')]:
         metodos.append({
@@ -1779,13 +1788,17 @@ def admin_bonus_recarga():
             except (ValueError, TypeError):
                 flash('Valores inválidos', 'error')
                 return redirect(url_for('admin_bonus_recarga'))
-            if monto_minimo <= 0 or porcentaje <= 0:
-                flash('El monto y porcentaje deben ser mayores a 0', 'error')
+            if monto_minimo < 0:
+                flash('El monto mínimo no puede ser negativo', 'error')
+                return redirect(url_for('admin_bonus_recarga'))
+            if porcentaje == 0:
+                flash('El porcentaje no puede ser 0 (usa positivo para bonus o negativo para descuento)', 'error')
                 return redirect(url_for('admin_bonus_recarga'))
             db.execute("INSERT INTO bonus_recarga (monto_minimo, porcentaje_bonus) VALUES (?,?)",
                        (monto_minimo, porcentaje))
             db.commit()
-            flash(f'Bonus agregado: +{porcentaje}% en recargas >= ${monto_minimo:.2f}', 'success')
+            etiqueta = 'Bonus' if porcentaje > 0 else 'Descuento'
+            flash(f'{etiqueta} agregado: {porcentaje:+.2f}% en recargas >= ${monto_minimo:.2f}', 'success')
         elif accion == 'eliminar':
             bonus_id = request.form.get('bonus_id')
             db.execute("DELETE FROM bonus_recarga WHERE id = ?", (bonus_id,))

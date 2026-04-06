@@ -18,8 +18,8 @@
             <form method="POST">
                 <div class="form-group">
                     <label><i class="fas fa-dollar-sign"></i> Monto a recargar (USD)</label>
-                    <input type="number" name="monto" id="monto_input" step="0.01" min="{{ recarga_minima }}" placeholder="Mínimo: ${{ recarga_minima }}" required style="font-size:1.1rem;" oninput="calcularBonus()">
-                    <small style="color:var(--text-secondary); font-size:0.8rem;">Recarga mínima: <strong>${{ recarga_minima }}</strong></small>
+                    <input type="number" name="monto" id="monto_input" step="0.01" min="0.01" placeholder="Ej: 25.00" required style="font-size:1.1rem;" oninput="calcularBonus()">
+                    <small style="color:var(--text-secondary); font-size:0.8rem;">Sin mínimo fijo (solo monto mayor a $0).</small>
                     <div id="bonus-info" style="display:none; margin-top:0.5rem; padding:0.75rem; background:linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.05)); border:1px solid #10b981; border-radius:8px;">
                         <div style="font-size:0.9rem; color:#10b981; font-weight:600;">
                             <i class="fas fa-gift"></i> <span id="bonus-text"></span>
@@ -33,7 +33,8 @@
                     <div style="display:flex; flex-wrap:wrap; gap:0.5rem;">
                         {% for b in bonuses %}
                         <div style="padding:0.4rem 0.75rem; background:var(--bg-secondary); border-radius:6px; font-size:0.8rem; color:var(--text-secondary);">
-                            <strong style="color:#10b981;">+{{ '%.0f'|format(b.porcentaje_bonus) }}%</strong> en recargas ≥ ${{ '%.2f'|format(b.monto_minimo) }}
+                            {% set pct = b.porcentaje_bonus %}
+                            <strong style="color:{{ '#10b981' if pct > 0 else '#ef4444' }};">{{ '%+.0f'|format(pct) }}%</strong> en recargas ≥ ${{ '%.2f'|format(b.monto_minimo) }}
                         </div>
                         {% endfor %}
                     </div>
@@ -102,6 +103,11 @@
                 {% if s.estado == 'aprobada' and (s.bonus_pct|default(0)) > 0 %}
                 <div style="font-size:0.85rem; color:#10b981; margin-bottom:0.35rem; font-weight:600;">
                     <i class="fas fa-gift"></i> +{{ '%.0f'|format(s.bonus_pct) }}% bonus = ${{ '%.4f'|format(s.bonus_monto|default(0)) }}
+                    <span style="color:var(--text-secondary); font-weight:500;">→ Total recibido: ${{ '%.4f'|format(s.monto_total|default(s.monto)) }}</span>
+                </div>
+                {% elif s.estado == 'aprobada' and (s.bonus_pct|default(0)) < 0 %}
+                <div style="font-size:0.85rem; color:#ef4444; margin-bottom:0.35rem; font-weight:600;">
+                    <i class="fas fa-percent"></i> {{ '%+.0f'|format(s.bonus_pct) }}% descuento = ${{ '%.4f'|format(s.bonus_monto|default(0)) }}
                     <span style="color:var(--text-secondary); font-weight:500;">→ Total recibido: ${{ '%.4f'|format(s.monto_total|default(s.monto)) }}</span>
                 </div>
                 {% endif %}
@@ -185,7 +191,13 @@ function calcularBonus() {
     if (aplicable) {
         const bonus = (monto * aplicable.porcentaje / 100).toFixed(2);
         const total = (monto + parseFloat(bonus)).toFixed(2);
-        textSpan.textContent = `+${aplicable.porcentaje}% bonus = $${bonus} extra → Recibirás $${total}`;
+        if (aplicable.porcentaje > 0) {
+            textSpan.textContent = `+${aplicable.porcentaje}% bonus = $${bonus} extra -> Recibiras $${total}`;
+            textSpan.style.color = '#10b981';
+        } else {
+            textSpan.textContent = `${aplicable.porcentaje}% descuento = $${bonus} -> Recibiras $${total}`;
+            textSpan.style.color = '#ef4444';
+        }
         infoDiv.style.display = 'block';
     } else {
         infoDiv.style.display = 'none';
