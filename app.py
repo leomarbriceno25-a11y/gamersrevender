@@ -16,6 +16,7 @@ import uuid
 import sqlite3
 import threading
 import json
+import time
 from decimal import Decimal, InvalidOperation
 
 import requests
@@ -357,19 +358,37 @@ def restock_pincentral_almacen(producto_id):
                 print(f"[PINCENTRAL-RESTOCK] Autorización fallida producto #{producto_id}: {auth.get('error') or auth_data}")
                 break
 
-            cap = capturar_pins(tx_id)
-            cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
-            cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
-            pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
+            cap = None
+            cap_data = {}
+            cap_status = ''
+            pins = []
+            cap_error = ''
+            capture_ok = False
 
-            if (not cap.get('ok')) or (not _pincentral_capturado(cap_status)) or not pins:
+            for intento in range(1, 3):
+                cap = capturar_pins(tx_id)
+                cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
+                cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
+                pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
+                cap_error = cap.get('error') or cap_data.get('message') or ''
+
+                capture_ok = bool(cap.get('ok')) and _pincentral_capturado(cap_status) and bool(pins)
+                if capture_ok:
+                    break
+
+                if intento < 2 and _pincentral_capture_retryable(cap_status, cap_error):
+                    time.sleep(2)
+                    continue
+                break
+
+            if not capture_ok:
                 _registrar_incidente_pincentral(
                     contexto='restock_capture',
                     producto_id=producto_id,
                     product_code=codigo,
                     order_id=order_id,
                     transaction_id=tx_id,
-                    detalle=f"Captura restock no válida. status={cap_data.get('status', '')}, ok={cap.get('ok')}",
+                    detalle=f"Captura restock no válida. status={cap_data.get('status', '')}, ok={cap.get('ok')}, error={cap_error}",
                     payload=cap_data or cap,
                 )
                 print(f"[PINCENTRAL-RESTOCK] Captura fallida producto #{producto_id}: {cap.get('error') or cap_data}")
@@ -633,6 +652,17 @@ def _pincentral_autorizado(status):
 
 def _pincentral_capturado(status):
     return _pincentral_status_normalizado(status) in {'captured', 'capturado'}
+
+
+def _pincentral_capture_retryable(status, error_msg=''):
+    st = _pincentral_status_normalizado(status)
+    msg = str(error_msg or '').strip().lower()
+    return (
+        st in {'error', 'failed', 'pending', 'procesando'}
+        or 'too many attempts' in msg
+        or 'too many request' in msg
+        or 'rate limit' in msg
+    )
 
 
 def _registrar_incidente_pincentral(
