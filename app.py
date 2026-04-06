@@ -22,6 +22,10 @@ from decimal import Decimal, InvalidOperation
 import requests
 
 PINCENTRAL_RESTOCK_LOCK = threading.Lock()
+PINCENTRAL_SCAN_THREAD_GUARD = threading.Lock()
+PINCENTRAL_SCAN_THREAD_STARTED = False
+PINCENTRAL_SCAN_INTERVAL_SECONDS = 60
+PINCENTRAL_SCAN_LOCK_TTL_SECONDS = 180
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -447,6 +451,82 @@ def restock_pincentral_almacen_async(producto_id):
     if pid <= 0:
         return
     threading.Thread(target=restock_pincentral_almacen, args=(pid,), daemon=True).start()
+
+
+def _pincentral_adquirir_lock_global(lock_name='pincentral_restock_scan', ttl_seg=55):
+    now_ts = int(time.time())
+    expira_ts = now_ts + max(10, int(ttl_seg or 55))
+    owner = f"{os.getpid()}-{uuid.uuid4().hex[:8]}"
+
+    db = get_db()
+    try:
+        db.execute(
+            "CREATE TABLE IF NOT EXISTS app_locks ("
+            "nombre TEXT PRIMARY KEY, owner TEXT DEFAULT '', expira_ts INTEGER DEFAULT 0, actualizada TEXT DEFAULT (datetime('now','localtime'))"
+            ")"
+        )
+        db.execute("DELETE FROM app_locks WHERE nombre = ? AND expira_ts <= ?", (lock_name, now_ts))
+        db.execute(
+            "INSERT INTO app_locks (nombre, owner, expira_ts) VALUES (?,?,?)",
+            (lock_name, owner, expira_ts),
+        )
+        db.commit()
+        return True
+    except sqlite3.IntegrityError:
+        db.rollback()
+        return False
+    except Exception as e:
+        db.rollback()
+        print(f"[PINCENTRAL-SCAN] Error lock global: {e}")
+        return False
+    finally:
+        db.close()
+
+
+def restock_pincentral_productos_bajo_minimo():
+    db = get_db()
+    try:
+        productos = db.execute(
+            "SELECT id, nombre, stock_minimo FROM productos "
+            "WHERE activo = 1 AND COALESCE(usa_pincentral, 0) = 1 AND COALESCE(stock_minimo, 0) > 0"
+        ).fetchall()
+    finally:
+        db.close()
+
+    for prod in productos:
+        try:
+            db2 = get_db()
+            stock_actual = db2.execute(
+                "SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'",
+                (prod['id'],),
+            ).fetchone()['c']
+            db2.close()
+            if stock_actual < int(prod['stock_minimo'] or 0):
+                restock_pincentral_almacen(prod['id'])
+        except Exception as e:
+            print(f"[PINCENTRAL-SCAN] Error revisando producto #{prod['id']}: {e}")
+
+
+def _worker_restock_pincentral_global():
+    while True:
+        try:
+            if _pincentral_adquirir_lock_global(
+                lock_name='pincentral_restock_scan',
+                ttl_seg=PINCENTRAL_SCAN_LOCK_TTL_SECONDS,
+            ):
+                restock_pincentral_productos_bajo_minimo()
+        except Exception as e:
+            print(f"[PINCENTRAL-SCAN] Worker error: {e}")
+        time.sleep(max(15, int(PINCENTRAL_SCAN_INTERVAL_SECONDS or 60)))
+
+
+def iniciar_worker_restock_pincentral_global():
+    global PINCENTRAL_SCAN_THREAD_STARTED
+    with PINCENTRAL_SCAN_THREAD_GUARD:
+        if PINCENTRAL_SCAN_THREAD_STARTED:
+            return
+        threading.Thread(target=_worker_restock_pincentral_global, daemon=True).start()
+        PINCENTRAL_SCAN_THREAD_STARTED = True
 
 
 # ===== HELPERS =====
@@ -2390,6 +2470,7 @@ def admin_pincentral_catalogo():
                 (stock_minimo, stock_objetivo, prod_id),
             )
             db.commit()
+            restock_pincentral_almacen_async(prod_id)
             flash(f'Stock actualizado en producto #{prod_id}', 'success')
         else:
             flash('Producto inválido para actualizar stock', 'error')
@@ -3506,6 +3587,9 @@ def enviar_webhook(usuario_id, pedido_data):
         req.post(webhook_url, json=pedido_data, timeout=10)
     except Exception:
         pass
+
+
+iniciar_worker_restock_pincentral_global()
 
 
 if __name__ == '__main__':
