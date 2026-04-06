@@ -2549,12 +2549,39 @@ def admin_almacen():
     for p in productos_api:
         count = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (p['id'],)).fetchone()
         stock[p['id']] = count['c']
-    # Todos los pines agrupados
-    pines = db.execute("SELECT pi.*, pr.nombre as producto_nombre FROM pines pi JOIN productos pr ON pi.producto_id = pr.id ORDER BY pi.estado ASC, pi.fecha_agregado DESC").fetchall()
     # Filtro por producto
     filtro = request.args.get('producto_id', '')
+    try:
+        page = int(request.args.get('page', '1'))
+    except (ValueError, TypeError):
+        page = 1
+    if page < 1:
+        page = 1
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    total_pines = 0
     if filtro:
-        pines = db.execute("SELECT pi.*, pr.nombre as producto_nombre FROM pines pi JOIN productos pr ON pi.producto_id = pr.id WHERE pi.producto_id = ? ORDER BY pi.estado ASC, pi.fecha_agregado DESC", (int(filtro),)).fetchall()
+        filtro_id = int(filtro)
+        total_pines = db.execute(
+            "SELECT COUNT(*) as c FROM pines WHERE producto_id = ?",
+            (filtro_id,)
+        ).fetchone()['c']
+        pines = db.execute(
+            "SELECT pi.*, pr.nombre as producto_nombre "
+            "FROM pines pi JOIN productos pr ON pi.producto_id = pr.id "
+            "WHERE pi.producto_id = ? "
+            "ORDER BY pi.estado ASC, pi.fecha_agregado DESC LIMIT ? OFFSET ?",
+            (filtro_id, per_page, offset)
+        ).fetchall()
+    else:
+        total_pines = db.execute("SELECT COUNT(*) as c FROM pines").fetchone()['c']
+        pines = db.execute(
+            "SELECT pi.*, pr.nombre as producto_nombre "
+            "FROM pines pi JOIN productos pr ON pi.producto_id = pr.id "
+            "ORDER BY pi.estado ASC, pi.fecha_agregado DESC LIMIT ? OFFSET ?",
+            (per_page, offset)
+        ).fetchall()
 
     pines_seg = []
     for pin_row in pines:
@@ -2562,23 +2589,75 @@ def admin_almacen():
         p['pin_mask'] = mask_pin(p.get('pin', ''))
         pines_seg.append(p)
 
+    has_prev = page > 1
+    has_more = (offset + len(pines_seg)) < total_pines
+
     db.close()
-    return render_template('admin/almacen.html', productos_api=productos_api, stock=stock, pines=pines_seg, filtro=filtro)
+    return render_template(
+        'admin/almacen.html',
+        productos_api=productos_api,
+        stock=stock,
+        pines=pines_seg,
+        filtro=filtro,
+        page=page,
+        per_page=per_page,
+        total_pines=total_pines,
+        has_prev=has_prev,
+        has_more=has_more,
+    )
 
 
 @app.route('/admin/pedidos')
 @admin_required
 def admin_pedidos():
     db = get_db()
-    pedidos = db.execute("SELECT p.*, u.nombre as usuario_nombre, u.email as usuario_email, pr.nombre as producto_nombre FROM pedidos p JOIN usuarios u ON p.usuario_id = u.id JOIN productos pr ON p.producto_id = pr.id ORDER BY p.fecha_pedido DESC").fetchall()
+    try:
+        page = int(request.args.get('page', '1'))
+    except (ValueError, TypeError):
+        page = 1
+    if page < 1:
+        page = 1
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    total_pedidos = db.execute("SELECT COUNT(*) as c FROM pedidos").fetchone()['c']
+    pedidos = db.execute(
+        "SELECT p.*, u.nombre as usuario_nombre, pr.nombre as producto_nombre "
+        "FROM pedidos p "
+        "JOIN usuarios u ON p.usuario_id = u.id "
+        "JOIN productos pr ON p.producto_id = pr.id "
+        "ORDER BY p.fecha_pedido DESC LIMIT ? OFFSET ?",
+        (per_page, offset)
+    ).fetchall()
+
     # Obtener PINes usados por cada pedido
     pines_por_pedido = {}
-    for ped in pedidos:
-        pines = db.execute("SELECT id, pin FROM pines WHERE pedido_id = ?", (ped['id'],)).fetchall()
-        if pines:
-            pines_por_pedido[ped['id']] = [{'id': pin['id'], 'pin_mask': mask_pin(pin['pin'])} for pin in pines]
+    pedido_ids = [ped['id'] for ped in pedidos]
+    if pedido_ids:
+        placeholders = ','.join(['?'] * len(pedido_ids))
+        pines_rows = db.execute(
+            f"SELECT id, pin, pedido_id FROM pines WHERE pedido_id IN ({placeholders}) ORDER BY id ASC",
+            tuple(pedido_ids)
+        ).fetchall()
+        for pin in pines_rows:
+            pines_por_pedido.setdefault(pin['pedido_id'], []).append({
+                'id': pin['id'],
+                'pin_mask': mask_pin(pin['pin'])
+            })
+
+    has_prev = page > 1
+    has_more = (offset + len(pedidos)) < total_pedidos
     db.close()
-    return render_template('admin/pedidos.html', pedidos=pedidos, pines_por_pedido=pines_por_pedido)
+    return render_template(
+        'admin/pedidos.html',
+        pedidos=pedidos,
+        pines_por_pedido=pines_por_pedido,
+        page=page,
+        per_page=per_page,
+        total_pedidos=total_pedidos,
+        has_prev=has_prev,
+        has_more=has_more,
+    )
 
 
 @app.route('/admin/pedido/<int:id>/estado', methods=['POST'])
