@@ -349,6 +349,29 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_ref_pago_usuario ON referencias_pago_usadas(usuario_id);
         """)
 
+    # Incidentes de PinCentral (para auditoría y visibilidad en admin)
+    try:
+        db.execute("SELECT id FROM pincentral_incidentes LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS pincentral_incidentes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                contexto TEXT NOT NULL,
+                pedido_id INTEGER,
+                producto_id INTEGER,
+                product_code TEXT DEFAULT '',
+                order_id TEXT DEFAULT '',
+                transaction_id TEXT DEFAULT '',
+                detalle TEXT NOT NULL,
+                payload TEXT DEFAULT '',
+                fecha TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
+                FOREIGN KEY (producto_id) REFERENCES productos(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pincentral_incidentes_fecha ON pincentral_incidentes(fecha);
+            CREATE INDEX IF NOT EXISTS idx_pincentral_incidentes_contexto ON pincentral_incidentes(contexto);
+        """)
+
     # Verificación de nombre de jugador por categoría
     try:
         db.execute("SELECT verificar_nombre FROM categorias LIMIT 1")

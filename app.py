@@ -11,10 +11,11 @@ from models import (
 )
 import config
 import os
-from telegram_bot import notificar_recarga, notificar_stock_bajo
+from telegram_bot import notificar_recarga, notificar_stock_bajo, enviar_telegram
 import uuid
 import sqlite3
 import threading
+import json
 from decimal import Decimal, InvalidOperation
 
 import requests
@@ -359,15 +360,32 @@ def restock_pincentral_almacen(producto_id):
             nuevos = 0
             for p in pins:
                 if not isinstance(p, dict):
+                    _registrar_incidente_pincentral(
+                        contexto='restock',
+                        producto_id=producto_id,
+                        product_code=codigo,
+                        order_id=order_id,
+                        transaction_id=tx_id,
+                        detalle='Respuesta de PinCentral con item de PIN inválido (no es objeto).',
+                        payload=p,
+                    )
                     continue
                 key = str(p.get('key', '') or '').strip()
                 serial = str(p.get('serial', '') or '').strip()
-                valor = key or serial
-                if not valor:
+                if not key:
+                    _registrar_incidente_pincentral(
+                        contexto='restock',
+                        producto_id=producto_id,
+                        product_code=codigo,
+                        order_id=order_id,
+                        transaction_id=tx_id,
+                        detalle='PinCentral devolvió key vacío durante restock.',
+                        payload={'pin': p, 'serial': serial},
+                    )
                     continue
                 db.execute(
                     "INSERT INTO pines (producto_id, pin, estado) VALUES (?,?, 'disponible')",
-                    (producto_id, encrypt_pin(valor)),
+                    (producto_id, encrypt_pin(key)),
                 )
                 nuevos += 1
 
@@ -573,9 +591,101 @@ def _formatear_pins_pincentral(pins):
             lineas.append(f"{idx}) Serial: {serial} | Key: {key}")
         elif key:
             lineas.append(f"{idx}) {key}")
-        elif serial:
-            lineas.append(f"{idx}) {serial}")
     return '\n'.join(lineas)
+
+
+def _registrar_incidente_pincentral(
+    contexto,
+    detalle,
+    payload=None,
+    pedido_id=None,
+    producto_id=None,
+    product_code='',
+    order_id='',
+    transaction_id='',
+):
+    detalle = str(detalle or '').strip() or 'Incidente PinCentral'
+    payload_txt = ''
+    if payload is not None:
+        try:
+            payload_txt = json.dumps(payload, ensure_ascii=False)[:4000]
+        except Exception:
+            payload_txt = str(payload)[:4000]
+
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO pincentral_incidentes (contexto, pedido_id, producto_id, product_code, order_id, transaction_id, detalle, payload) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (
+                str(contexto or '').strip() or 'general',
+                pedido_id,
+                producto_id,
+                str(product_code or '').strip(),
+                str(order_id or '').strip(),
+                str(transaction_id or '').strip(),
+                detalle,
+                payload_txt,
+            ),
+        )
+        db.commit()
+    except Exception as e:
+        print(f"[PINCENTRAL-INCIDENTE] Error guardando incidente: {e}")
+    finally:
+        db.close()
+
+    msg = (
+        "⚠️ <b>Incidente PinCentral</b>\n"
+        f"Contexto: <b>{contexto}</b>\n"
+        f"Detalle: {detalle}\n"
+        f"Pedido: {pedido_id or '-'} | Producto: {producto_id or '-'}\n"
+        f"Código: <code>{product_code or '-'}</code>\n"
+        f"Order ID: <code>{order_id or '-'}</code>\n"
+        f"Tx ID: <code>{transaction_id or '-'}</code>"
+    )
+    enviar_telegram(msg)
+
+
+def _pincentral_detectar_key_vacia(
+    pins,
+    contexto,
+    pedido_id=None,
+    producto_id=None,
+    product_code='',
+    order_id='',
+    transaction_id='',
+):
+    errores = []
+    for idx, pin in enumerate(pins or [], start=1):
+        if not isinstance(pin, dict):
+            detalle = f"Item PIN #{idx} inválido (no es objeto)."
+            _registrar_incidente_pincentral(
+                contexto=contexto,
+                pedido_id=pedido_id,
+                producto_id=producto_id,
+                product_code=product_code,
+                order_id=order_id,
+                transaction_id=transaction_id,
+                detalle=detalle,
+                payload=pin,
+            )
+            errores.append(detalle)
+            continue
+        key = str(pin.get('key', '') or '').strip()
+        if not key:
+            detalle = f"Item PIN #{idx} con key vacío."
+            _registrar_incidente_pincentral(
+                contexto=contexto,
+                pedido_id=pedido_id,
+                producto_id=producto_id,
+                product_code=product_code,
+                order_id=order_id,
+                transaction_id=transaction_id,
+                detalle=detalle,
+                payload=pin,
+            )
+            errores.append(detalle)
+    return errores
 
 
 def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_code, cantidad):
@@ -591,6 +701,11 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
     client_name = (user['nombre'] if user else '') or ''
     client_email = (user['email'] if user else '') or ''
     order_id = f"PC{pedido_id}"
+
+    db_prod = get_db()
+    prod_row = db_prod.execute("SELECT producto_id FROM pedidos WHERE id = ?", (pedido_id,)).fetchone()
+    db_prod.close()
+    producto_id = int(prod_row['producto_id']) if prod_row else None
 
     try:
         auth = autorizar_pins(product_code, int(cantidad), order_id, client_name=client_name, client_email=client_email)
@@ -619,10 +734,21 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
         cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
         cap_status = str(cap_data.get('status', '')).strip().lower().replace(' ', '')
         pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
+        errores_key = _pincentral_detectar_key_vacia(
+            pins,
+            contexto='pedido',
+            pedido_id=pedido_id,
+            producto_id=producto_id,
+            product_code=product_code,
+            order_id=order_id,
+            transaction_id=tx_id,
+        )
         codigos = _formatear_pins_pincentral(pins)
 
-        if (not cap.get('ok')) or cap_status != 'captured' or not codigos:
+        if (not cap.get('ok')) or cap_status != 'captured' or not codigos or errores_key:
             error_msg = cap.get('error') or cap_data.get('message') or f"Estado captura: {cap_data.get('status', 'desconocido')}"
+            if errores_key:
+                error_msg = f"PinCentral devolvió key vacío: {'; '.join(errores_key)}"
             db_err = get_db()
             db_err.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db_err.commit()
@@ -2189,8 +2315,14 @@ def admin_pincentral_catalogo():
         "FROM productos p WHERE p.activo = 1 AND p.usa_pincentral = 1 "
         "ORDER BY p.nombre"
     ).fetchall()
+    incidentes = db.execute(
+        "SELECT i.id, i.contexto, i.pedido_id, i.producto_id, i.product_code, i.order_id, i.transaction_id, i.detalle, i.payload, i.fecha, p.nombre as producto_nombre "
+        "FROM pincentral_incidentes i "
+        "LEFT JOIN productos p ON p.id = i.producto_id "
+        "ORDER BY i.id DESC LIMIT 30"
+    ).fetchall()
     db.close()
-    return render_template('admin/pincentral.html', productos_locales=productos_locales)
+    return render_template('admin/pincentral.html', productos_locales=productos_locales, incidentes=incidentes)
 
 
 @app.route('/admin/pincentral/productos', methods=['GET'])

@@ -38,6 +38,45 @@
             <p style="color:var(--text-secondary);">No hay productos configurados con PinCentral en Productos.</p>
             {% endif %}
         </div>
+
+        <div class="admin-card" style="margin-bottom:1rem;">
+            <h2 style="margin-bottom:0.75rem;"><i class="fas fa-triangle-exclamation"></i> Incidentes PinCentral (últimos 30)</h2>
+            {% if incidentes %}
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr><th>#</th><th>Fecha</th><th>Contexto</th><th>Producto</th><th>Pedido</th><th>Order ID</th><th>Tx ID</th><th>Detalle</th><th>Payload</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for i in incidentes %}
+                        <tr>
+                            <td>{{ i.id }}</td>
+                            <td>{{ i.fecha }}</td>
+                            <td><span class="badge badge-pendiente">{{ i.contexto }}</span></td>
+                            <td>{{ i.producto_nombre or ('#' ~ i.producto_id if i.producto_id else '-') }}<br><code>{{ i.product_code or '-' }}</code></td>
+                            <td>{{ i.pedido_id or '-' }}</td>
+                            <td><code>{{ i.order_id or '-' }}</code></td>
+                            <td><code>{{ i.transaction_id or '-' }}</code></td>
+                            <td style="max-width:300px;">{{ i.detalle }}</td>
+                            <td style="max-width:320px;">
+                                {% if i.payload %}
+                                <details>
+                                    <summary style="cursor:pointer;">Ver payload</summary>
+                                    <pre style="white-space:pre-wrap; word-break:break-word; font-size:0.72rem; margin-top:0.35rem;">{{ i.payload }}</pre>
+                                </details>
+                                {% else %}
+                                -
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p style="color:var(--text-secondary);">Sin incidentes registrados.</p>
+            {% endif %}
+        </div>
     </div>
 </section>
 
