@@ -719,9 +719,10 @@ def _formatear_pins_pincentral(pins):
         serial = str(pin.get('serial', '') or '').strip()
         key = str(pin.get('key', '') or '').strip()
         if key and serial:
-            lineas.append(f"{idx}) Serial: {serial} | Key: {key}")
+            lineas.append(f"{idx}) Serial: {serial}")
+            lineas.append(f"PIN: {key}")
         elif key:
-            lineas.append(f"{idx}) {key}")
+            lineas.append(f"{idx}) PIN: {key}")
     return '\n'.join(lineas)
 
 
@@ -925,12 +926,16 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
         )
         db_ok.commit()
         db_ok.close()
+        cantidad_codigos = len([
+            p for p in pins
+            if isinstance(p, dict) and str(p.get('key', '') or '').strip()
+        ])
         enviar_webhook(user_id, {
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
             'estado': 'completado',
             'referencia': tx_id,
-            'cantidad_codigos': len([l for l in codigos.split('\n') if l.strip()]),
+            'cantidad_codigos': cantidad_codigos,
             'mensaje': 'PINs PinCentral entregados'
         })
     except Exception as e:
