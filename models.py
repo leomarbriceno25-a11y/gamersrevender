@@ -114,6 +114,7 @@ def init_db():
             deltaforce_paquete INTEGER DEFAULT 0,
             usa_pincentral INTEGER DEFAULT 0,
             pincentral_product_code TEXT DEFAULT '',
+            pincentral_entrega_directa INTEGER DEFAULT 0,
             gamepoint_product_id INTEGER DEFAULT 0,
             gamepoint_package_id INTEGER DEFAULT 0,
             gamepoint_fields TEXT DEFAULT '',
@@ -252,6 +253,10 @@ def init_db():
         db.execute("SELECT pincentral_product_code FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN pincentral_product_code TEXT DEFAULT ''")
+    try:
+        db.execute("SELECT pincentral_entrega_directa FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN pincentral_entrega_directa INTEGER DEFAULT 0")
     # Bonus por monto de recarga
     try:
         db.execute("SELECT id FROM bonus_recarga LIMIT 1")
@@ -370,6 +375,32 @@ def init_db():
             );
             CREATE INDEX IF NOT EXISTS idx_pincentral_incidentes_fecha ON pincentral_incidentes(fecha);
             CREATE INDEX IF NOT EXISTS idx_pincentral_incidentes_contexto ON pincentral_incidentes(contexto);
+        """)
+
+    # Auditoría de restock PinCentral (traza por lote RSTK_*)
+    try:
+        db.execute("SELECT id FROM pincentral_restock_auditoria LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS pincentral_restock_auditoria (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                producto_id INTEGER,
+                product_code TEXT DEFAULT '',
+                order_id TEXT DEFAULT '',
+                transaction_id TEXT DEFAULT '',
+                auth_status TEXT DEFAULT '',
+                capture_status TEXT DEFAULT '',
+                cantidad_solicitada INTEGER DEFAULT 0,
+                pines_recibidos INTEGER DEFAULT 0,
+                pines_agregados INTEGER DEFAULT 0,
+                detalle TEXT DEFAULT '',
+                payload TEXT DEFAULT '',
+                fecha TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (producto_id) REFERENCES productos(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pincentral_restock_fecha ON pincentral_restock_auditoria(fecha);
+            CREATE INDEX IF NOT EXISTS idx_pincentral_restock_order ON pincentral_restock_auditoria(order_id);
+            CREATE INDEX IF NOT EXISTS idx_pincentral_restock_producto ON pincentral_restock_auditoria(producto_id);
         """)
 
     # Verificación de nombre de jugador por categoría
