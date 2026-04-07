@@ -28,6 +28,7 @@ PINCENTRAL_SCAN_INTERVAL_SECONDS = 60
 PINCENTRAL_SCAN_LOCK_TTL_SECONDS = 180
 PINCENTRAL_RESTOCK_CAPTURE_MAX_ATTEMPTS = 3
 PINCENTRAL_RESTOCK_CAPTURE_RETRY_DELAY_SECONDS = 2
+PINCENTRAL_RESTOCK_BETWEEN_PINS_SECONDS = max(0, int(os.environ.get('PINCENTRAL_RESTOCK_BETWEEN_PINS_SECONDS', '2')))
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -438,6 +439,8 @@ def restock_pincentral_almacen(producto_id):
             necesarios -= nuevos
             if nuevos == 0:
                 break
+            if necesarios > 0 and PINCENTRAL_RESTOCK_BETWEEN_PINS_SECONDS > 0:
+                time.sleep(PINCENTRAL_RESTOCK_BETWEEN_PINS_SECONDS)
 
         db.close()
         if agregados > 0:
