@@ -846,6 +846,48 @@ def _pincentral_detectar_key_vacia(
     return errores
 
 
+def _registrar_auditoria_recarga(
+    pedido_id,
+    usuario_id,
+    producto_id,
+    proveedor,
+    etapa='',
+    estado='',
+    detalle='',
+    referencia='',
+    payload=None,
+):
+    payload_txt = ''
+    if payload is not None:
+        try:
+            payload_txt = json.dumps(payload, ensure_ascii=False)[:4000]
+        except Exception:
+            payload_txt = str(payload)[:4000]
+
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO recargas_auditoria (pedido_id, usuario_id, producto_id, proveedor, etapa, estado, detalle, referencia, payload) "
+            "VALUES (?,?,?,?,?,?,?,?,?)",
+            (
+                int(pedido_id or 0) or None,
+                int(usuario_id or 0) or None,
+                int(producto_id or 0) or None,
+                str(proveedor or '').strip() or 'desconocido',
+                str(etapa or '').strip(),
+                str(estado or '').strip(),
+                str(detalle or '').strip(),
+                str(referencia or '').strip(),
+                payload_txt,
+            ),
+        )
+        db.commit()
+    except Exception as e:
+        print(f"[RECARGA-AUDITORIA] Error guardando auditoría: {e}")
+    finally:
+        db.close()
+
+
 def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_code, cantidad):
     """Ejecuta autorización + captura de PINs PinCentral en segundo plano."""
     from pincentral_api import autorizar_pins, capturar_pins
@@ -1524,6 +1566,17 @@ def comprar():
         for i, pin_code in enumerate(pin_codes):
             try:
                 resultado_api = canjear_pin_completo(pin_code, id_juego, monto_api)
+                _registrar_auditoria_recarga(
+                    pedido_id=pedido_id,
+                    usuario_id=user_id,
+                    producto_id=producto_id,
+                    proveedor='hype',
+                    etapa=f'canje_{i + 1}',
+                    estado='ok' if resultado_api.get('ok') else 'error',
+                    detalle=resultado_api.get('error', resultado_api.get('mensaje', '')),
+                    referencia=str(resultado_api.get('reference', '') or ''),
+                    payload=resultado_api,
+                )
                 if resultado_api.get('ok'):
                     canjes_ok += 1
                     nombre_jugador = resultado_api.get('username', '') or nombre_jugador
@@ -1539,6 +1592,16 @@ def comprar():
                     error_msg = resultado_api.get('error', 'Error en canje')
                     break
             except Exception as e:
+                _registrar_auditoria_recarga(
+                    pedido_id=pedido_id,
+                    usuario_id=user_id,
+                    producto_id=producto_id,
+                    proveedor='hype',
+                    etapa=f'canje_{i + 1}',
+                    estado='exception',
+                    detalle=str(e),
+                    payload={'error': str(e)},
+                )
                 db_fix = get_db()
                 db_fix.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[i],))
                 db_fix.commit()
@@ -3629,6 +3692,17 @@ def api_comprar():
         for i, pin_code in enumerate(pin_codes):
             try:
                 resultado_api = canjear_pin_completo(pin_code, id_juego, monto_api)
+                _registrar_auditoria_recarga(
+                    pedido_id=pedido_id,
+                    usuario_id=user_id_api,
+                    producto_id=producto_id,
+                    proveedor='hype',
+                    etapa=f'canje_{i + 1}',
+                    estado='ok' if resultado_api.get('ok') else 'error',
+                    detalle=resultado_api.get('error', resultado_api.get('mensaje', '')),
+                    referencia=str(resultado_api.get('reference', '') or ''),
+                    payload=resultado_api,
+                )
                 if resultado_api.get('ok'):
                     canjes_ok += 1
                     nombre_jugador = resultado_api.get('username', '') or nombre_jugador
@@ -3644,6 +3718,16 @@ def api_comprar():
                     error_msg = resultado_api.get('error', 'Error en canje')
                     break
             except Exception as e:
+                _registrar_auditoria_recarga(
+                    pedido_id=pedido_id,
+                    usuario_id=user_id_api,
+                    producto_id=producto_id,
+                    proveedor='hype',
+                    etapa=f'canje_{i + 1}',
+                    estado='exception',
+                    detalle=str(e),
+                    payload={'error': str(e)},
+                )
                 db_fix = get_db()
                 db_fix.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[i],))
                 db_fix.commit()

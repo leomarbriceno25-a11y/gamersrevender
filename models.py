@@ -403,6 +403,32 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_pincentral_restock_producto ON pincentral_restock_auditoria(producto_id);
         """)
 
+    # Auditoría de recargas por proveedor (Hype/Razer/Delta/GamePoint)
+    try:
+        db.execute("SELECT id FROM recargas_auditoria LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS recargas_auditoria (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pedido_id INTEGER,
+                usuario_id INTEGER,
+                producto_id INTEGER,
+                proveedor TEXT NOT NULL,
+                etapa TEXT DEFAULT '',
+                estado TEXT DEFAULT '',
+                detalle TEXT DEFAULT '',
+                referencia TEXT DEFAULT '',
+                payload TEXT DEFAULT '',
+                fecha TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (pedido_id) REFERENCES pedidos(id),
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+                FOREIGN KEY (producto_id) REFERENCES productos(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_recargas_auditoria_pedido ON recargas_auditoria(pedido_id);
+            CREATE INDEX IF NOT EXISTS idx_recargas_auditoria_proveedor ON recargas_auditoria(proveedor);
+            CREATE INDEX IF NOT EXISTS idx_recargas_auditoria_fecha ON recargas_auditoria(fecha);
+        """)
+
     # Verificación de nombre de jugador por categoría
     try:
         db.execute("SELECT verificar_nombre FROM categorias LIMIT 1")
