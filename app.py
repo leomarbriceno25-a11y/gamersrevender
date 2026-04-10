@@ -2629,13 +2629,13 @@ def admin_gamepoint_productos():
 @app.route('/admin/verificar-gamepoint', methods=['POST'])
 @admin_required
 def admin_verificar_gamepoint():
-    """Verificar pedidos GamePoint: procesando->completado/cancelado, completado->cancelado si FAIL"""
+    """Verificar pedidos GamePoint en procesando y resolverlos a completado/cancelado."""
     from gamepoint_api import consultar_orden
     db = get_db()
     pedidos = db.execute(
         "SELECT p.id, p.usuario_id, p.total, p.estado, p.referencia_externa, p.nombre_jugador "
         "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
-        "WHERE p.estado IN ('completado', 'procesando') AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
+        "WHERE p.estado = 'procesando' AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
         "AND pr.gamepoint_product_id > 0 "
         "AND p.fecha_pedido >= datetime('now', 'localtime', '-48 hours')"
     ).fetchall()
@@ -2716,7 +2716,7 @@ def cron_verificar_gamepoint():
     pedidos = db.execute(
         "SELECT p.id, p.usuario_id, p.total, p.estado, p.referencia_externa, p.nombre_jugador "
         "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
-        "WHERE p.estado IN ('completado', 'procesando') AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
+        "WHERE p.estado = 'procesando' AND p.referencia_externa != '' AND p.referencia_externa IS NOT NULL "
         "AND pr.gamepoint_product_id > 0 "
         "AND p.fecha_pedido >= datetime('now', 'localtime', '-48 hours')"
     ).fetchall()
