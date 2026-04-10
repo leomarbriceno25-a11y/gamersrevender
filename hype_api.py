@@ -1,4 +1,5 @@
 import json
+import html
 import requests
 
 HYPE_HEADERS = {
@@ -68,6 +69,21 @@ def _is_failed_provider_body(body):
     except Exception:
         pass
     return False, ''
+
+
+def _is_confirm_delivery_ok(body):
+    if isinstance(body, dict):
+        txt = json.dumps(body, ensure_ascii=False)
+    else:
+        txt = str(body or '')
+    txt_norm = html.unescape(txt).lower()
+    frases_ok = (
+        'entrega de créditos',
+        'entrega de creditos',
+        'creditos em processo',
+        'créditos em processo',
+    )
+    return any(f in txt_norm for f in frases_ok)
 
 
 def redeem_account(game_account_id, pin, monto_api=1, nombre="Juan Perez", fecha="15/03/1995", pais="VE"):
@@ -169,6 +185,18 @@ def canjear_pin_completo(pin, game_account_id, monto_api=1, nombre="Juan Perez",
             "ok": False,
             "paso": 3,
             "error": paso3.get("error", "Error confirmando canje"),
+            "username": username,
+            "pin_error": True,
+            "paso1": paso1,
+            "paso2": paso2,
+            "paso3": paso3,
+        }
+
+    if not _is_confirm_delivery_ok(paso3.get("body", "")):
+        return {
+            "ok": False,
+            "paso": 3,
+            "error": "Confirmación no válida del proveedor (no indica entrega de créditos)",
             "username": username,
             "pin_error": True,
             "paso1": paso1,
