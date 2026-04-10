@@ -1,3 +1,4 @@
+import json
 import requests
 
 HYPE_HEADERS = {
@@ -35,6 +36,38 @@ def redeem_validate(pin):
         return {"ok": True, "status": r.status_code, "body": r.text}
     except Exception as e:
         return {"ok": False, "error": str(e)}
+
+
+def _body_to_dict(body):
+    if isinstance(body, dict):
+        return body
+    if not isinstance(body, str):
+        return {}
+    txt = body.strip()
+    if not txt:
+        return {}
+    try:
+        parsed = json.loads(txt)
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+def _is_failed_provider_body(body):
+    data = _body_to_dict(body)
+    if not data:
+        return False, ''
+    msg = str(data.get('Message', '') or data.get('message', '')).strip()
+    if 'Success' in data and data.get('Success') is False:
+        return True, msg or 'Proveedor devolvió Success=false'
+    status_code = data.get('StatusCode')
+    try:
+        st = int(status_code)
+        if st != 200:
+            return True, msg or f'StatusCode={st}'
+    except Exception:
+        pass
+    return False, ''
 
 
 def redeem_account(game_account_id, pin, monto_api=1, nombre="Juan Perez", fecha="15/03/1995", pais="VE"):
@@ -102,12 +135,16 @@ def canjear_pin_completo(pin, game_account_id, monto_api=1, nombre="Juan Perez",
     # Paso 1
     paso1 = redeem_validate(pin)
     if not paso1.get("ok"):
-        return {"ok": False, "paso": 1, "error": paso1.get("error", "Error validando PIN")}
+        return {"ok": False, "paso": 1, "error": paso1.get("error", "Error validando PIN"), "pin_error": True, "paso1": paso1}
+
+    fail_1, msg_1 = _is_failed_provider_body(paso1.get("body", ""))
+    if fail_1:
+        return {"ok": False, "paso": 1, "error": msg_1 or "Error validando PIN", "pin_error": True, "paso1": paso1}
 
     # Paso 2 - Aquí devuelve el Username del jugador
     paso2 = redeem_account(game_account_id, pin, monto_api, nombre, fecha, pais)
     if not paso2.get("ok"):
-        return {"ok": False, "paso": 2, "error": paso2.get("error", "Error asociando cuenta")}
+        return {"ok": False, "paso": 2, "error": paso2.get("error", "Error asociando cuenta"), "pin_error": False, "paso1": paso1, "paso2": paso2}
 
     # Extraer nombre del jugador
     body2 = paso2.get("body", {})
@@ -115,17 +152,48 @@ def canjear_pin_completo(pin, game_account_id, monto_api=1, nombre="Juan Perez",
 
     # Verificar que paso 2 fue exitoso
     if isinstance(body2, dict) and not body2.get("Success", False):
-        return {"ok": False, "paso": 2, "error": "API rechazó la cuenta", "username": username}
+        return {
+            "ok": False,
+            "paso": 2,
+            "error": "API rechazó la cuenta",
+            "username": username,
+            "pin_error": False,
+            "paso1": paso1,
+            "paso2": paso2,
+        }
 
     # Paso 3
     paso3 = redeem_confirm(game_account_id, pin, monto_api, nombre, fecha, pais)
     if not paso3.get("ok"):
-        return {"ok": False, "paso": 3, "error": paso3.get("error", "Error confirmando canje"), "username": username}
+        return {
+            "ok": False,
+            "paso": 3,
+            "error": paso3.get("error", "Error confirmando canje"),
+            "username": username,
+            "pin_error": True,
+            "paso1": paso1,
+            "paso2": paso2,
+            "paso3": paso3,
+        }
+
+    fail_3, msg_3 = _is_failed_provider_body(paso3.get("body", ""))
+    if fail_3:
+        return {
+            "ok": False,
+            "paso": 3,
+            "error": msg_3 or "Error confirmando canje",
+            "username": username,
+            "pin_error": True,
+            "paso1": paso1,
+            "paso2": paso2,
+            "paso3": paso3,
+        }
 
     return {
         "ok": True,
         "mensaje": "PIN canjeado exitosamente",
         "username": username,
+        "pin_error": False,
         "monto_api": monto_api,
         "product_id": MONTO_PRODUCT_ID.get(monto_api, "2630"),
         "paso1": paso1,

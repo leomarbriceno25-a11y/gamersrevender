@@ -888,6 +888,44 @@ def _registrar_auditoria_recarga(
         db.close()
 
 
+def _marcar_pin_error_hype(pin_id, pedido_id, id_juego, pin_code, motivo=''):
+    db = get_db()
+    try:
+        db.execute("UPDATE pines SET estado = 'error' WHERE id = ?", (pin_id,))
+        db.commit()
+    finally:
+        db.close()
+
+    enviar_telegram(
+        "⚠️ <b>PIN con error (Hype)</b>\n"
+        f"Pedido: <b>#{pedido_id}</b>\n"
+        f"ID Juego: <code>{id_juego or '-'}</code>\n"
+        f"PIN: <code>{pin_code or '-'}</code>\n"
+        f"Motivo: {motivo or 'Error del proveedor'}"
+    )
+
+
+def _reservar_pin_reemplazo_hype(producto_id, pedido_id, user_id):
+    db = get_db()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        row = db.execute(
+            "SELECT id, pin FROM pines WHERE producto_id = ? AND estado = 'disponible' ORDER BY fecha_agregado ASC LIMIT 1",
+            (producto_id,),
+        ).fetchone()
+        if not row:
+            db.commit()
+            return None
+        db.execute(
+            "UPDATE pines SET estado = 'usado', usado_por = ?, pedido_id = ?, fecha_usado = datetime('now','localtime') WHERE id = ?",
+            (user_id, pedido_id, row['id']),
+        )
+        db.commit()
+        return {'id': row['id'], 'pin_code': decrypt_pin(row['pin'])}
+    finally:
+        db.close()
+
+
 def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_code, cantidad):
     """Ejecuta autorización + captura de PINs PinCentral en segundo plano."""
     from pincentral_api import autorizar_pins, capturar_pins
@@ -1581,7 +1619,24 @@ def comprar():
                     canjes_ok += 1
                     nombre_jugador = resultado_api.get('username', '') or nombre_jugador
                 else:
+                    pin_error = bool(resultado_api.get('pin_error'))
                     paso_error = resultado_api.get('paso', 0)
+                    if pin_error:
+                        _marcar_pin_error_hype(
+                            pin_id=pin_ids[i],
+                            pedido_id=pedido_id,
+                            id_juego=id_juego,
+                            pin_code=pin_code,
+                            motivo=resultado_api.get('error', 'Error del proveedor Hype'),
+                        )
+                        reemplazo = _reservar_pin_reemplazo_hype(pin_producto_id, pedido_id, user_id)
+                        if reemplazo:
+                            pin_ids.append(reemplazo['id'])
+                            pin_codes.append(reemplazo['pin_code'])
+                            continue
+                        error_msg = f"{resultado_api.get('error', 'Error en canje')} | Sin PIN de reemplazo disponible"
+                        break
+
                     db_fix = get_db()
                     if paso_error < 3:
                         db_fix.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[i],))
@@ -1627,7 +1682,7 @@ def comprar():
             # Devolver pines no canjeados
             db4 = get_db()
             for j in range(canjes_ok, len(pin_ids)):
-                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[j],))
+                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ? AND estado = 'usado'", (pin_ids[j],))
             db4.commit()
             db4.close()
             recargar_saldo(user_id, monto_parcial, f"Reembolso parcial: {canjes_ok}/{num_canjes} canjes OK pedido #{pedido_id}")
@@ -1641,7 +1696,7 @@ def comprar():
             # Devolver todos los pines
             db4 = get_db()
             for pid in pin_ids:
-                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pid,))
+                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ? AND estado = 'usado'", (pid,))
             db4.commit()
             db4.close()
             recargar_saldo(user_id, total, f"Reembolso: Error canje pedido #{pedido_id}")
@@ -3718,7 +3773,24 @@ def api_comprar():
                     canjes_ok += 1
                     nombre_jugador = resultado_api.get('username', '') or nombre_jugador
                 else:
+                    pin_error = bool(resultado_api.get('pin_error'))
                     paso_error = resultado_api.get('paso', 0)
+                    if pin_error:
+                        _marcar_pin_error_hype(
+                            pin_id=pin_ids[i],
+                            pedido_id=pedido_id,
+                            id_juego=id_juego,
+                            pin_code=pin_code,
+                            motivo=resultado_api.get('error', 'Error del proveedor Hype'),
+                        )
+                        reemplazo = _reservar_pin_reemplazo_hype(pin_producto_id, pedido_id, user_id_api)
+                        if reemplazo:
+                            pin_ids.append(reemplazo['id'])
+                            pin_codes.append(reemplazo['pin_code'])
+                            continue
+                        error_msg = f"{resultado_api.get('error', 'Error en canje')} | Sin PIN de reemplazo disponible"
+                        break
+
                     db_fix = get_db()
                     if paso_error < 3:
                         db_fix.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[i],))
@@ -3766,7 +3838,7 @@ def api_comprar():
             db3.close()
             db4 = get_db()
             for j in range(canjes_ok, len(pin_ids)):
-                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pin_ids[j],))
+                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ? AND estado = 'usado'", (pin_ids[j],))
             db4.commit()
             db4.close()
             recargar_saldo(user_id_api, monto_parcial, f"Reembolso parcial API: {canjes_ok}/{num_canjes} canjes OK pedido #{pedido_id}")
@@ -3784,7 +3856,7 @@ def api_comprar():
             db3.close()
             db4 = get_db()
             for pid in pin_ids:
-                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?", (pid,))
+                db4.execute("UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ? AND estado = 'usado'", (pid,))
             db4.commit()
             db4.close()
             recargar_saldo(user_id_api, total, f"Reembolso API: Error canje pedido #{pedido_id}")
