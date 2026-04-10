@@ -155,7 +155,14 @@
                     <tr>
                         <td>{{ pin.id }}</td>
                         <td>{{ pin.producto_nombre }}</td>
-                        <td><code style="background:var(--bg-primary);padding:0.2rem 0.5rem;border-radius:4px;font-size:0.8rem;">{{ pin.pin_mask }}</code></td>
+                        <td>
+                            <code
+                                id="pin-mask-{{ pin.id }}"
+                                data-pin-id="{{ pin.id }}"
+                                data-pin-mask="{{ pin.pin_mask }}"
+                                style="background:var(--bg-primary);padding:0.2rem 0.5rem;border-radius:4px;font-size:0.8rem;"
+                            >{{ pin.pin_mask }}</code>
+                        </td>
                         <td>
                             {% if pin.estado == 'disponible' %}
                             <span class="badge badge-completado"><i class="fas fa-check"></i> Disponible</span>
@@ -168,6 +175,15 @@
                         <td>{{ pin.usado_por or '-' }}</td>
                         <td>{{ pin.fecha_agregado }}</td>
                         <td>
+                            <button
+                                type="button"
+                                class="btn btn-sm btn-secondary btn-ver-pin"
+                                data-pin-id="{{ pin.id }}"
+                                data-revealed="0"
+                                style="margin-right:0.35rem;"
+                            >
+                                <i class="fas fa-eye"></i> Ver PIN
+                            </button>
                             {% if pin.estado == 'disponible' %}
                             <form method="POST" style="display:inline;">
                                 <input type="hidden" name="accion" value="eliminar">
@@ -215,5 +231,52 @@
         {% endif %}
     </div>
 </section>
+
+<script>
+document.addEventListener('click', async function (e) {
+    const btn = e.target.closest('.btn-ver-pin');
+    if (!btn) return;
+
+    const pinId = btn.dataset.pinId;
+    const codeEl = document.getElementById(`pin-mask-${pinId}`);
+    if (!codeEl) return;
+
+    const isRevealed = btn.dataset.revealed === '1';
+    if (isRevealed) {
+        codeEl.textContent = codeEl.dataset.pinMask || '***';
+        btn.dataset.revealed = '0';
+        btn.innerHTML = '<i class="fas fa-eye"></i> Ver PIN';
+        return;
+    }
+
+    if (btn.dataset.pinReal) {
+        codeEl.textContent = btn.dataset.pinReal;
+        btn.dataset.revealed = '1';
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i> Ocultar';
+        return;
+    }
+
+    btn.disabled = true;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cargando';
+    try {
+        const res = await fetch(`/admin/almacen/pin/${pinId}`);
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+            alert(data.error || 'No se pudo obtener el PIN');
+            return;
+        }
+        btn.dataset.pinReal = data.pin || '';
+        codeEl.textContent = data.pin || '***';
+        btn.dataset.revealed = '1';
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i> Ocultar';
+    } catch (err) {
+        alert('Error de red al consultar el PIN');
+        btn.innerHTML = oldHtml;
+    } finally {
+        btn.disabled = false;
+    }
+});
+</script>
 {% endblock %}
 

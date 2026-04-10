@@ -3105,6 +3105,17 @@ def admin_almacen():
     )
 
 
+@app.route('/admin/almacen/pin/<int:pin_id>', methods=['GET'])
+@admin_required
+def admin_almacen_ver_pin(pin_id):
+    db = get_db()
+    pin_row = db.execute("SELECT id, pin FROM pines WHERE id = ?", (pin_id,)).fetchone()
+    db.close()
+    if not pin_row:
+        return jsonify({'ok': False, 'error': 'PIN no encontrado'}), 404
+    return jsonify({'ok': True, 'pin': decrypt_pin(pin_row['pin'])})
+
+
 @app.route('/admin/pedidos')
 @admin_required
 def admin_pedidos():
