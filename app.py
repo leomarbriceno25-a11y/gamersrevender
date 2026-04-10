@@ -29,6 +29,12 @@ PINCENTRAL_SCAN_LOCK_TTL_SECONDS = 180
 PINCENTRAL_RESTOCK_CAPTURE_MAX_ATTEMPTS = 3
 PINCENTRAL_RESTOCK_CAPTURE_RETRY_DELAY_SECONDS = 2
 PINCENTRAL_RESTOCK_BETWEEN_PINS_SECONDS = max(0, int(os.environ.get('PINCENTRAL_RESTOCK_BETWEEN_PINS_SECONDS', '2')))
+PINCENTRAL_RESTOCK_AUTH_MAX_ATTEMPTS = max(1, int(os.environ.get('PINCENTRAL_RESTOCK_AUTH_MAX_ATTEMPTS', '3')))
+PINCENTRAL_RESTOCK_AUTH_RETRY_BASE_SECONDS = max(1, int(os.environ.get('PINCENTRAL_RESTOCK_AUTH_RETRY_BASE_SECONDS', '2')))
+PINCENTRAL_RESTOCK_AUTH_COOLDOWN_SECONDS = max(10, int(os.environ.get('PINCENTRAL_RESTOCK_AUTH_COOLDOWN_SECONDS', '120')))
+PINCENTRAL_RESTOCK_CAPTURE_DEFER_RETRY_SECONDS = max(5, int(os.environ.get('PINCENTRAL_RESTOCK_CAPTURE_DEFER_RETRY_SECONDS', '20')))
+PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_UNTIL = {}
+PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_LOCK = threading.Lock()
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -299,6 +305,95 @@ def restock_pines(producto_id=None):
     return transferidos_total
 
 
+def _pincentral_auth_retryable(status, error_msg=''):
+    st = _pincentral_status_normalizado(status)
+    msg = str(error_msg or '').strip().lower()
+    return (
+        st in {'error', 'failed', 'pending', 'procesando', 'denied'}
+        or 'too many attempts' in msg
+        or 'too many request' in msg
+        or 'rate limit' in msg
+        or 'temporarily unavailable' in msg
+    )
+
+
+def _pincentral_restock_cooldown_remaining(producto_id):
+    now = int(time.time())
+    with PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_LOCK:
+        until_ts = int(PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_UNTIL.get(int(producto_id or 0), 0) or 0)
+    return max(0, until_ts - now)
+
+
+def _pincentral_restock_set_cooldown(producto_id, segundos):
+    now = int(time.time())
+    until_ts = now + max(1, int(segundos or 1))
+    with PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_LOCK:
+        PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_UNTIL[int(producto_id or 0)] = until_ts
+
+
+def _pincentral_restock_deferred_capture_retry(producto_id, codigo, order_id, tx_id):
+    from pincentral_api import capturar_pins
+
+    time.sleep(max(1, int(PINCENTRAL_RESTOCK_CAPTURE_DEFER_RETRY_SECONDS or 20)))
+
+    cap = None
+    cap_data = {}
+    cap_status = ''
+    pins = []
+    cap_error = ''
+    capture_ok = False
+
+    max_attempts = max(1, int(PINCENTRAL_RESTOCK_CAPTURE_MAX_ATTEMPTS or 1))
+    for intento in range(1, max_attempts + 1):
+        cap = capturar_pins(tx_id)
+        cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
+        cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
+        pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
+        cap_error = cap.get('error') or cap_data.get('message') or ''
+
+        capture_ok = bool(cap.get('ok')) and _pincentral_capturado(cap_status) and bool(pins)
+        if capture_ok:
+            break
+        if intento < max_attempts and _pincentral_capture_retryable(cap_status, cap_error):
+            time.sleep(max(1, int(PINCENTRAL_RESTOCK_CAPTURE_RETRY_DELAY_SECONDS or 2)))
+            continue
+        break
+
+    if not capture_ok:
+        _registrar_incidente_pincentral(
+            contexto='restock_capture_retry',
+            producto_id=producto_id,
+            product_code=codigo,
+            order_id=order_id,
+            transaction_id=tx_id,
+            detalle=f"Captura diferida restock no válida. status={cap_data.get('status', '')}, ok={cap.get('ok') if isinstance(cap, dict) else False}, error={cap_error}",
+            payload=cap_data or cap,
+        )
+        return 0
+
+    db = get_db()
+    nuevos = 0
+    try:
+        for p in pins:
+            if not isinstance(p, dict):
+                continue
+            key = str(p.get('key', '') or '').strip()
+            if not key:
+                continue
+            db.execute(
+                "INSERT INTO pines (producto_id, pin, estado) VALUES (?,?, 'disponible')",
+                (producto_id, encrypt_pin(key)),
+            )
+            nuevos += 1
+        db.commit()
+    finally:
+        db.close()
+
+    if nuevos > 0:
+        print(f"[PINCENTRAL-RESTOCK] Recuperación diferida tx={tx_id}: {nuevos} PIN(s) agregados")
+    return nuevos
+
+
 def restock_pincentral_almacen(producto_id):
     """Reabastece pines desde PinCentral cuando el stock local baja del mínimo."""
     from pincentral_api import autorizar_pins, capturar_pins
@@ -324,6 +419,12 @@ def restock_pincentral_almacen(producto_id):
             db.close()
             return 0
 
+        cooldown_remaining = _pincentral_restock_cooldown_remaining(producto_id)
+        if cooldown_remaining > 0:
+            db.close()
+            print(f"[PINCENTRAL-RESTOCK] Cooldown activo producto #{producto_id}: {cooldown_remaining}s")
+            return 0
+
         stock_actual = db.execute(
             "SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'",
             (producto_id,),
@@ -347,22 +448,41 @@ def restock_pincentral_almacen(producto_id):
             lote = 1
             order_id = f"RSTK_{producto_id}_{uuid.uuid4().hex[:10]}_{lote_n}"
 
-            auth = autorizar_pins(codigo, lote, order_id)
-            auth_data = auth.get('data', {}) if isinstance(auth.get('data', {}), dict) else {}
-            auth_status = _pincentral_status_normalizado(auth_data.get('status', ''))
-            tx_id = str(auth_data.get('id', '') or '').strip()
+            auth = None
+            auth_data = {}
+            auth_status = ''
+            tx_id = ''
+            auth_error = ''
+            auth_ok = False
 
-            if (not auth.get('ok')) or (not _pincentral_autorizado(auth_status)) or not tx_id:
+            for intento_auth in range(1, PINCENTRAL_RESTOCK_AUTH_MAX_ATTEMPTS + 1):
+                auth = autorizar_pins(codigo, lote, order_id)
+                auth_data = auth.get('data', {}) if isinstance(auth.get('data', {}), dict) else {}
+                auth_status = _pincentral_status_normalizado(auth_data.get('status', ''))
+                tx_id = str(auth_data.get('id', '') or '').strip()
+                auth_error = auth.get('error') or auth_data.get('message') or ''
+                auth_ok = bool(auth.get('ok')) and _pincentral_autorizado(auth_status) and bool(tx_id)
+                if auth_ok:
+                    break
+
+                if intento_auth < PINCENTRAL_RESTOCK_AUTH_MAX_ATTEMPTS and _pincentral_auth_retryable(auth_status, auth_error):
+                    time.sleep(PINCENTRAL_RESTOCK_AUTH_RETRY_BASE_SECONDS * intento_auth)
+                    continue
+                break
+
+            if not auth_ok:
                 _registrar_incidente_pincentral(
                     contexto='restock_auth',
                     producto_id=producto_id,
                     product_code=codigo,
                     order_id=order_id,
                     transaction_id=tx_id,
-                    detalle=f"Autorización restock no válida. status={auth_data.get('status', '')}, ok={auth.get('ok')}",
+                    detalle=f"Autorización restock no válida. status={auth_data.get('status', '')}, ok={auth.get('ok') if isinstance(auth, dict) else False}, error={auth_error}, intentos={PINCENTRAL_RESTOCK_AUTH_MAX_ATTEMPTS}",
                     payload=auth_data or auth,
                 )
-                print(f"[PINCENTRAL-RESTOCK] Autorización fallida producto #{producto_id}: {auth.get('error') or auth_data}")
+                if _pincentral_auth_retryable(auth_status, auth_error):
+                    _pincentral_restock_set_cooldown(producto_id, PINCENTRAL_RESTOCK_AUTH_COOLDOWN_SECONDS)
+                print(f"[PINCENTRAL-RESTOCK] Autorización fallida producto #{producto_id}: {auth_error or auth_data}")
                 break
 
             cap = None
@@ -399,6 +519,12 @@ def restock_pincentral_almacen(producto_id):
                     detalle=f"Captura restock no válida. status={cap_data.get('status', '')}, ok={cap.get('ok')}, error={cap_error}",
                     payload=cap_data or cap,
                 )
+                if tx_id and _pincentral_capture_retryable(cap_status, cap_error):
+                    threading.Thread(
+                        target=_pincentral_restock_deferred_capture_retry,
+                        args=(producto_id, codigo, order_id, tx_id),
+                        daemon=True,
+                    ).start()
                 print(f"[PINCENTRAL-RESTOCK] Captura fallida producto #{producto_id}: {cap.get('error') or cap_data}")
                 break
 
