@@ -1326,14 +1326,15 @@ def comprar():
             if resultado_api.get('ok'):
                 nombre_jugador = resultado_api.get('ingamename', '')
                 ref = resultado_api.get('referenceno', '')
-                codigo = resultado_api.get('item', '')
+                es_giftcard_gp = (prod['categoria_tipo'] == 'giftcards')
+                codigo = resultado_api.get('item', '') if es_giftcard_gp else ''
                 estado_final = 'procesando' if es_manual else 'completado'
                 db2.execute("UPDATE pedidos SET estado = ?, nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ? WHERE id = ?", (estado_final, nombre_jugador or ref, codigo, ref, pedido_id))
                 db2.commit()
                 db2.close()
                 if es_manual:
                     flash(f'Pedido #{pedido_id} enviado al proveedor (Ref: {ref}). Se confirmará automáticamente cuando el proveedor lo procese.', 'success')
-                elif codigo:
+                elif es_giftcard_gp and codigo:
                     flash(f'Pedido #{pedido_id} completado. Código: {codigo}', 'success')
                 else:
                     flash(f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador or id_juego} (Ref: {ref}).', 'success')
@@ -3382,7 +3383,8 @@ def api_comprar():
             if resultado_api.get('ok'):
                 nombre_jugador = resultado_api.get('ingamename', '')
                 ref = resultado_api.get('referenceno', '')
-                codigo = resultado_api.get('item', '')
+                es_giftcard_gp = (prod['categoria_tipo'] == 'giftcards')
+                codigo = resultado_api.get('item', '') if es_giftcard_gp else ''
                 estado_final = 'procesando' if es_manual else 'completado'
                 db2.execute("UPDATE pedidos SET estado = ?, nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ? WHERE id = ?", (estado_final, nombre_jugador or ref, codigo, ref, pedido_id))
                 db2.commit()
@@ -3394,7 +3396,7 @@ def api_comprar():
                 }
                 if es_manual:
                     resp['mensaje'] = f'Pedido enviado al proveedor (Ref: {ref}). Se confirmará automáticamente.'
-                elif codigo:
+                elif es_giftcard_gp and codigo:
                     resp['codigo'] = codigo
                     resp['mensaje'] = f'Código entregado: {codigo}'
                 else:
