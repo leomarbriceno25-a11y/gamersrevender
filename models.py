@@ -52,6 +52,21 @@ def decrypt_pin(pin):
         return ''
 
 
+def normalize_pin(pin):
+    raw = str(pin or '').strip().upper()
+    if not raw:
+        return ''
+    compact = ''.join(ch for ch in raw if ch.isalnum())
+    return compact or raw
+
+
+def pin_hash(pin):
+    norm = normalize_pin(pin)
+    if not norm:
+        return ''
+    return hashlib.sha256(norm.encode('utf-8')).hexdigest()
+
+
 def mask_pin(pin, head=4, tail=2):
     raw = decrypt_pin(pin)
     if not raw:
@@ -166,6 +181,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             producto_id INTEGER NOT NULL,
             pin TEXT NOT NULL,
+            pin_hash TEXT DEFAULT '',
             estado TEXT DEFAULT 'disponible' CHECK(estado IN ('disponible', 'usado', 'error')),
             usado_por INTEGER,
             pedido_id INTEGER,
@@ -377,6 +393,29 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_pincentral_incidentes_contexto ON pincentral_incidentes(contexto);
         """)
 
+    # Cola persistente de capturas PinCentral pendientes (status pending/processing)
+    try:
+        db.execute("SELECT tx_id FROM pincentral_capture_queue LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS pincentral_capture_queue (
+                tx_id TEXT PRIMARY KEY,
+                producto_id INTEGER,
+                product_code TEXT DEFAULT '',
+                order_id TEXT DEFAULT '',
+                attempts INTEGER DEFAULT 0,
+                created_ts INTEGER DEFAULT 0,
+                updated_ts INTEGER DEFAULT 0,
+                next_retry_ts INTEGER DEFAULT 0,
+                last_status TEXT DEFAULT '',
+                last_error TEXT DEFAULT '',
+                payload TEXT DEFAULT '',
+                FOREIGN KEY (producto_id) REFERENCES productos(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_pincentral_capture_queue_next ON pincentral_capture_queue(next_retry_ts);
+            CREATE INDEX IF NOT EXISTS idx_pincentral_capture_queue_producto ON pincentral_capture_queue(producto_id);
+        """)
+
     # Auditoría de restock PinCentral (traza por lote RSTK_*)
     try:
         db.execute("SELECT id FROM pincentral_restock_auditoria LIMIT 1")
@@ -469,6 +508,24 @@ def init_db():
             "UPDATE pines SET pin = ? WHERE id = ?",
             (encrypt_pin(p['pin']), p['id'])
         )
+
+    # Migración en caliente: agregar hash normalizado de PIN y poblar faltantes
+    try:
+        db.execute("SELECT pin_hash FROM pines LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE pines ADD COLUMN pin_hash TEXT DEFAULT ''")
+
+    pines_sin_hash = db.execute(
+        "SELECT id, pin FROM pines WHERE pin IS NOT NULL AND pin != '' AND (pin_hash IS NULL OR pin_hash = '')"
+    ).fetchall()
+    for p in pines_sin_hash:
+        raw_pin = decrypt_pin(p['pin'])
+        db.execute(
+            "UPDATE pines SET pin_hash = ? WHERE id = ?",
+            (pin_hash(raw_pin), p['id'])
+        )
+
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pines_pin_hash ON pines(pin_hash)")
 
     # Categorias (cada juego/plataforma es una categoría)
     cat = db.execute("SELECT id FROM categorias LIMIT 1").fetchone()

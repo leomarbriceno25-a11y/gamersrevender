@@ -7,7 +7,7 @@ from flask_limiter.util import get_remote_address
 from models import (
     init_db, get_db, get_user_by_id, get_user_by_email, get_user_by_api_key,
     create_user, get_saldo, recargar_saldo, descontar_saldo, rotate_api_key,
-    encrypt_pin, decrypt_pin, mask_pin
+    encrypt_pin, decrypt_pin, mask_pin, pin_hash
 )
 import config
 import os
@@ -33,6 +33,10 @@ PINCENTRAL_RESTOCK_AUTH_MAX_ATTEMPTS = max(1, int(os.environ.get('PINCENTRAL_RES
 PINCENTRAL_RESTOCK_AUTH_RETRY_BASE_SECONDS = max(1, int(os.environ.get('PINCENTRAL_RESTOCK_AUTH_RETRY_BASE_SECONDS', '2')))
 PINCENTRAL_RESTOCK_AUTH_COOLDOWN_SECONDS = max(10, int(os.environ.get('PINCENTRAL_RESTOCK_AUTH_COOLDOWN_SECONDS', '120')))
 PINCENTRAL_RESTOCK_CAPTURE_DEFER_RETRY_SECONDS = max(5, int(os.environ.get('PINCENTRAL_RESTOCK_CAPTURE_DEFER_RETRY_SECONDS', '20')))
+PINCENTRAL_CAPTURE_QUEUE_INTERVAL_SECONDS = max(15, int(os.environ.get('PINCENTRAL_CAPTURE_QUEUE_INTERVAL_SECONDS', '60')))
+PINCENTRAL_CAPTURE_QUEUE_MAX_WINDOW_SECONDS = max(120, int(os.environ.get('PINCENTRAL_CAPTURE_QUEUE_MAX_WINDOW_SECONDS', '900')))
+PINCENTRAL_CAPTURE_QUEUE_MAX_ATTEMPTS = max(3, int(os.environ.get('PINCENTRAL_CAPTURE_QUEUE_MAX_ATTEMPTS', '15')))
+PINCENTRAL_CAPTURE_QUEUE_BATCH_SIZE = max(1, int(os.environ.get('PINCENTRAL_CAPTURE_QUEUE_BATCH_SIZE', '25')))
 PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_UNTIL = {}
 PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_LOCK = threading.Lock()
 
@@ -331,6 +335,176 @@ def _pincentral_restock_set_cooldown(producto_id, segundos):
         PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_UNTIL[int(producto_id or 0)] = until_ts
 
 
+def _insertar_pin_disponible(db, producto_id, pin_code):
+    raw = str(pin_code or '').strip()
+    if not raw:
+        return False, 'vacio'
+    h = pin_hash(raw)
+    if not h:
+        return False, 'hash_invalido'
+    existe = db.execute("SELECT id FROM pines WHERE pin_hash = ? LIMIT 1", (h,)).fetchone()
+    if existe:
+        return False, 'duplicado'
+    db.execute(
+        "INSERT INTO pines (producto_id, pin, pin_hash, estado) VALUES (?, ?, ?, 'disponible')",
+        (int(producto_id or 0), encrypt_pin(raw), h),
+    )
+    return True, 'ok'
+
+
+def _pincentral_capture_queue_upsert(producto_id, product_code, order_id, tx_id, status='', error='', payload=None, attempts=1, next_retry_ts=0):
+    tx = str(tx_id or '').strip()
+    if not tx:
+        return
+    now = int(time.time())
+    retry_at = int(next_retry_ts or 0) or (now + PINCENTRAL_CAPTURE_QUEUE_INTERVAL_SECONDS)
+    payload_txt = ''
+    if payload is not None:
+        try:
+            payload_txt = json.dumps(payload, ensure_ascii=False)[:4000]
+        except Exception:
+            payload_txt = str(payload)[:4000]
+
+    db = get_db()
+    try:
+        db.execute(
+            "INSERT INTO pincentral_capture_queue (tx_id, producto_id, product_code, order_id, attempts, created_ts, updated_ts, next_retry_ts, last_status, last_error, payload) "
+            "VALUES (?,?,?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(tx_id) DO UPDATE SET "
+            "producto_id=excluded.producto_id, product_code=excluded.product_code, order_id=excluded.order_id, "
+            "attempts=excluded.attempts, updated_ts=excluded.updated_ts, next_retry_ts=excluded.next_retry_ts, "
+            "last_status=excluded.last_status, last_error=excluded.last_error, payload=excluded.payload",
+            (
+                tx,
+                int(producto_id or 0) or None,
+                str(product_code or '').strip(),
+                str(order_id or '').strip(),
+                max(1, int(attempts or 1)),
+                now,
+                now,
+                retry_at,
+                str(status or '').strip(),
+                str(error or '').strip(),
+                payload_txt,
+            ),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def _pincentral_capture_queue_delete(tx_id):
+    tx = str(tx_id or '').strip()
+    if not tx:
+        return
+    db = get_db()
+    try:
+        db.execute("DELETE FROM pincentral_capture_queue WHERE tx_id = ?", (tx,))
+        db.commit()
+    finally:
+        db.close()
+
+
+def _pincentral_limpiar_incidentes_tx(tx_id):
+    tx = str(tx_id or '').strip()
+    if not tx:
+        return
+    db = get_db()
+    try:
+        db.execute(
+            "DELETE FROM pincentral_incidentes WHERE transaction_id = ? "
+            "AND contexto IN ('restock_capture', 'restock_capture_retry')",
+            (tx,),
+        )
+        db.commit()
+    finally:
+        db.close()
+
+
+def _pincentral_procesar_cola_capturas(max_items=None):
+    from pincentral_api import capturar_pins
+
+    now = int(time.time())
+    limit = max(1, int(max_items or PINCENTRAL_CAPTURE_QUEUE_BATCH_SIZE))
+    db = get_db()
+    try:
+        rows = db.execute(
+            "SELECT tx_id, producto_id, product_code, order_id, attempts, created_ts "
+            "FROM pincentral_capture_queue WHERE next_retry_ts <= ? "
+            "ORDER BY next_retry_ts ASC LIMIT ?",
+            (now, limit),
+        ).fetchall()
+    finally:
+        db.close()
+
+    for row in rows:
+        tx_id = str(row['tx_id'] or '').strip()
+        if not tx_id:
+            continue
+        producto_id = int(row['producto_id'] or 0)
+        product_code = str(row['product_code'] or '').strip()
+        order_id = str(row['order_id'] or '').strip()
+        attempts = int(row['attempts'] or 0)
+        created_ts = int(row['created_ts'] or now)
+
+        cap = capturar_pins(tx_id)
+        cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
+        cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
+        pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
+        cap_error = cap.get('error') or cap_data.get('message') or ''
+
+        capture_ok = bool(cap.get('ok')) and _pincentral_capturado(cap_status) and bool(pins)
+        if capture_ok:
+            db_ins = get_db()
+            nuevos = 0
+            duplicados = 0
+            try:
+                for p in pins:
+                    if not isinstance(p, dict):
+                        continue
+                    key = str(p.get('key', '') or '').strip()
+                    ok_insert, reason = _insertar_pin_disponible(db_ins, producto_id, key)
+                    if ok_insert:
+                        nuevos += 1
+                    elif reason == 'duplicado':
+                        duplicados += 1
+                db_ins.commit()
+            finally:
+                db_ins.close()
+
+            _pincentral_capture_queue_delete(tx_id)
+            _pincentral_limpiar_incidentes_tx(tx_id)
+            print(f"[PINCENTRAL-QUEUE] tx={tx_id} capturado. nuevos={nuevos}, duplicados={duplicados}")
+            continue
+
+        elapsed = max(0, now - created_ts)
+        next_attempts = attempts + 1
+        if _pincentral_capture_retryable(cap_status, cap_error) and elapsed < PINCENTRAL_CAPTURE_QUEUE_MAX_WINDOW_SECONDS and next_attempts <= PINCENTRAL_CAPTURE_QUEUE_MAX_ATTEMPTS:
+            _pincentral_capture_queue_upsert(
+                producto_id=producto_id,
+                product_code=product_code,
+                order_id=order_id,
+                tx_id=tx_id,
+                status=cap_data.get('status', ''),
+                error=cap_error,
+                payload=cap_data or cap,
+                attempts=next_attempts,
+                next_retry_ts=now + PINCENTRAL_CAPTURE_QUEUE_INTERVAL_SECONDS,
+            )
+            continue
+
+        _pincentral_capture_queue_delete(tx_id)
+        _registrar_incidente_pincentral(
+            contexto='restock_capture',
+            producto_id=producto_id,
+            product_code=product_code,
+            order_id=order_id,
+            transaction_id=tx_id,
+            detalle=f"Captura restock no válida (final). status={cap_data.get('status', '')}, ok={cap.get('ok')}, error={cap_error}, intentos={next_attempts}, elapsed={elapsed}s",
+            payload=cap_data or cap,
+        )
+
+
 def _pincentral_restock_deferred_capture_retry(producto_id, codigo, order_id, tx_id):
     from pincentral_api import capturar_pins
 
@@ -380,11 +554,9 @@ def _pincentral_restock_deferred_capture_retry(producto_id, codigo, order_id, tx
             key = str(p.get('key', '') or '').strip()
             if not key:
                 continue
-            db.execute(
-                "INSERT INTO pines (producto_id, pin, estado) VALUES (?,?, 'disponible')",
-                (producto_id, encrypt_pin(key)),
-            )
-            nuevos += 1
+            ok_insert, _ = _insertar_pin_disponible(db, producto_id, key)
+            if ok_insert:
+                nuevos += 1
         db.commit()
     finally:
         db.close()
@@ -510,21 +682,29 @@ def restock_pincentral_almacen(producto_id):
                 break
 
             if not capture_ok:
-                _registrar_incidente_pincentral(
-                    contexto='restock_capture',
-                    producto_id=producto_id,
-                    product_code=codigo,
-                    order_id=order_id,
-                    transaction_id=tx_id,
-                    detalle=f"Captura restock no válida. status={cap_data.get('status', '')}, ok={cap.get('ok')}, error={cap_error}",
-                    payload=cap_data or cap,
-                )
                 if tx_id and _pincentral_capture_retryable(cap_status, cap_error):
-                    threading.Thread(
-                        target=_pincentral_restock_deferred_capture_retry,
-                        args=(producto_id, codigo, order_id, tx_id),
-                        daemon=True,
-                    ).start()
+                    _pincentral_capture_queue_upsert(
+                        producto_id=producto_id,
+                        product_code=codigo,
+                        order_id=order_id,
+                        tx_id=tx_id,
+                        status=cap_data.get('status', ''),
+                        error=cap_error,
+                        payload=cap_data or cap,
+                        attempts=1,
+                        next_retry_ts=int(time.time()) + PINCENTRAL_CAPTURE_QUEUE_INTERVAL_SECONDS,
+                    )
+                    print(f"[PINCENTRAL-RESTOCK] Captura pendiente tx={tx_id}. Encolada para reintento persistente")
+                else:
+                    _registrar_incidente_pincentral(
+                        contexto='restock_capture',
+                        producto_id=producto_id,
+                        product_code=codigo,
+                        order_id=order_id,
+                        transaction_id=tx_id,
+                        detalle=f"Captura restock no válida. status={cap_data.get('status', '')}, ok={cap.get('ok')}, error={cap_error}",
+                        payload=cap_data or cap,
+                    )
                 print(f"[PINCENTRAL-RESTOCK] Captura fallida producto #{producto_id}: {cap.get('error') or cap_data}")
                 break
 
@@ -554,11 +734,9 @@ def restock_pincentral_almacen(producto_id):
                         payload={'pin': p, 'serial': serial},
                     )
                     continue
-                db.execute(
-                    "INSERT INTO pines (producto_id, pin, estado) VALUES (?,?, 'disponible')",
-                    (producto_id, encrypt_pin(key)),
-                )
-                nuevos += 1
+                ok_insert, _ = _insertar_pin_disponible(db, producto_id, key)
+                if ok_insert:
+                    nuevos += 1
 
             db.commit()
             agregados += nuevos
@@ -646,7 +824,9 @@ def _worker_restock_pincentral_global():
                 lock_name='pincentral_restock_scan',
                 ttl_seg=PINCENTRAL_SCAN_LOCK_TTL_SECONDS,
             ):
+                _pincentral_procesar_cola_capturas()
                 restock_pincentral_productos_bajo_minimo()
+                _pincentral_procesar_cola_capturas()
         except Exception as e:
             print(f"[PINCENTRAL-SCAN] Worker error: {e}")
         time.sleep(max(15, int(PINCENTRAL_SCAN_INTERVAL_SECONDS or 60)))
@@ -3183,11 +3363,18 @@ def admin_almacen():
             if producto_id > 0 and pines_text:
                 pines_list = [p.strip() for p in pines_text.split('\n') if p.strip()]
                 count = 0
+                duplicados = 0
                 for pin in pines_list:
-                    db.execute("INSERT INTO pines (producto_id, pin) VALUES (?, ?)", (producto_id, encrypt_pin(pin)))
-                    count += 1
+                    ok_insert, reason = _insertar_pin_disponible(db, producto_id, pin)
+                    if ok_insert:
+                        count += 1
+                    elif reason == 'duplicado':
+                        duplicados += 1
                 db.commit()
-                flash(f'{count} PIN(es) agregados al almacén', 'success')
+                if duplicados > 0:
+                    flash(f'{count} PIN(es) agregados. {duplicados} duplicado(s) omitido(s).', 'warning')
+                else:
+                    flash(f'{count} PIN(es) agregados al almacén', 'success')
             else:
                 flash('Selecciona un producto y agrega al menos un PIN', 'error')
         elif accion == 'eliminar':
