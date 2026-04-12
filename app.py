@@ -3013,12 +3013,19 @@ def admin_pincentral_catalogo():
         else:
             flash('Producto inválido para actualizar stock', 'error')
 
-    productos_locales = db.execute(
+    productos_rows = db.execute(
         "SELECT p.id, p.nombre, p.pincentral_product_code, p.stock_minimo, p.stock_objetivo, "
         "(SELECT COUNT(*) FROM pines pi WHERE pi.producto_id = p.id AND pi.estado = 'disponible') as stock_disponible "
         "FROM productos p WHERE p.activo = 1 AND p.usa_pincentral = 1 "
         "ORDER BY p.nombre"
     ).fetchall()
+    productos_locales = []
+    for p in productos_rows:
+        item = dict(p)
+        rem = _pincentral_restock_cooldown_remaining(item.get('id'))
+        item['cooldown_remaining_seconds'] = rem
+        item['cooldown_remaining_human'] = f"{(rem // 60):02d}:{(rem % 60):02d}" if rem > 0 else '00:00'
+        productos_locales.append(item)
     incidentes = db.execute(
         "SELECT i.id, i.contexto, i.pedido_id, i.producto_id, i.product_code, i.order_id, i.transaction_id, i.detalle, i.payload, i.fecha, p.nombre as producto_nombre "
         "FROM pincentral_incidentes i "

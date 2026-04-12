@@ -17,7 +17,7 @@
             <div class="table-responsive">
                 <table class="table">
                     <thead>
-                        <tr><th>ID</th><th>Producto</th><th>Código PinCentral</th><th>Stock</th><th>Mín</th><th>Objetivo</th><th>Acción</th></tr>
+                        <tr><th>ID</th><th>Producto</th><th>Código PinCentral</th><th>Stock</th><th>Cooldown</th><th>Mín</th><th>Objetivo</th><th>Acción</th></tr>
                     </thead>
                     <tbody>
                         {% for p in productos_locales %}
@@ -26,6 +26,13 @@
                             <td>{{ p.nombre }}</td>
                             <td><code>{{ p.pincentral_product_code or '-' }}</code></td>
                             <td><strong>{{ p.stock_disponible }}</strong></td>
+                            <td>
+                                {% if p.cooldown_remaining_seconds|int > 0 %}
+                                <span class="badge badge-cancelado">{{ p.cooldown_remaining_human }}</span>
+                                {% else %}
+                                <span class="badge" style="background:#10b981;color:#062b1f;">Listo</span>
+                                {% endif %}
+                            </td>
                             <td>
                                 <input type="number" name="stock_minimo" value="{{ p.stock_minimo or 0 }}" min="0" class="form-input" style="width:90px;" form="form-stock-{{ p.id }}">
                             </td>
@@ -43,7 +50,7 @@
                     </tbody>
                 </table>
             </div>
-            <p style="color:var(--text-secondary); font-size:0.85rem; margin-top:0.5rem;">Los códigos entregados se ven en <a href="{{ url_for('admin_almacen') }}">Almacén</a> (columna PIN enmascarado).</p>
+            <p style="color:var(--text-secondary); font-size:0.85rem; margin-top:0.5rem;">Cooldown muestra el tiempo restante antes del próximo intento de restock automático. Los códigos entregados se ven en <a href="{{ url_for('admin_almacen') }}">Almacén</a> (columna PIN enmascarado).</p>
             {% else %}
             <p style="color:var(--text-secondary);">No hay productos configurados con PinCentral en Productos.</p>
             {% endif %}
