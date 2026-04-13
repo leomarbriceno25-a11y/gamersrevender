@@ -4273,7 +4273,8 @@ def api_transacciones():
 def api_webhook():
     user = request.api_user
     if request.method == 'GET':
-        return jsonify({'ok': True, 'webhook_url': user.get('webhook_url', '') or ''})
+        webhook_url = (dict(user).get('webhook_url', '') if user else '') or ''
+        return jsonify({'ok': True, 'webhook_url': webhook_url})
     data = request.get_json() or {}
     url = (data.get('url') or '').strip()
     if url and not url.startswith('http'):
