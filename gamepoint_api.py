@@ -22,8 +22,7 @@ API_URL = config.GAMEPOINT_API_URL
 PARTNER_ID = config.GAMEPOINT_PARTNER_ID
 SECRET_KEY = config.GAMEPOINT_SECRET_KEY
 PROXY_URL = os.environ.get('GAMEPOINT_PROXY', '')
-GAMEPOINT_PENDING_MAX_ATTEMPTS = max(1, int(os.environ.get('GAMEPOINT_PENDING_MAX_ATTEMPTS', '2')))
-GAMEPOINT_PENDING_RETRY_SECONDS = max(5, int(os.environ.get('GAMEPOINT_PENDING_RETRY_SECONDS', '30')))
+GAMEPOINT_PENDING_RETRY_SECONDS = max(1, int(os.environ.get('GAMEPOINT_PENDING_RETRY_SECONDS', '10')))
 
 # Cache del token (expira diario a 00:00 UTC+8)
 _token_cache = {"token": None, "timestamp": 0}
@@ -396,9 +395,11 @@ def recarga_completa(product_id, fields, package_id, merchant_code="", wait=True
                 "item": "",
                 "message": "Orden pendiente, se verificará automáticamente",
             }
-        for intento in range(1, GAMEPOINT_PENDING_MAX_ATTEMPTS + 1):
+        intento = 0
+        while True:
+            intento += 1
             print(
-                f"[GAMEPOINT] Orden pendiente, intento {intento}/{GAMEPOINT_PENDING_MAX_ATTEMPTS} "
+                f"[GAMEPOINT] Orden pendiente, intento {intento} "
                 f"(esperando {GAMEPOINT_PENDING_RETRY_SECONDS}s)..."
             )
             time.sleep(GAMEPOINT_PENDING_RETRY_SECONDS)
@@ -418,17 +419,6 @@ def recarga_completa(product_id, fields, package_id, merchant_code="", wait=True
                     }
             except Exception as e:
                 print(f"[GAMEPOINT] Error consultando intento {intento}: {e}")
-        # Sigue pending después de 1min — retornar ok para que quede como procesando
-        print(f"[GAMEPOINT] Aún pendiente después de 1min, dejando como procesando")
-        return {
-            "ok": True,
-            "referenceno": referenceno,
-            "status": "pending",
-            "ingamename": "",
-            "amount": None,
-            "item": "",
-            "message": "Orden pendiente, se verificará automáticamente",
-        }
 
     # Para gift cards, consultar siempre para obtener el código
     inquiry = consultar_orden(referenceno)
