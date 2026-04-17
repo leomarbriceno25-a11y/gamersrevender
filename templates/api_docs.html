@@ -36,7 +36,7 @@
                 <span style="background:#7c3aed; color:#fff; font-weight:700; width:28px; height:28px; min-width:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:0.85rem;">3</span>
                 <div style="flex:1;">
                     <strong style="color:var(--text-primary);">Compra</strong>
-                    <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">Llama a <code>POST /api/v1/comprar</code> con el <code>producto_id</code> y listo. Si es recarga, envía también el <code>id_juego</code> del cliente. Si es gift card, recibes los códigos en la respuesta.</p>
+                    <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">Llama a <code>POST /api/v1/comprar</code> con <code>producto_id</code> y tu <code>merchant_ref</code> (referencia única de tu sistema). Luego consulta estado con <code>GET /api/v1/recargas/status?merchant_ref=...</code>. El webhook sigue disponible como opción.</p>
                 </div>
             </div>
 
@@ -53,14 +53,17 @@ curl_setopt_array($ch, [
     ],
     CURLOPT_POSTFIELDS => json_encode([
         'producto_id' => 5,
-        'cantidad' => 1
+        'cantidad' => 1,
+        'merchant_ref' => 'VENTA-RBX-1001'
     ])
 ]);
 $resp = json_decode(curl_exec($ch), true);
 curl_close($ch);
 
 if ($resp['ok']) {
-    <span style="color:#7c3aed;">// Entrega estos códigos a tu cliente</span>
+    <span style="color:#7c3aed;">// Si queda procesando, consulta por merchant_ref</span>
+    <span style="color:#7c3aed;">// GET /api/v1/recargas/status?merchant_ref=VENTA-RBX-1001</span>
+    <span style="color:#7c3aed;">// Si queda completado, entrega estos códigos a tu cliente</span>
     foreach ($resp['codigos'] as $codigo) {
         echo "Código: $codigo\n";
     }
@@ -225,6 +228,7 @@ if ($resp['ok']) {
                     <tr><td><code>cantidad</code></td><td>integer</td><td>No</td><td>Cantidad de códigos (solo gift cards, default 1, máx 50). Para recargas siempre es 1.</td></tr>
                     <tr><td><code>id_juego</code></td><td>string</td><td>Solo recargas</td><td>El Player ID / User ID del cliente (primer campo de <code>campos_requeridos</code>)</td></tr>
                     <tr><td><code>input2</code></td><td>string</td><td>Según juego</td><td>Zona o servidor (segundo campo de <code>campos_requeridos</code>, si existe)</td></tr>
+                    <tr><td><code>merchant_ref</code></td><td>string</td><td>Recomendado</td><td>Referencia única de tu sistema (máx 80 chars). Si se repite para el mismo usuario, API responde <code>409</code>.</td></tr>
                 </tbody>
             </table>
 
@@ -243,7 +247,7 @@ if ($resp['ok']) {
 <pre class="tab-content ej1-curl" style="color:#f1f5f9; margin:0; font-size:0.82rem;">curl -X POST \
   -H "X-API-Key: TU_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"producto_id": 1, "id_juego": "123456789", "input2": "10521"}' \
+  -d '{"producto_id": 1, "id_juego": "123456789", "input2": "10521", "merchant_ref": "VENTA-ML-100045"}' \
   {{ request.host_url }}api/v1/comprar</pre>
 <pre class="tab-content ej1-php" style="color:#f1f5f9; margin:0; font-size:0.82rem; display:none;">$ch = curl_init('{{ request.host_url }}api/v1/comprar');
 curl_setopt_array($ch, [
@@ -253,7 +257,8 @@ curl_setopt_array($ch, [
     CURLOPT_POSTFIELDS => json_encode([
         'producto_id' => 1,
         'id_juego' => '123456789',  // Player ID de tu cliente
-        'input2' => '10521'          // Zona (ASIA)
+        'input2' => '10521',         // Zona (ASIA)
+        'merchant_ref' => 'VENTA-ML-100045'
     ])
 ]);
 $resp = json_decode(curl_exec($ch), true);
@@ -275,7 +280,8 @@ resp = requests.post(
     json={
         'producto_id': 1,
         'id_juego': '123456789',  # Player ID de tu cliente
-        'input2': '10521'          # Zona (ASIA)
+        'input2': '10521',         # Zona (ASIA)
+        'merchant_ref': 'VENTA-ML-100045'
     }
 ).json()
 
@@ -292,7 +298,8 @@ else:
     body: JSON.stringify({
         producto_id: 1,
         id_juego: '123456789',  // Player ID de tu cliente
-        input2: '10521'          // Zona (ASIA)
+        input2: '10521',         // Zona (ASIA)
+        merchant_ref: 'VENTA-ML-100045'
     })
 });
 const data = await resp.json();
@@ -312,6 +319,7 @@ if (data.ok && data.estado === 'completado') {
   "ok": true,
   "pedido_id": 42,
   "estado": "completado",
+  "merchant_ref": "VENTA-ML-100045",
   "total": 1.50,
   "saldo_restante": 148.50,
   "nombre_jugador": "ProGamer123",
@@ -336,14 +344,14 @@ if (data.ok && data.estado === 'completado') {
 curl -X POST \
   -H "X-API-Key: TU_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"producto_id": 5}' \
+  -d '{"producto_id": 5, "merchant_ref": "VENTA-RBX-9001"}' \
   {{ request.host_url }}api/v1/comprar
 
 # 3 códigos a la vez
 curl -X POST \
   -H "X-API-Key: TU_KEY" \
   -H "Content-Type: application/json" \
-  -d '{"producto_id": 5, "cantidad": 3}' \
+  -d '{"producto_id": 5, "cantidad": 3, "merchant_ref": "VENTA-RBX-9002"}' \
   {{ request.host_url }}api/v1/comprar</pre>
 <pre class="tab-content ej2-php" style="color:#f1f5f9; margin:0; font-size:0.82rem; display:none;">$ch = curl_init('{{ request.host_url }}api/v1/comprar');
 curl_setopt_array($ch, [
@@ -352,7 +360,8 @@ curl_setopt_array($ch, [
     CURLOPT_HTTPHEADER => ['X-API-Key: TU_KEY', 'Content-Type: application/json'],
     CURLOPT_POSTFIELDS => json_encode([
         'producto_id' => 5,
-        'cantidad' => 3  // Pedir 3 códigos a la vez (máx 50)
+        'cantidad' => 3,  // Pedir 3 códigos a la vez (máx 50)
+        'merchant_ref' => 'VENTA-RBX-9002'
     ])
 ]);
 $resp = json_decode(curl_exec($ch), true);
@@ -373,7 +382,7 @@ if ($resp['ok']) {
 resp = requests.post(
     '{{ request.host_url }}api/v1/comprar',
     headers={'X-API-Key': 'TU_KEY'},
-    json={'producto_id': 5, 'cantidad': 3}  # Pedir 3 códigos (máx 50)
+    json={'producto_id': 5, 'cantidad': 3, 'merchant_ref': 'VENTA-RBX-9002'}  # Pedir 3 códigos (máx 50)
 ).json()
 
 if resp['ok']:
@@ -386,7 +395,7 @@ else:
 <pre class="tab-content ej2-js" style="color:#f1f5f9; margin:0; font-size:0.82rem; display:none;">const resp = await fetch('{{ request.host_url }}api/v1/comprar', {
     method: 'POST',
     headers: { 'X-API-Key': 'TU_KEY', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ producto_id: 5, cantidad: 3 }) // máx 50
+    body: JSON.stringify({ producto_id: 5, cantidad: 3, merchant_ref: 'VENTA-RBX-9002' }) // máx 50
 });
 const data = await resp.json();
 
@@ -405,6 +414,7 @@ if (data.ok) {
   "ok": true,
   "pedido_id": 55,
   "estado": "completado",
+  "merchant_ref": "VENTA-RBX-9001",
   "total": 12.00,
   "saldo_restante": 138.00,
   "codigos": ["XXXX-XXXX-XXXX-XXXX"],
@@ -419,6 +429,7 @@ if (data.ok) {
   "ok": true,
   "pedido_id": 56,
   "estado": "completado",
+  "merchant_ref": "VENTA-RBX-9002",
   "total": 36.00,
   "saldo_restante": 102.00,
   "codigos": [
@@ -485,6 +496,7 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
   "ok": true,
   "pedido_id": 46,
   "estado": "procesando",
+  "merchant_ref": "VENTA-PUBG-7001",
   "total": 2.50,
   "saldo_restante": 147.50,
   "referencia": "GP-20260319-003",
@@ -494,13 +506,13 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
             <div style="margin-top:0.5rem; padding:0.75rem; background:rgba(245,158,11,0.1); border:1px solid rgba(245,158,11,0.3); border-radius:8px;">
                 <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
                     <strong style="color:#f59e0b;"><i class="fas fa-clock"></i> ¿Qué hacer?</strong>
-                    Espera el webhook o consulta <code>GET /api/v1/pedido/46</code> después de 5 minutos. El estado cambiará a <code>"completado"</code> automáticamente. Si falla (raro), cambia a <code>"cancelado"</code> y tu saldo se reembolsa.
+                    Consulta <code>GET /api/v1/recargas/status?merchant_ref=VENTA-PUBG-7001</code> (recomendado) o <code>GET /api/v1/pedido/46</code>. El estado cambiará a <code>"completado"</code> automáticamente. Si falla (raro), cambia a <code>"cancelado"</code> y tu saldo se reembolsa.
                 </p>
             </div>
             <div style="margin-top:0.5rem; padding:0.75rem; background:rgba(124,58,237,0.1); border:1px solid rgba(124,58,237,0.3); border-radius:8px;">
                 <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
                     <strong style="color:#7c3aed;"><i class="fas fa-bell"></i> Tip:</strong>
-                    Para no tener que consultar manualmente, <strong>registra un webhook</strong> con <code>POST /api/v1/webhook</code>. Recibirás una notificación automática cuando el pedido pase a <code>"completado"</code> o <code>"cancelado"</code>.
+                    Si no quieres polling, <strong>registra un webhook</strong> con <code>POST /api/v1/webhook</code>. Recibirás una notificación automática cuando el pedido pase a <code>"completado"</code> o <code>"cancelado"</code>.
                 </p>
             </div>
 
@@ -576,6 +588,61 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
                     Si compraste varias gift cards, los códigos aparecen separados por salto de línea (<code>\n</code>) en <code>codigo_entregado</code>. Usa <code>split("\n")</code> para obtener cada código individual.
                 </p>
             </div>
+        </div>
+
+        <!-- GET /recargas/status -->
+        <div class="card" style="padding:2rem; margin-bottom:1.5rem;">
+            <div style="display:flex; align-items:center; gap:0.5rem; margin-bottom:1rem;">
+                <span class="badge badge-completado" style="font-size:0.8rem;">GET</span>
+                <h2 style="margin:0;">/api/v1/recargas/status</h2>
+            </div>
+            <p>Consulta estado de una recarga por tu referencia (<code>merchant_ref</code>) o por <code>pedido_id</code>. Este es el flujo pull recomendado.</p>
+
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Query params:</h3>
+            <table class="table" style="margin-bottom:1rem;">
+                <thead>
+                    <tr><th>Campo</th><th>Tipo</th><th>Requerido</th><th>Descripción</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td><code>merchant_ref</code></td><td>string</td><td>Condicional</td><td>Referencia que enviaste en <code>POST /api/v1/comprar</code>.</td></tr>
+                    <tr><td><code>pedido_id</code></td><td>integer</td><td>Condicional</td><td>ID interno del pedido. Útil como fallback.</td></tr>
+                </tbody>
+            </table>
+            <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:-0.5rem;">Debes enviar al menos uno: <code>merchant_ref</code> o <code>pedido_id</code>.</p>
+
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto; margin-bottom:0.6rem;">
+<pre style="color:#f1f5f9; margin:0; font-size:0.82rem;">GET {{ request.host_url }}api/v1/recargas/status?merchant_ref=VENTA-PUBG-7001</pre>
+            </div>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#f1f5f9; margin:0; font-size:0.82rem;">GET {{ request.host_url }}api/v1/recargas/status?pedido_id=46</pre>
+            </div>
+
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Respuesta:</h3>
+            <div style="background:var(--bg-primary); border:1px solid var(--border); border-radius:8px; padding:1rem; overflow-x:auto;">
+<pre style="color:#22c55e; margin:0; font-size:0.85rem;">{
+  "ok": true,
+  "pedido_id": 46,
+  "merchant_ref": "VENTA-PUBG-7001",
+  "status": "processing",
+  "estado": "procesando",
+  "producto": "60+6 BONOS",
+  "id_juego": "3785356530",
+  "nombre_jugador": "",
+  "codigo": "",
+  "referencia": "GP-20260319-003",
+  "cantidad": 1,
+  "total": 0.8614,
+  "fecha": "2026-04-12 21:28:43"
+}</pre>
+            </div>
+
+            <h3 style="margin:1rem 0 0.5rem; font-size:0.95rem; color:var(--text-secondary);">Estados devueltos en <code>status</code>:</h3>
+            <ul style="color:var(--text-secondary); font-size:0.9rem; line-height:1.9; margin:0 0 0 1.1rem;">
+                <li><code>pending</code> (interno: <code>pendiente</code>)</li>
+                <li><code>processing</code> (interno: <code>procesando</code>)</li>
+                <li><code>completed</code> (interno: <code>completado</code>)</li>
+                <li><code>failed</code> (interno: <code>cancelado</code>)</li>
+            </ul>
         </div>
 
         <!-- GET /pedidos -->
@@ -701,7 +768,7 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
             <div style="margin-top:1rem; padding:0.75rem; background:rgba(124,58,237,0.1); border:1px solid rgba(124,58,237,0.3); border-radius:8px;">
                 <p style="font-size:0.85rem; margin:0; color:var(--text-secondary);">
                     <strong style="color:#7c3aed;"><i class="fas fa-info-circle"></i> Nota:</strong>
-                    El webhook es <strong>opcional</strong>. Si no lo configuras, consulta el estado con <code>GET /api/v1/pedido/:id</code>.
+                    El webhook es <strong>opcional</strong>. Flujo recomendado: consultar estado por referencia con <code>GET /api/v1/recargas/status?merchant_ref=...</code>.
                     Tu endpoint debe responder HTTP 200 para confirmar recepción.
                 </p>
             </div>
@@ -723,7 +790,7 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
                     <tr>
                         <td><span class="badge badge-procesando">procesando</span></td>
                         <td>Enviado al proveedor, esperando</td>
-                        <td>Espera webhook o consulta <code>/pedido/:id</code> cada 30 seg.</td>
+                        <td>Consulta <code>/api/v1/recargas/status?merchant_ref=...</code> cada 20-60 seg. (o usa webhook).</td>
                     </tr>
                     <tr>
                         <td><span class="badge badge-cancelado">cancelado</span></td>
@@ -746,6 +813,7 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/productos</code></td><td>Catálogo con precios y campos requeridos</td></tr>
                     <tr><td><span class="badge badge-pendiente" style="font-size:0.7rem;">POST</span></td><td><code>/api/v1/comprar</code></td><td>Comprar recarga o gift card</td></tr>
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/pedido/:id</code></td><td>Detalle y estado de un pedido</td></tr>
+                    <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/recargas/status?merchant_ref=...</code></td><td>Estado por referencia de tu sistema (pull recomendado)</td></tr>
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/pedidos</code></td><td>Últimos 50 pedidos</td></tr>
                     <tr><td><span class="badge badge-completado" style="font-size:0.7rem;">GET</span></td><td><code>/api/v1/transacciones</code></td><td>Últimas 50 transacciones</td></tr>
                     <tr><td><span class="badge badge-pendiente" style="font-size:0.7rem;">POST</span></td><td><code>/api/v1/webhook</code></td><td>Registrar / eliminar webhook</td></tr>
@@ -765,6 +833,7 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
                     <tr><td><code>200</code></td><td>Petición exitosa. Revisa <code>"ok"</code> en el JSON para saber si la operación fue exitosa.</td></tr>
                     <tr><td><code>400</code></td><td>Error en tu petición: saldo insuficiente, stock agotado, Player ID inválido, campo faltante.</td></tr>
                     <tr><td><code>401</code></td><td>API Key faltante o inválida.</td></tr>
+                    <tr><td><code>409</code></td><td><code>merchant_ref</code> duplicado para el mismo usuario.</td></tr>
                     <tr><td><code>404</code></td><td>Producto o pedido no encontrado.</td></tr>
                     <tr><td><code>500</code></td><td>Error interno del servidor. Si persiste, contacta soporte.</td></tr>
                 </tbody>
@@ -778,9 +847,9 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
                 <li><strong>Configuración inicial (una vez):</strong> Obtén tu API Key y registra tu webhook si quieres notificaciones automáticas.</li>
                 <li><strong>Sincroniza catálogo:</strong> Consulta <code>/api/v1/productos</code> para mostrar los productos a tus clientes.</li>
                 <li><strong>Antes de comprar:</strong> Verifica saldo con <code>/api/v1/saldo</code>.</li>
-                <li><strong>Compra:</strong> Tu cliente elige producto y te da su Player ID (si aplica). Envías <code>POST /api/v1/comprar</code>.</li>
+                <li><strong>Compra:</strong> Tu cliente elige producto y te da su Player ID (si aplica). Envías <code>POST /api/v1/comprar</code> incluyendo tu <code>merchant_ref</code> único.</li>
                 <li><strong>Si <code>estado = "completado"</code>:</strong> Entrega al cliente los códigos o confirma la recarga.</li>
-                <li><strong>Si <code>estado = "procesando"</code>:</strong> Dile al cliente que espere. El webhook te avisará cuando esté listo.</li>
+                <li><strong>Si <code>estado = "procesando"</code>:</strong> Consulta <code>/api/v1/recargas/status?merchant_ref=...</code> cada 20-60 segundos.</li>
                 <li><strong>Si hay error con <code>reembolsado = true</code>:</strong> Tu saldo ya fue devuelto. Informa al cliente.</li>
             </ol>
         </div>
@@ -811,12 +880,17 @@ Body: {"producto_id": 8, "id_juego": "987654321"}</pre>
 
             <div style="margin-bottom:1.2rem;">
                 <strong style="color:var(--text-primary);">¿Necesito webhook obligatoriamente?</strong>
-                <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">No. Es opcional pero recomendado. Sin webhook puedes consultar el estado de cada pedido con <code>GET /api/v1/pedido/:id</code>.</p>
+                <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">No. Es opcional. Sin webhook puedes consultar el estado de cada pedido con <code>GET /api/v1/recargas/status?merchant_ref=...</code> o por <code>pedido_id</code>.</p>
             </div>
 
             <div style="margin-bottom:0;">
                 <strong style="color:var(--text-primary);">¿Cuál es el límite de peticiones?</strong>
                 <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">No hay un límite estricto, pero evita hacer más de 60 peticiones por minuto. Si recibes error 429, espera unos segundos y reintenta.</p>
+            </div>
+
+            <div style="margin-top:1.2rem;">
+                <strong style="color:var(--text-primary);">¿Qué pasa si reutilizo el mismo merchant_ref?</strong>
+                <p style="color:var(--text-secondary); font-size:0.9rem; margin:0.3rem 0 0;">La API responde <code>409</code> para evitar pedidos duplicados. Usa referencias únicas por venta en tu sistema.</p>
             </div>
         </div>
 
