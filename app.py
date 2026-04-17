@@ -1718,12 +1718,19 @@ def comprar():
                 ref = resultado_api.get('referenceno', '')
                 es_giftcard_gp = (prod['categoria_tipo'] == 'giftcards')
                 codigo = resultado_api.get('item', '') if es_giftcard_gp else ''
-                estado_final = 'procesando' if es_manual else 'completado'
+                gp_status = str(resultado_api.get('status', '') or '').strip().lower()
+                if es_manual and gp_status == 'pending':
+                    estado_final = 'procesando'
+                else:
+                    estado_final = 'completado'
                 db2.execute("UPDATE pedidos SET estado = ?, nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ? WHERE id = ?", (estado_final, nombre_jugador or ref, codigo, ref, pedido_id))
                 db2.commit()
                 db2.close()
                 if es_manual:
-                    flash(f'Pedido #{pedido_id} enviado al proveedor (Ref: {ref}). Se confirmará automáticamente cuando el proveedor lo procese.', 'success')
+                    if estado_final == 'procesando':
+                        flash(f'Pedido #{pedido_id} enviado al proveedor (Ref: {ref}). Se confirmará automáticamente cuando el proveedor lo procese.', 'success')
+                    else:
+                        flash(f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador or id_juego} (Ref: {ref}).', 'success')
                 elif es_giftcard_gp and codigo:
                     flash(f'Pedido #{pedido_id} completado. Código: {codigo}', 'success')
                 else:
@@ -1731,8 +1738,17 @@ def comprar():
                 return redirect(url_for('pedido_detalle', id=pedido_id))
             else:
                 if es_manual:
-                    # Para recarga_manual, guardar referencia si existe
+                    # Para recarga_manual: si falló de forma final, cancelar y reembolsar.
+                    gp_status = str(resultado_api.get('status', '') or '').strip().lower()
                     ref = resultado_api.get('referenceno', '')
+                    if gp_status == 'failed':
+                        db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+                        db2.commit()
+                        db2.close()
+                        recargar_saldo(user_id, total, f"Reembolso: Error GamePoint pedido #{pedido_id}")
+                        error_msg = resultado_api.get('error', resultado_api.get('message', 'Pedido rechazado por proveedor'))
+                        flash(f'Pedido #{pedido_id} rechazado por proveedor ({error_msg}). Se reembolsó ${total:.4f} a tu cartera.', 'error')
+                        return redirect(url_for('pedido_detalle', id=pedido_id))
                     if ref:
                         db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
                     else:
@@ -3860,7 +3876,11 @@ def api_comprar():
                 ref = resultado_api.get('referenceno', '')
                 es_giftcard_gp = (prod['categoria_tipo'] == 'giftcards')
                 codigo = resultado_api.get('item', '') if es_giftcard_gp else ''
-                estado_final = 'procesando' if es_manual else 'completado'
+                gp_status = str(resultado_api.get('status', '') or '').strip().lower()
+                if es_manual and gp_status == 'pending':
+                    estado_final = 'procesando'
+                else:
+                    estado_final = 'completado'
                 db2.execute("UPDATE pedidos SET estado = ?, nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ? WHERE id = ?", (estado_final, nombre_jugador or ref, codigo, ref, pedido_id))
                 db2.commit()
                 db2.close()
@@ -3871,7 +3891,11 @@ def api_comprar():
                     'merchant_ref': merchant_ref,
                 }
                 if es_manual:
-                    resp['mensaje'] = f'Pedido enviado al proveedor (Ref: {ref}). Se confirmará automáticamente.'
+                    if estado_final == 'procesando':
+                        resp['mensaje'] = f'Pedido enviado al proveedor (Ref: {ref}). Se confirmará automáticamente.'
+                    else:
+                        resp['nombre_jugador'] = nombre_jugador
+                        resp['mensaje'] = f'Recarga completada para {nombre_jugador or id_juego} (Ref: {ref})'
                 elif es_giftcard_gp and codigo:
                     resp['codigo'] = codigo
                     resp['mensaje'] = f'Código entregado: {codigo}'
@@ -3891,7 +3915,22 @@ def api_comprar():
                 return jsonify(resp)
             else:
                 if es_manual:
+                    gp_status = str(resultado_api.get('status', '') or '').strip().lower()
                     ref = resultado_api.get('referenceno', '')
+                    if gp_status == 'failed':
+                        db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+                        db2.commit()
+                        db2.close()
+                        recargar_saldo(user_id_api, total, f"Reembolso API: Error GamePoint pedido #{pedido_id}")
+                        return jsonify({
+                            'ok': False,
+                            'error': resultado_api.get('error', resultado_api.get('message', 'Pedido rechazado por proveedor')),
+                            'pedido_id': pedido_id,
+                            'reembolsado': True,
+                            'saldo_restante': get_saldo(user_id_api),
+                            'referencia': ref,
+                            'merchant_ref': merchant_ref,
+                        }), 400
                     if ref:
                         db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
                     else:
