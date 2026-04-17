@@ -3660,13 +3660,32 @@ def api_productos():
 @api_key_required
 def api_comprar():
     user = request.api_user
-    data = request.get_json() or {}
+    data = request.get_json(silent=True) or {}
+    merchant_ref = str(data.get('merchant_ref') or data.get('referencia') or '').strip()
     producto_id = data.get('producto_id', 0)
     cantidad = data.get('cantidad', 1)
     id_juego = data.get('id_juego', '')
     input2 = data.get('input2', '')
 
+    if merchant_ref and len(merchant_ref) > 80:
+        return jsonify({'ok': False, 'error': 'merchant_ref demasiado largo (máx 80 chars)'}), 400
+
     db = get_db()
+    if merchant_ref:
+        pedido_existente = db.execute(
+            "SELECT id, estado FROM pedidos WHERE usuario_id = ? AND referencia_cliente = ? ORDER BY id DESC LIMIT 1",
+            (user['id'], merchant_ref),
+        ).fetchone()
+        if pedido_existente:
+            db.close()
+            return jsonify({
+                'ok': False,
+                'error': 'merchant_ref ya usado en otro pedido',
+                'pedido_id': int(pedido_existente['id']),
+                'estado': str(pedido_existente['estado'] or ''),
+                'merchant_ref': merchant_ref,
+            }), 409
+
     prod = db.execute("SELECT p.*, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
     if not prod:
         db.close()
@@ -3696,8 +3715,10 @@ def api_comprar():
         db.close()
         return jsonify({'ok': False, 'error': 'Saldo insuficiente', 'saldo': saldo, 'total': total}), 400
 
-    db.execute("INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, estado) VALUES (?,?,?,?,?,?)",
-               (user['id'], producto_id, cantidad, total, id_juego, 'procesando'))
+    db.execute(
+        "INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, estado, referencia_cliente) VALUES (?,?,?,?,?,?,?)",
+        (user['id'], producto_id, cantidad, total, id_juego, 'procesando', merchant_ref),
+    )
     pedido_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     db.execute("UPDATE transacciones SET pedido_id = ? WHERE id = (SELECT id FROM transacciones WHERE usuario_id = ? AND pedido_id IS NULL ORDER BY id DESC LIMIT 1)",
@@ -3724,8 +3745,8 @@ def api_comprar():
 
         db.close()
         order_id = f"APID{pedido_id}"
-        client_name = (user.get('nombre') or '').strip()
-        client_email = (user.get('email') or '').strip()
+        client_name = (dict(user).get('nombre', '') if user else '').strip()
+        client_email = (dict(user).get('email', '') if user else '').strip()
 
         try:
             auth = autorizar_pins(product_code, 1, order_id, client_name=client_name, client_email=client_email)
@@ -3796,6 +3817,7 @@ def api_comprar():
                 'cantidad': 1,
                 'codigo': codigos,
                 'referencia': tx_id,
+                'merchant_ref': merchant_ref,
                 'total': total,
                 'saldo_restante': get_saldo(user_id_api),
                 'mensaje': 'PIN entregado directamente desde PinCentral'
@@ -3846,6 +3868,7 @@ def api_comprar():
                     'ok': True, 'pedido_id': pedido_id, 'estado': estado_final,
                     'total': total, 'saldo_restante': get_saldo(user_id_api),
                     'referencia': ref,
+                    'merchant_ref': merchant_ref,
                 }
                 if es_manual:
                     resp['mensaje'] = f'Pedido enviado al proveedor (Ref: {ref}). Se confirmará automáticamente.'
@@ -3889,6 +3912,7 @@ def api_comprar():
                         'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando',
                         'total': total, 'saldo_restante': get_saldo(user_id_api),
                         'referencia': ref,
+                        'merchant_ref': merchant_ref,
                         'mensaje': 'Pedido enviado pero respuesta incierta. Se verificará automáticamente.'
                     })
                 else:
@@ -3919,6 +3943,7 @@ def api_comprar():
                 return jsonify({
                     'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando',
                     'total': total, 'saldo_restante': get_saldo(user_id_api),
+                    'merchant_ref': merchant_ref,
                     'mensaje': 'Pedido enviado pero hubo error de conexión. Se verificará automáticamente.'
                 })
             else:
@@ -3956,6 +3981,7 @@ def api_comprar():
             'ok': True,
             'pedido_id': pedido_id,
             'estado': 'pendiente',
+            'merchant_ref': merchant_ref,
             'saldo_restante': get_saldo(user_id_api),
             'mensaje': 'Recarga en segundo plano. Consulta el pedido para ver si fue aprobado o rechazado.'
         })
@@ -3985,6 +4011,7 @@ def api_comprar():
             'ok': True,
             'pedido_id': pedido_id,
             'estado': 'pendiente',
+            'merchant_ref': merchant_ref,
             'saldo_restante': get_saldo(user_id_api),
             'mensaje': 'Recarga Delta Force en segundo plano. Consulta el pedido para ver si fue aprobado o rechazado.'
         })
@@ -4014,6 +4041,7 @@ def api_comprar():
             'ok': True,
             'pedido_id': pedido_id,
             'estado': 'pendiente',
+            'merchant_ref': merchant_ref,
             'saldo_restante': get_saldo(user_id_api),
             'mensaje': 'Pedido PinCentral en segundo plano. Consulta el pedido para ver códigos entregados.'
         })
@@ -4231,6 +4259,7 @@ def api_comprar():
     return jsonify({
         'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
         'total': total, 'saldo_restante': nuevo_saldo,
+        'merchant_ref': merchant_ref,
         'nombre_jugador': nombre_jugador,
         'mensaje': f'Recarga completada para {nombre_jugador} (ID: {id_juego})' if nombre_jugador else f'Pedido #{pedido_id} creado'
     })
@@ -4241,7 +4270,7 @@ def api_comprar():
 def api_pedidos():
     user = request.api_user
     db = get_db()
-    pedidos = db.execute("SELECT p.id, p.cantidad, p.total, p.id_juego, p.nombre_jugador, p.codigo_entregado, p.estado, p.fecha_pedido, pr.nombre as producto FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC LIMIT 50", (user['id'],)).fetchall()
+    pedidos = db.execute("SELECT p.id, p.cantidad, p.total, p.id_juego, p.nombre_jugador, p.codigo_entregado, p.estado, p.referencia_externa, p.referencia_cliente, p.fecha_pedido, pr.nombre as producto FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC LIMIT 50", (user['id'],)).fetchall()
     db.close()
     return jsonify({'ok': True, 'pedidos': [dict(p) for p in pedidos]})
 
@@ -4251,11 +4280,75 @@ def api_pedidos():
 def api_pedido_detalle(pedido_id):
     user = request.api_user
     db = get_db()
-    pedido = db.execute("SELECT p.id, p.cantidad, p.total, p.id_juego, p.nombre_jugador, p.codigo_entregado, p.estado, p.fecha_pedido, pr.nombre as producto FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.id = ? AND p.usuario_id = ?", (pedido_id, user['id'])).fetchone()
+    pedido = db.execute("SELECT p.id, p.cantidad, p.total, p.id_juego, p.nombre_jugador, p.codigo_entregado, p.estado, p.referencia_externa, p.referencia_cliente, p.fecha_pedido, pr.nombre as producto FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.id = ? AND p.usuario_id = ?", (pedido_id, user['id'])).fetchone()
     db.close()
     if not pedido:
         return jsonify({'ok': False, 'error': 'Pedido no encontrado'}), 404
     return jsonify({'ok': True, 'pedido': dict(pedido)})
+
+
+@app.route('/api/v1/recargas/status', methods=['GET'])
+@api_key_required
+def api_recarga_status_por_referencia():
+    user = request.api_user
+    merchant_ref = str(request.args.get('merchant_ref', '') or '').strip()
+    pedido_id_raw = str(request.args.get('pedido_id', '') or '').strip()
+
+    pedido_id = 0
+    if pedido_id_raw:
+        try:
+            pedido_id = int(pedido_id_raw)
+        except ValueError:
+            return jsonify({'ok': False, 'error': 'pedido_id inválido'}), 400
+
+    if not merchant_ref and pedido_id <= 0:
+        return jsonify({'ok': False, 'error': 'Debes enviar merchant_ref o pedido_id'}), 400
+
+    db = get_db()
+    try:
+        if merchant_ref:
+            pedido = db.execute(
+                "SELECT p.id, p.usuario_id, p.cantidad, p.total, p.id_juego, p.nombre_jugador, p.codigo_entregado, p.estado, p.referencia_externa, p.referencia_cliente, p.fecha_pedido, pr.nombre as producto "
+                "FROM pedidos p JOIN productos pr ON pr.id = p.producto_id "
+                "WHERE p.usuario_id = ? AND p.referencia_cliente = ? ORDER BY p.id DESC LIMIT 1",
+                (user['id'], merchant_ref),
+            ).fetchone()
+        else:
+            pedido = db.execute(
+                "SELECT p.id, p.usuario_id, p.cantidad, p.total, p.id_juego, p.nombre_jugador, p.codigo_entregado, p.estado, p.referencia_externa, p.referencia_cliente, p.fecha_pedido, pr.nombre as producto "
+                "FROM pedidos p JOIN productos pr ON pr.id = p.producto_id "
+                "WHERE p.usuario_id = ? AND p.id = ? LIMIT 1",
+                (user['id'], pedido_id),
+            ).fetchone()
+    finally:
+        db.close()
+
+    if not pedido:
+        return jsonify({'ok': False, 'error': 'Pedido no encontrado'}), 404
+
+    estado_interno = str(pedido['estado'] or '').strip().lower()
+    estado_api = {
+        'pendiente': 'pending',
+        'procesando': 'processing',
+        'completado': 'completed',
+        'cancelado': 'failed',
+    }.get(estado_interno, 'processing')
+
+    return jsonify({
+        'ok': True,
+        'pedido_id': int(pedido['id']),
+        'merchant_ref': str(pedido['referencia_cliente'] or ''),
+        'status': estado_api,
+        'estado': estado_interno,
+        'producto': str(pedido['producto'] or ''),
+        'id_juego': str(pedido['id_juego'] or ''),
+        'nombre_jugador': str(pedido['nombre_jugador'] or ''),
+        'codigo': str(pedido['codigo_entregado'] or ''),
+        'referencia': str(pedido['referencia_externa'] or ''),
+        'cantidad': int(pedido['cantidad'] or 0),
+        'total': float(pedido['total'] or 0),
+        'fecha': str(pedido['fecha_pedido'] or ''),
+    })
 
 
 @app.route('/api/v1/transacciones', methods=['GET'])

@@ -156,6 +156,7 @@ def init_db():
             id_juego TEXT,
             nombre_jugador TEXT,
             codigo_entregado TEXT DEFAULT '',
+            referencia_cliente TEXT DEFAULT '',
             estado TEXT DEFAULT 'pendiente' CHECK(estado IN ('pendiente', 'procesando', 'completado', 'cancelado')),
             fecha_pedido TEXT DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
@@ -211,6 +212,11 @@ def init_db():
         db.execute("SELECT referencia_externa FROM pedidos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE pedidos ADD COLUMN referencia_externa TEXT DEFAULT ''")
+    try:
+        db.execute("SELECT referencia_cliente FROM pedidos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE pedidos ADD COLUMN referencia_cliente TEXT DEFAULT ''")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pedidos_usuario_ref_cliente ON pedidos(usuario_id, referencia_cliente)")
     try:
         db.execute("SELECT recarga_manual FROM productos LIMIT 1")
     except Exception:
