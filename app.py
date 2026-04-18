@@ -3456,11 +3456,13 @@ def admin_almacen():
         params.append(int(filtro))
     if q:
         like_q = f"%{q}%"
+        q_pin_hash = pin_hash(q)
         where_clauses.append(
             "(CAST(pi.id AS TEXT) LIKE ? OR pr.nombre LIKE ? OR pi.estado LIKE ? OR "
-            "IFNULL(pi.usado_por, '') LIKE ? OR IFNULL(pi.fecha_agregado, '') LIKE ? OR IFNULL(pi.pedido_id, '') LIKE ?)"
+            "IFNULL(pi.usado_por, '') LIKE ? OR IFNULL(pi.fecha_agregado, '') LIKE ? OR IFNULL(pi.pedido_id, '') LIKE ? "
+            "OR pi.pin_hash = ?)"
         )
-        params.extend([like_q, like_q, like_q, like_q, like_q, like_q])
+        params.extend([like_q, like_q, like_q, like_q, like_q, like_q, q_pin_hash])
     where_sql = f" WHERE {' AND '.join(where_clauses)}" if where_clauses else ''
 
     total_pines = db.execute(

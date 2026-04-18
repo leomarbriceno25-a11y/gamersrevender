@@ -120,7 +120,7 @@
                 {% if filtro %}
                 <input type="hidden" name="producto_id" value="{{ filtro }}">
                 {% endif %}
-                <input type="text" name="q" value="{{ q or '' }}" class="form-input" placeholder="Buscar por # de PIN, producto, estado, usado por, fecha..." style="max-width:500px;">
+                <input type="text" name="q" value="{{ q or '' }}" class="form-input" placeholder="Buscar por PIN exacto, # de PIN, producto, estado, usado por, fecha..." style="max-width:500px;">
                 <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-search"></i> Buscar</button>
                 {% if q %}
                 {% if filtro %}
