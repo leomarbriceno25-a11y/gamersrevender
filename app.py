@@ -423,8 +423,6 @@ def _pincentral_limpiar_incidentes_tx(tx_id):
 
 
 def _pincentral_procesar_cola_capturas(max_items=None):
-    from pincentral_api import capturar_pins
-
     now = int(time.time())
     limit = max(1, int(max_items or PINCENTRAL_CAPTURE_QUEUE_BATCH_SIZE))
     db = get_db()
@@ -448,11 +446,7 @@ def _pincentral_procesar_cola_capturas(max_items=None):
         attempts = int(row['attempts'] or 0)
         created_ts = int(row['created_ts'] or now)
 
-        cap = capturar_pins(tx_id)
-        cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
-        cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
-        pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
-        cap_error = cap.get('error') or cap_data.get('message') or ''
+        cap, cap_data, cap_status, pins, cap_error = _pincentral_capture_con_fallback(tx_id)
 
         capture_ok = bool(cap.get('ok')) and _pincentral_capturado(cap_status) and bool(pins)
         if capture_ok:
@@ -509,8 +503,6 @@ def _pincentral_procesar_cola_capturas(max_items=None):
 
 
 def _pincentral_restock_deferred_capture_retry(producto_id, codigo, order_id, tx_id):
-    from pincentral_api import capturar_pins
-
     time.sleep(max(1, int(PINCENTRAL_RESTOCK_CAPTURE_DEFER_RETRY_SECONDS or 20)))
 
     cap = None
@@ -522,11 +514,7 @@ def _pincentral_restock_deferred_capture_retry(producto_id, codigo, order_id, tx
 
     max_attempts = max(1, int(PINCENTRAL_RESTOCK_CAPTURE_MAX_ATTEMPTS or 1))
     for intento in range(1, max_attempts + 1):
-        cap = capturar_pins(tx_id)
-        cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
-        cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
-        pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
-        cap_error = cap.get('error') or cap_data.get('message') or ''
+        cap, cap_data, cap_status, pins, cap_error = _pincentral_capture_con_fallback(tx_id)
 
         capture_ok = bool(cap.get('ok')) and _pincentral_capturado(cap_status) and bool(pins)
         if capture_ok:
@@ -572,7 +560,7 @@ def _pincentral_restock_deferred_capture_retry(producto_id, codigo, order_id, tx
 
 def restock_pincentral_almacen(producto_id):
     """Reabastece pines desde PinCentral cuando el stock local baja del mínimo."""
-    from pincentral_api import autorizar_pins, capturar_pins
+    from pincentral_api import autorizar_pins
 
     with PINCENTRAL_RESTOCK_LOCK:
         db = get_db()
@@ -669,11 +657,7 @@ def restock_pincentral_almacen(producto_id):
 
             max_attempts = max(1, int(PINCENTRAL_RESTOCK_CAPTURE_MAX_ATTEMPTS or 1))
             for intento in range(1, max_attempts + 1):
-                cap = capturar_pins(tx_id)
-                cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
-                cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
-                pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
-                cap_error = cap.get('error') or cap_data.get('message') or ''
+                cap, cap_data, cap_status, pins, cap_error = _pincentral_capture_con_fallback(tx_id)
 
                 capture_ok = bool(cap.get('ok')) and _pincentral_capturado(cap_status) and bool(pins)
                 if capture_ok:
@@ -1055,11 +1039,39 @@ def _pincentral_capture_retryable(status, error_msg=''):
     st = _pincentral_status_normalizado(status)
     msg = str(error_msg or '').strip().lower()
     return (
-        st in {'error', 'failed', 'pending', 'procesando'}
+        st in {'error', 'failed', 'pending', 'procesando', 'authorized', 'autorizado', 'created', 'retry'}
         or 'too many attempts' in msg
         or 'too many request' in msg
         or 'rate limit' in msg
     )
+
+
+def _pincentral_capture_con_fallback(tx_id):
+    from pincentral_api import capturar_pins, consultar_pedido_pin
+
+    tx = str(tx_id or '').strip()
+    cap = capturar_pins(tx)
+    cap_data = cap.get('data', {}) if isinstance(cap.get('data', {}), dict) else {}
+    cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
+    pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
+    cap_error = cap.get('error') or cap_data.get('message') or ''
+
+    capture_ok = bool(cap.get('ok')) and _pincentral_capturado(cap_status) and bool(pins)
+    if capture_ok:
+        return cap, cap_data, cap_status, pins, cap_error
+
+    pedido = consultar_pedido_pin(tx)
+    pedido_data = pedido.get('data', {}) if isinstance(pedido.get('data', {}), dict) else {}
+    if pedido_data or pedido.get('ok'):
+        cap = pedido
+        cap_data = pedido_data
+        cap_status = _pincentral_status_normalizado(cap_data.get('status', ''))
+        pins = cap_data.get('pins', []) if isinstance(cap_data.get('pins', []), list) else []
+        pedido_error = pedido.get('error') or cap_data.get('message') or ''
+        if pedido_error:
+            cap_error = pedido_error
+
+    return cap, cap_data, cap_status, pins, cap_error
 
 
 def _registrar_incidente_pincentral(

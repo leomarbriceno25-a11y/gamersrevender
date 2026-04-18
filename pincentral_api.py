@@ -107,3 +107,8 @@ def autorizar_pins(product_code, quantity, order_id, client_name='', client_emai
 
 def capturar_pins(transaction_id):
     return _request('POST', '/api/pins/capture', {'id': str(transaction_id).strip()})
+
+
+def consultar_pedido_pin(transaction_id):
+    tx_id = str(transaction_id or '').strip()
+    return _request('GET', f"/api/pins/{tx_id}")
