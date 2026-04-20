@@ -150,12 +150,11 @@ def _verificar_pago_binance_solicitud(db, sol):
         return {'ok': False, 'error': api.get('error') or 'No se pudo consultar API Binance.'}
 
     match = None
+    moneda_no_usdt_detectada = None
     for mov in api.get('movimientos', []):
         if not isinstance(mov, dict):
             continue
         if str(mov.get('tipo', '')).strip().lower() != 'credito':
-            continue
-        if str(mov.get('moneda', '')).strip().upper() != 'USDT':
             continue
 
         referencia_full = str(mov.get('referencia', '') or '').strip()
@@ -170,6 +169,11 @@ def _verificar_pago_binance_solicitud(db, sol):
         if monto_mov != monto_objetivo:
             continue
 
+        moneda_mov = str(mov.get('moneda', '') or '').strip().upper()
+        if moneda_mov != 'USDT':
+            moneda_no_usdt_detectada = moneda_mov or 'DESCONOCIDA'
+            continue
+
         match = {
             'referencia_full': referencia_full,
             'referencia_suffix8': suffix8,
@@ -177,6 +181,12 @@ def _verificar_pago_binance_solicitud(db, sol):
             'fecha': str(mov.get('fecha', '') or ''),
         }
         break
+
+    if moneda_no_usdt_detectada and not match:
+        return {
+            'ok': False,
+            'error': f'Se encontró movimiento con referencia *{suffix8} y monto {monto_objetivo}, pero en moneda {moneda_no_usdt_detectada}. Solo se acepta USDT.',
+        }
 
     if not match:
         return {
