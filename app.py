@@ -3540,6 +3540,10 @@ def admin_almacen_ver_pin(pin_id):
 def admin_pedidos():
     db = get_db()
     q = request.args.get('q', '').strip()
+    estado = request.args.get('estado', '').strip().lower()
+    estados_validos = {'pendiente', 'procesando', 'completado', 'cancelado'}
+    if estado not in estados_validos:
+        estado = ''
     try:
         page = int(request.args.get('page', '1'))
     except (ValueError, TypeError):
@@ -3549,16 +3553,24 @@ def admin_pedidos():
     per_page = 20
     offset = (page - 1) * per_page
 
-    where_sql = ''
+    where_clauses = []
     params = []
+    if estado:
+        where_clauses.append("p.estado = ?")
+        params.append(estado)
+
     if q:
         like_q = f"%{q}%"
-        where_sql = (
-            " WHERE (CAST(p.id AS TEXT) LIKE ? OR u.nombre LIKE ? OR pr.nombre LIKE ? OR "
+        where_clauses.append(
+            "(CAST(p.id AS TEXT) LIKE ? OR u.nombre LIKE ? OR pr.nombre LIKE ? OR "
             "IFNULL(p.id_juego, '') LIKE ? OR IFNULL(p.codigo_entregado, '') LIKE ? OR "
             "IFNULL(p.referencia_externa, '') LIKE ? OR p.estado LIKE ?)"
         )
-        params = [like_q, like_q, like_q, like_q, like_q, like_q, like_q]
+        params.extend([like_q, like_q, like_q, like_q, like_q, like_q, like_q])
+
+    where_sql = ''
+    if where_clauses:
+        where_sql = ' WHERE ' + ' AND '.join(where_clauses)
 
     total_pedidos = db.execute(
         "SELECT COUNT(*) as c FROM pedidos p "
@@ -3598,6 +3610,7 @@ def admin_pedidos():
         pedidos=pedidos,
         pines_por_pedido=pines_por_pedido,
         q=q,
+        estado=estado,
         page=page,
         per_page=per_page,
         total_pedidos=total_pedidos,

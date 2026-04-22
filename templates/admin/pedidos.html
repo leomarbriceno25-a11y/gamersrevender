@@ -19,8 +19,15 @@
         <div style="margin-bottom:1rem;">
             <form method="GET" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
                 <input type="text" name="q" value="{{ q or '' }}" class="form-input" placeholder="Buscar por #, usuario, producto, ID juego, referencia, código, estado..." style="max-width:500px;">
+                <select name="estado" class="form-select" style="max-width:220px;">
+                    <option value="">Todos los estados</option>
+                    <option value="completado" {{ 'selected' if estado == 'completado' }}>Aprobados</option>
+                    <option value="cancelado" {{ 'selected' if estado == 'cancelado' }}>Rechazados / Cancelados</option>
+                    <option value="procesando" {{ 'selected' if estado == 'procesando' }}>Procesando</option>
+                    <option value="pendiente" {{ 'selected' if estado == 'pendiente' }}>Pendiente</option>
+                </select>
                 <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-search"></i> Buscar</button>
-                {% if q %}
+                {% if q or estado %}
                 <a href="{{ url_for('admin_pedidos') }}" class="btn btn-secondary btn-sm"><i class="fas fa-times"></i> Limpiar</a>
                 {% endif %}
             </form>
@@ -84,10 +91,10 @@
             </div>
             <div style="display:flex; gap:0.5rem;">
                 {% if has_prev %}
-                <a href="{{ url_for('admin_pedidos', page=page-1, q=q) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
+                <a href="{{ url_for('admin_pedidos', page=page-1, q=q, estado=estado) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
                 {% endif %}
                 {% if has_more %}
-                <a href="{{ url_for('admin_pedidos', page=page+1, q=q) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
+                <a href="{{ url_for('admin_pedidos', page=page+1, q=q, estado=estado) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
                 {% endif %}
             </div>
         </div>
