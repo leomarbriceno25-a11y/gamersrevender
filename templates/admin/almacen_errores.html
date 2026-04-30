@@ -54,11 +54,21 @@
                                 <i class="fas fa-eye"></i> Ver PIN
                             </button>
                             <form method="POST" style="display:inline;">
+                                <input type="hidden" name="accion" value="disponible">
                                 <input type="hidden" name="pin_id" value="{{ pin.id }}">
                                 <input type="hidden" name="q" value="{{ q or '' }}">
                                 <input type="hidden" name="page" value="{{ page }}">
                                 <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('¿Marcar PIN #{{ pin.id }} como disponible nuevamente?')">
                                     <i class="fas fa-rotate-left"></i> Disponible
+                                </button>
+                            </form>
+                            <form method="POST" style="display:inline; margin-left:0.25rem;">
+                                <input type="hidden" name="accion" value="eliminar">
+                                <input type="hidden" name="pin_id" value="{{ pin.id }}">
+                                <input type="hidden" name="q" value="{{ q or '' }}">
+                                <input type="hidden" name="page" value="{{ page }}">
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('¿Eliminar PIN #{{ pin.id }} de forma permanente?')">
+                                    <i class="fas fa-trash"></i> Eliminar
                                 </button>
                             </form>
                         </td>

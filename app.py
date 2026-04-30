@@ -3536,16 +3536,22 @@ def admin_almacen_errores():
     db = get_db()
 
     if request.method == 'POST':
+        accion = request.form.get('accion', 'disponible').strip().lower()
         pin_id = int(request.form.get('pin_id', 0))
         if pin_id > 0:
             row = db.execute("SELECT id FROM pines WHERE id = ? AND estado = 'error'", (pin_id,)).fetchone()
             if row:
-                db.execute(
-                    "UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?",
-                    (pin_id,),
-                )
-                db.commit()
-                flash(f'PIN #{pin_id} marcado nuevamente como disponible', 'success')
+                if accion == 'eliminar':
+                    db.execute("DELETE FROM pines WHERE id = ? AND estado = 'error'", (pin_id,))
+                    db.commit()
+                    flash(f'PIN #{pin_id} eliminado del almacén de errores', 'success')
+                else:
+                    db.execute(
+                        "UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?",
+                        (pin_id,),
+                    )
+                    db.commit()
+                    flash(f'PIN #{pin_id} marcado nuevamente como disponible', 'success')
             else:
                 flash('PIN no encontrado en estado error', 'error')
         else:
