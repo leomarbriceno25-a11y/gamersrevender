@@ -1,0 +1,140 @@
+{% extends 'base.html' %}
+{% block title %}PINes en Error - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_almacen') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Almacén</a>
+        <h1><i class="fas fa-triangle-exclamation"></i> PINes en Error</h1>
+        <p>Revisa PINes marcados como error y vuelve a ponerlos disponibles manualmente.</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-bottom:0.8rem;">
+            <h2 class="section-title" style="margin:0;"><i class="fas fa-key"></i> Listado ({{ total_pines }})</h2>
+            <a href="{{ url_for('admin_almacen') }}" class="btn btn-secondary btn-sm"><i class="fas fa-warehouse"></i> Volver al almacén</a>
+        </div>
+
+        <div style="margin-bottom:1rem;">
+            <form method="GET" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+                <input type="text" name="q" value="{{ q or '' }}" class="form-input" placeholder="Buscar por # PIN, producto, usado por, fecha, pedido o PIN exacto..." style="max-width:520px;">
+                <button type="submit" class="btn btn-secondary btn-sm"><i class="fas fa-search"></i> Buscar</button>
+                {% if q %}
+                <a href="{{ url_for('admin_almacen_errores') }}" class="btn btn-secondary btn-sm"><i class="fas fa-times"></i> Limpiar</a>
+                {% endif %}
+            </form>
+        </div>
+
+        {% if pines %}
+        <div class="table-responsive">
+            <table class="table" id="tablaPinesError">
+                <thead>
+                    <tr><th>ID</th><th>Producto</th><th>PIN</th><th>Estado</th><th>Usado por</th><th>Pedido</th><th>Fecha</th><th>Acciones</th></tr>
+                </thead>
+                <tbody>
+                    {% for pin in pines %}
+                    <tr>
+                        <td>{{ pin.id }}</td>
+                        <td>{{ pin.producto_nombre }}</td>
+                        <td>
+                            <code
+                                id="pin-mask-{{ pin.id }}"
+                                data-pin-id="{{ pin.id }}"
+                                data-pin-mask="{{ pin.pin_mask }}"
+                                style="background:var(--bg-primary);padding:0.2rem 0.5rem;border-radius:4px;font-size:0.8rem;"
+                            >{{ pin.pin_mask }}</code>
+                        </td>
+                        <td><span class="badge badge-cancelado"><i class="fas fa-times"></i> Error</span></td>
+                        <td>{{ pin.usado_por or '-' }}</td>
+                        <td>{{ pin.pedido_id or '-' }}</td>
+                        <td>{{ pin.fecha_usado or pin.fecha_agregado or '-' }}</td>
+                        <td>
+                            <button type="button" class="btn btn-sm btn-secondary btn-ver-pin" data-pin-id="{{ pin.id }}" data-revealed="0" style="margin-right:0.35rem;">
+                                <i class="fas fa-eye"></i> Ver PIN
+                            </button>
+                            <form method="POST" style="display:inline;">
+                                <input type="hidden" name="pin_id" value="{{ pin.id }}">
+                                <input type="hidden" name="q" value="{{ q or '' }}">
+                                <input type="hidden" name="page" value="{{ page }}">
+                                <button type="submit" class="btn btn-sm btn-primary" onclick="return confirm('¿Marcar PIN #{{ pin.id }} como disponible nuevamente?')">
+                                    <i class="fas fa-rotate-left"></i> Disponible
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-top:1rem;">
+            <div style="font-size:0.85rem; color:var(--text-secondary);">
+                Mostrando {{ ((page - 1) * per_page) + 1 }} - {{ ((page - 1) * per_page) + (pines|length) }} de {{ total_pines }} PINes en error
+            </div>
+            <div style="display:flex; gap:0.5rem;">
+                {% if has_prev %}
+                <a href="{{ url_for('admin_almacen_errores', page=page-1, q=q) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
+                {% endif %}
+                {% if has_more %}
+                <a href="{{ url_for('admin_almacen_errores', page=page+1, q=q) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-circle-check"></i>
+            <h2>Sin PINes en error</h2>
+            <p>No hay PINes marcados con estado error en este momento.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+
+<script>
+document.addEventListener('click', async function (e) {
+    const btn = e.target.closest('.btn-ver-pin');
+    if (!btn) return;
+
+    const pinId = btn.dataset.pinId;
+    const codeEl = document.getElementById(`pin-mask-${pinId}`);
+    if (!codeEl) return;
+
+    const isRevealed = btn.dataset.revealed === '1';
+    if (isRevealed) {
+        codeEl.textContent = codeEl.dataset.pinMask || '***';
+        btn.dataset.revealed = '0';
+        btn.innerHTML = '<i class="fas fa-eye"></i> Ver PIN';
+        return;
+    }
+
+    if (btn.dataset.pinReal) {
+        codeEl.textContent = btn.dataset.pinReal;
+        btn.dataset.revealed = '1';
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i> Ocultar';
+        return;
+    }
+
+    btn.disabled = true;
+    const oldHtml = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Cargando';
+    try {
+        const res = await fetch(`/admin/almacen/pin/${pinId}`);
+        const data = await res.json();
+        if (!res.ok || !data.ok) {
+            alert(data.error || 'No se pudo obtener el PIN');
+            return;
+        }
+        btn.dataset.pinReal = data.pin || '';
+        codeEl.textContent = data.pin || '***';
+        btn.dataset.revealed = '1';
+        btn.innerHTML = '<i class="fas fa-eye-slash"></i> Ocultar';
+    } catch (err) {
+        alert('Error de red al consultar el PIN');
+        btn.innerHTML = oldHtml;
+    } finally {
+        btn.disabled = false;
+    }
+});
+</script>
+{% endblock %}

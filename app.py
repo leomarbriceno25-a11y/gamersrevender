@@ -3530,6 +3530,92 @@ def admin_almacen():
     )
 
 
+@app.route('/admin/almacen/errores', methods=['GET', 'POST'])
+@admin_required
+def admin_almacen_errores():
+    db = get_db()
+
+    if request.method == 'POST':
+        pin_id = int(request.form.get('pin_id', 0))
+        if pin_id > 0:
+            row = db.execute("SELECT id FROM pines WHERE id = ? AND estado = 'error'", (pin_id,)).fetchone()
+            if row:
+                db.execute(
+                    "UPDATE pines SET estado = 'disponible', usado_por = NULL, pedido_id = NULL, fecha_usado = NULL WHERE id = ?",
+                    (pin_id,),
+                )
+                db.commit()
+                flash(f'PIN #{pin_id} marcado nuevamente como disponible', 'success')
+            else:
+                flash('PIN no encontrado en estado error', 'error')
+        else:
+            flash('PIN inválido', 'error')
+
+        q_back = request.form.get('q', '').strip()
+        try:
+            page_back = int(request.form.get('page', '1'))
+        except (ValueError, TypeError):
+            page_back = 1
+        db.close()
+        return redirect(url_for('admin_almacen_errores', q=q_back, page=page_back))
+
+    q = request.args.get('q', '').strip()
+    try:
+        page = int(request.args.get('page', '1'))
+    except (ValueError, TypeError):
+        page = 1
+    if page < 1:
+        page = 1
+    per_page = 30
+    offset = (page - 1) * per_page
+
+    where_clauses = ["pi.estado = 'error'"]
+    params = []
+    if q:
+        like_q = f"%{q}%"
+        q_pin_hash = pin_hash(q)
+        where_clauses.append(
+            "(CAST(pi.id AS TEXT) LIKE ? OR pr.nombre LIKE ? OR IFNULL(pi.usado_por, '') LIKE ? OR "
+            "IFNULL(pi.fecha_agregado, '') LIKE ? OR IFNULL(pi.fecha_usado, '') LIKE ? OR IFNULL(pi.pedido_id, '') LIKE ? OR pi.pin_hash = ?)"
+        )
+        params.extend([like_q, like_q, like_q, like_q, like_q, like_q, q_pin_hash])
+
+    where_sql = ' WHERE ' + ' AND '.join(where_clauses)
+
+    total_pines = db.execute(
+        "SELECT COUNT(*) as c FROM pines pi JOIN productos pr ON pi.producto_id = pr.id" + where_sql,
+        tuple(params),
+    ).fetchone()['c']
+
+    pines = db.execute(
+        "SELECT pi.*, pr.nombre as producto_nombre "
+        "FROM pines pi JOIN productos pr ON pi.producto_id = pr.id" + where_sql +
+        " ORDER BY IFNULL(pi.fecha_usado, pi.fecha_agregado) DESC LIMIT ? OFFSET ?",
+        tuple(params + [per_page, offset]),
+    ).fetchall()
+
+    pines_seg = []
+    for pin_row in pines:
+        p = dict(pin_row)
+        p['pin_mask'] = mask_pin(p.get('pin', ''))
+        pines_seg.append(p)
+
+    has_prev = page > 1
+    has_more = (offset + len(pines_seg)) < total_pines
+
+    db.close()
+    return render_template(
+        'admin/almacen_errores.html',
+        pines=pines_seg,
+        q=q,
+        page=page,
+        per_page=per_page,
+        total_pines=total_pines,
+        has_prev=has_prev,
+        has_more=has_more,
+    )
+
+
 @app.route('/admin/almacen/pin/<int:pin_id>', methods=['GET'])
 @admin_required
 def admin_almacen_ver_pin(pin_id):
