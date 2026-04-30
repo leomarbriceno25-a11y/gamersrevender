@@ -1949,20 +1949,31 @@ def comprar():
         canjes_ok = 0
         nombre_jugador = ''
         error_msg = ''
+        max_intentos_pin_error = 3
         for i, pin_code in enumerate(pin_codes):
             try:
-                resultado_api = canjear_pin_completo(pin_code, id_juego, monto_api)
-                _registrar_auditoria_recarga(
-                    pedido_id=pedido_id,
-                    usuario_id=user_id,
-                    producto_id=producto_id,
-                    proveedor='hype',
-                    etapa=f'canje_{i + 1}',
-                    estado='ok' if resultado_api.get('ok') else 'error',
-                    detalle=resultado_api.get('error', resultado_api.get('mensaje', '')),
-                    referencia=str(resultado_api.get('reference', '') or ''),
-                    payload=resultado_api,
-                )
+                resultado_api = None
+                for intento in range(1, max_intentos_pin_error + 1):
+                    resultado_api = canjear_pin_completo(pin_code, id_juego, monto_api)
+                    etapa_auditoria = f'canje_{i + 1}_try_{intento}'
+                    _registrar_auditoria_recarga(
+                        pedido_id=pedido_id,
+                        usuario_id=user_id,
+                        producto_id=producto_id,
+                        proveedor='hype',
+                        etapa=etapa_auditoria,
+                        estado='ok' if resultado_api.get('ok') else 'error',
+                        detalle=resultado_api.get('error', resultado_api.get('mensaje', '')),
+                        referencia=str(resultado_api.get('reference', '') or ''),
+                        payload=resultado_api,
+                    )
+                    if resultado_api.get('ok'):
+                        break
+                    if not bool(resultado_api.get('pin_error')):
+                        break
+                    if intento < max_intentos_pin_error:
+                        continue
+
                 if resultado_api.get('ok'):
                     canjes_ok += 1
                     nombre_jugador = resultado_api.get('username', '') or nombre_jugador
@@ -1975,14 +1986,9 @@ def comprar():
                             pedido_id=pedido_id,
                             id_juego=id_juego,
                             pin_code=pin_code,
-                            motivo=resultado_api.get('error', 'Error del proveedor Hype'),
+                            motivo=f"{resultado_api.get('error', 'Error del proveedor Hype')} (tras {max_intentos_pin_error} intentos con el mismo PIN)",
                         )
-                        reemplazo = _reservar_pin_reemplazo_hype(pin_producto_id, pedido_id, user_id)
-                        if reemplazo:
-                            pin_ids.append(reemplazo['id'])
-                            pin_codes.append(reemplazo['pin_code'])
-                            continue
-                        error_msg = f"{resultado_api.get('error', 'Error en canje')} | Sin PIN de reemplazo disponible"
+                        error_msg = f"{resultado_api.get('error', 'Error en canje')} | Falló tras {max_intentos_pin_error} intentos con el mismo PIN"
                         break
 
                     db_fix = get_db()
@@ -4183,20 +4189,31 @@ def api_comprar():
         canjes_ok = 0
         nombre_jugador = ''
         error_msg = ''
+        max_intentos_pin_error = 3
         for i, pin_code in enumerate(pin_codes):
             try:
-                resultado_api = canjear_pin_completo(pin_code, id_juego, monto_api)
-                _registrar_auditoria_recarga(
-                    pedido_id=pedido_id,
-                    usuario_id=user_id_api,
-                    producto_id=producto_id,
-                    proveedor='hype',
-                    etapa=f'canje_{i + 1}',
-                    estado='ok' if resultado_api.get('ok') else 'error',
-                    detalle=resultado_api.get('error', resultado_api.get('mensaje', '')),
-                    referencia=str(resultado_api.get('reference', '') or ''),
-                    payload=resultado_api,
-                )
+                resultado_api = None
+                for intento in range(1, max_intentos_pin_error + 1):
+                    resultado_api = canjear_pin_completo(pin_code, id_juego, monto_api)
+                    etapa_auditoria = f'canje_{i + 1}_try_{intento}'
+                    _registrar_auditoria_recarga(
+                        pedido_id=pedido_id,
+                        usuario_id=user_id_api,
+                        producto_id=producto_id,
+                        proveedor='hype',
+                        etapa=etapa_auditoria,
+                        estado='ok' if resultado_api.get('ok') else 'error',
+                        detalle=resultado_api.get('error', resultado_api.get('mensaje', '')),
+                        referencia=str(resultado_api.get('reference', '') or ''),
+                        payload=resultado_api,
+                    )
+                    if resultado_api.get('ok'):
+                        break
+                    if not bool(resultado_api.get('pin_error')):
+                        break
+                    if intento < max_intentos_pin_error:
+                        continue
+
                 if resultado_api.get('ok'):
                     canjes_ok += 1
                     nombre_jugador = resultado_api.get('username', '') or nombre_jugador
@@ -4209,14 +4226,9 @@ def api_comprar():
                             pedido_id=pedido_id,
                             id_juego=id_juego,
                             pin_code=pin_code,
-                            motivo=resultado_api.get('error', 'Error del proveedor Hype'),
+                            motivo=f"{resultado_api.get('error', 'Error del proveedor Hype')} (tras {max_intentos_pin_error} intentos con el mismo PIN)",
                         )
-                        reemplazo = _reservar_pin_reemplazo_hype(pin_producto_id, pedido_id, user_id_api)
-                        if reemplazo:
-                            pin_ids.append(reemplazo['id'])
-                            pin_codes.append(reemplazo['pin_code'])
-                            continue
-                        error_msg = f"{resultado_api.get('error', 'Error en canje')} | Sin PIN de reemplazo disponible"
+                        error_msg = f"{resultado_api.get('error', 'Error en canje')} | Falló tras {max_intentos_pin_error} intentos con el mismo PIN"
                         break
 
                     db_fix = get_db()
