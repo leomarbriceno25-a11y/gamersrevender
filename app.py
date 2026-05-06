@@ -2124,15 +2124,43 @@ def mis_pines():
 @login_required
 def mis_pedidos():
     db = get_db()
+    try:
+        page = int(request.args.get('page', '1'))
+    except (ValueError, TypeError):
+        page = 1
+    if page < 1:
+        page = 1
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    total_pedidos = db.execute(
+        "SELECT COUNT(*) as c FROM pedidos p "
+        "JOIN productos pr ON p.producto_id = pr.id "
+        "JOIN categorias c ON pr.categoria_id = c.id "
+        "WHERE p.usuario_id = ? AND c.tipo != 'giftcards'",
+        (session['user_id'],)
+    ).fetchone()['c']
+
     pedidos = db.execute(
         "SELECT p.*, pr.nombre as producto_nombre FROM pedidos p "
         "JOIN productos pr ON p.producto_id = pr.id "
         "JOIN categorias c ON pr.categoria_id = c.id "
         "WHERE p.usuario_id = ? AND c.tipo != 'giftcards' "
-        "ORDER BY p.fecha_pedido DESC", (session['user_id'],)
+        "ORDER BY p.fecha_pedido DESC LIMIT ? OFFSET ?",
+        (session['user_id'], per_page, offset)
     ).fetchall()
+    has_prev = page > 1
+    has_more = (offset + len(pedidos)) < total_pedidos
     db.close()
-    return render_template('mis_pedidos.html', pedidos=pedidos)
+    return render_template(
+        'mis_pedidos.html',
+        pedidos=pedidos,
+        page=page,
+        per_page=per_page,
+        total_pedidos=total_pedidos,
+        has_prev=has_prev,
+        has_more=has_more,
+    )
 
 
 # ===== ESTADÍSTICAS USUARIO =====
