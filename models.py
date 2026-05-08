@@ -125,6 +125,7 @@ def init_db():
             monto_api INTEGER DEFAULT 0,
             usa_razer INTEGER DEFAULT 0,
             razer_paquete INTEGER DEFAULT 0,
+            razer_paquete_extra INTEGER DEFAULT 0,
             usa_deltaforce INTEGER DEFAULT 0,
             deltaforce_paquete INTEGER DEFAULT 0,
             usa_pincentral INTEGER DEFAULT 0,
@@ -259,6 +260,10 @@ def init_db():
         db.execute("SELECT razer_paquete FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN razer_paquete INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT razer_paquete_extra FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN razer_paquete_extra INTEGER DEFAULT 0")
     try:
         db.execute("SELECT usa_deltaforce FROM productos LIMIT 1")
     except Exception:

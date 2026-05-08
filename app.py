@@ -1826,7 +1826,9 @@ def comprar():
 
     # Si el producto usa API Razer (separada), recarga directa por paquete
     elif (prod['usa_razer'] if 'usa_razer' in prod.keys() else 0) and id_juego:
-        paquete = int((prod['razer_paquete'] if 'razer_paquete' in prod.keys() else 0) or 0)
+        paquete_principal = int((prod['razer_paquete'] if 'razer_paquete' in prod.keys() else 0) or 0)
+        paquete_extra = int((prod['razer_paquete_extra'] if 'razer_paquete_extra' in prod.keys() else 0) or 0)
+        paquete = paquete_extra if paquete_extra > 0 else paquete_principal
         if paquete <= 0:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
@@ -2898,6 +2900,7 @@ def admin_productos():
             monto_api = int(request.form.get('monto_api', 0))
             usa_razer = 1 if request.form.get('usa_razer') else 0
             razer_paquete = int(request.form.get('razer_paquete', 0))
+            razer_paquete_extra = int(request.form.get('razer_paquete_extra', 0) or 0)
             usa_deltaforce = 1 if request.form.get('usa_deltaforce') else 0
             deltaforce_paquete = int(request.form.get('deltaforce_paquete', 0))
             usa_pincentral = 1 if request.form.get('usa_pincentral') else 0
@@ -2915,8 +2918,8 @@ def admin_productos():
             if not usa_pincentral:
                 pincentral_entrega_directa = 0
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -2930,6 +2933,7 @@ def admin_productos():
             monto_api = int(request.form.get('monto_api', 0))
             usa_razer = 1 if request.form.get('usa_razer') else 0
             razer_paquete = int(request.form.get('razer_paquete', 0))
+            razer_paquete_extra = int(request.form.get('razer_paquete_extra', 0) or 0)
             usa_deltaforce = 1 if request.form.get('usa_deltaforce') else 0
             deltaforce_paquete = int(request.form.get('deltaforce_paquete', 0))
             usa_pincentral = 1 if request.form.get('usa_pincentral') else 0
@@ -2947,8 +2951,8 @@ def admin_productos():
             if not usa_pincentral:
                 pincentral_entrega_directa = 0
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -4160,7 +4164,9 @@ def api_comprar():
 
     # API Razer separada (recarga directa)
     elif (prod['usa_razer'] if 'usa_razer' in prod.keys() else 0) and id_juego:
-        paquete = int((prod['razer_paquete'] if 'razer_paquete' in prod.keys() else 0) or 0)
+        paquete_principal = int((prod['razer_paquete'] if 'razer_paquete' in prod.keys() else 0) or 0)
+        paquete_extra = int((prod['razer_paquete_extra'] if 'razer_paquete_extra' in prod.keys() else 0) or 0)
+        paquete = paquete_extra if paquete_extra > 0 else paquete_principal
         if paquete <= 0:
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
