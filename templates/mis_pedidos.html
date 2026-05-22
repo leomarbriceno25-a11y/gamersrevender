@@ -10,10 +10,14 @@
 
 <section class="section">
     <div class="container">
+        <form method="get" action="{{ url_for('mis_pedidos') }}" style="margin-bottom:1rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center;">
+            <input type="text" name="q" class="form-input" placeholder="Buscar por #, producto, ID jugador, estado..." style="max-width:400px;" value="{{ search_query or '' }}">
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-search"></i> Buscar</button>
+            {% if search_query %}
+            <a href="{{ url_for('mis_pedidos') }}" class="btn btn-secondary btn-sm">Limpiar</a>
+            {% endif %}
+        </form>
         {% if pedidos %}
-        <div style="margin-bottom:1rem;">
-            <input type="text" id="filtroPedidos" class="form-input" placeholder="Buscar por #, producto, ID jugador, estado..." style="max-width:400px;" oninput="filtrarPedidos()">
-        </div>
         <!-- Desktop table -->
         <div class="table-responsive d-none-mobile">
             <table class="table" id="tablaPedidos">
@@ -62,26 +66,19 @@
             </div>
             <div style="display:flex; gap:0.5rem;">
                 {% if has_prev %}
-                <a href="{{ url_for('mis_pedidos', page=page-1) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
+                <a href="{{ url_for('mis_pedidos', page=page-1, q=search_query) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
                 {% endif %}
                 {% if has_more %}
-                <a href="{{ url_for('mis_pedidos', page=page+1) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
+                <a href="{{ url_for('mis_pedidos', page=page+1, q=search_query) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
                 {% endif %}
             </div>
         </div>
-        <script>
-        function filtrarPedidos(){
-            var texto = document.getElementById('filtroPedidos').value.toLowerCase();
-            var filas = document.querySelectorAll('#tablaPedidos tbody tr');
-            filas.forEach(function(fila){
-                fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
-            });
-            var cards = document.querySelectorAll('.pedido-card-item');
-            cards.forEach(function(card){
-                card.style.display = card.textContent.toLowerCase().includes(texto) ? '' : 'none';
-            });
-        }
-        </script>
+        {% elif search_query %}
+        <div class="empty-state">
+            <i class="fas fa-search"></i>
+            <h2>Sin resultados</h2>
+            <p>No encontramos pedidos para "{{ search_query }}"</p>
+        </div>
         {% else %}
         <div class="empty-state">
             <i class="fas fa-shopping-bag"></i>

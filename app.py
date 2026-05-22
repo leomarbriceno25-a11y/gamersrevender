@@ -2126,6 +2126,8 @@ def mis_pines():
 @login_required
 def mis_pedidos():
     db = get_db()
+    search_query = str(request.args.get('q', '') or '').strip()
+    search_like = f"%{search_query.lower()}%"
     try:
         page = int(request.args.get('page', '1'))
     except (ValueError, TypeError):
@@ -2135,21 +2137,39 @@ def mis_pedidos():
     per_page = 20
     offset = (page - 1) * per_page
 
+    where_clause = (
+        "WHERE p.usuario_id = ? AND c.tipo != 'giftcards'"
+    )
+    params = [session['user_id']]
+    if search_query:
+        where_clause += (
+            " AND ("
+            "CAST(p.id AS TEXT) LIKE ? OR "
+            "LOWER(pr.nombre) LIKE ? OR "
+            "LOWER(COALESCE(p.id_juego, '')) LIKE ? OR "
+            "LOWER(COALESCE(p.estado, '')) LIKE ? OR "
+            "LOWER(COALESCE(p.fecha_pedido, '')) LIKE ?"
+            ")"
+        )
+        params.extend([search_like, search_like, search_like, search_like, search_like])
+
     total_pedidos = db.execute(
         "SELECT COUNT(*) as c FROM pedidos p "
         "JOIN productos pr ON p.producto_id = pr.id "
         "JOIN categorias c ON pr.categoria_id = c.id "
-        "WHERE p.usuario_id = ? AND c.tipo != 'giftcards'",
-        (session['user_id'],)
+        + where_clause,
+        tuple(params)
     ).fetchone()['c']
 
+    pedidos_params = list(params)
+    pedidos_params.extend([per_page, offset])
     pedidos = db.execute(
         "SELECT p.*, pr.nombre as producto_nombre FROM pedidos p "
         "JOIN productos pr ON p.producto_id = pr.id "
         "JOIN categorias c ON pr.categoria_id = c.id "
-        "WHERE p.usuario_id = ? AND c.tipo != 'giftcards' "
-        "ORDER BY p.fecha_pedido DESC LIMIT ? OFFSET ?",
-        (session['user_id'], per_page, offset)
+        + where_clause +
+        " ORDER BY p.fecha_pedido DESC LIMIT ? OFFSET ?",
+        tuple(pedidos_params)
     ).fetchall()
     has_prev = page > 1
     has_more = (offset + len(pedidos)) < total_pedidos
@@ -2162,6 +2182,7 @@ def mis_pedidos():
         total_pedidos=total_pedidos,
         has_prev=has_prev,
         has_more=has_more,
+        search_query=search_query,
     )
 
 
