@@ -136,4 +136,52 @@
     </div>
 </section>
 {% endif %}
+
+{% if popup_publicitario %}
+<div id="popupPromoOverlay" style="position:fixed;inset:0;background:rgba(3,8,20,0.78);display:none;align-items:center;justify-content:center;z-index:99999;padding:1rem;">
+    <div style="position:relative;max-width:700px;width:100%;background:#0b1220;border:1px solid rgba(255,255,255,0.12);border-radius:14px;overflow:hidden;box-shadow:0 20px 55px rgba(0,0,0,0.45);">
+        <button type="button" id="popupPromoClose" style="position:absolute;top:0.55rem;right:0.55rem;width:32px;height:32px;border-radius:999px;border:none;background:rgba(0,0,0,0.6);color:#fff;cursor:pointer;z-index:2;">&times;</button>
+        <img src="{{ popup_publicitario.imagen }}" alt="Publicidad" style="display:block;width:100%;height:auto;max-height:85vh;object-fit:contain;background:#050913;">
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+{% if popup_publicitario %}
+<script>
+(function () {
+    var overlay = document.getElementById('popupPromoOverlay');
+    var closeBtn = document.getElementById('popupPromoClose');
+    if (!overlay) return;
+
+    function closePopup() {
+        overlay.style.display = 'none';
+        document.body.style.overflow = '';
+    }
+
+    if (closeBtn) {
+        closeBtn.addEventListener('click', closePopup);
+    }
+    overlay.addEventListener('click', function (event) {
+        if (event.target === overlay) closePopup();
+    });
+
+    fetch('{{ url_for("api_popup_publicitario_visto") }}', {
+        method: 'POST',
+        credentials: 'same-origin'
+    }).then(function (res) {
+        return res.json();
+    }).then(function (data) {
+        if (data && data.ok) {
+            overlay.style.display = 'flex';
+            document.body.style.overflow = 'hidden';
+        }
+    }).catch(function () {
+        // Silencioso para no afectar experiencia del usuario.
+    });
+})();
+</script>
+{% endif %}
 {% endblock %}

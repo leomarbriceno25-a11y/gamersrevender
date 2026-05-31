@@ -335,6 +335,26 @@ def init_db():
     db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('telegram_bot_token', '')")
     db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('telegram_chat_id', '')")
     db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('telegram_activo', '0')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('popup_publicitario_activo', '0')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('popup_publicitario_imagen', '')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('popup_publicitario_max_vistas', '1')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('popup_publicitario_version', '1')")
+
+    # Conteo de vistas de popup publicitario por usuario/version
+    try:
+        db.execute("SELECT usuario_id FROM popup_publicidad_vistas LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS popup_publicidad_vistas (
+                usuario_id INTEGER NOT NULL,
+                version INTEGER NOT NULL DEFAULT 1,
+                vistas INTEGER NOT NULL DEFAULT 0,
+                fecha_ultima_vista TEXT,
+                PRIMARY KEY (usuario_id, version),
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_popup_publicidad_version ON popup_publicidad_vistas(version);
+        """)
 
     # Solicitudes de recarga de saldo
     try:

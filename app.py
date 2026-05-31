@@ -80,6 +80,53 @@ def save_upload(file):
     return None
 
 
+def _config_get(db, key, default=''):
+    row = db.execute("SELECT valor FROM configuracion WHERE clave = ?", (key,)).fetchone()
+    if not row:
+        return default
+    return str(row['valor'] or default)
+
+
+def _config_set(db, key, value):
+    value = str(value)
+    existing = db.execute("SELECT id FROM configuracion WHERE clave = ?", (key,)).fetchone()
+    if existing:
+        db.execute("UPDATE configuracion SET valor = ? WHERE clave = ?", (value, key))
+    else:
+        db.execute("INSERT INTO configuracion (clave, valor) VALUES (?,?)", (key, value))
+
+
+def _obtener_popup_publicitario_para_usuario(db, user_id):
+    activo = _config_get(db, 'popup_publicitario_activo', '0') == '1'
+    imagen = _config_get(db, 'popup_publicitario_imagen', '').strip()
+    try:
+        max_vistas = int(_config_get(db, 'popup_publicitario_max_vistas', '0') or 0)
+    except (TypeError, ValueError):
+        max_vistas = 0
+    try:
+        version = int(_config_get(db, 'popup_publicitario_version', '1') or 1)
+    except (TypeError, ValueError):
+        version = 1
+
+    if not activo or not imagen or max_vistas <= 0:
+        return None
+
+    row = db.execute(
+        "SELECT vistas FROM popup_publicidad_vistas WHERE usuario_id = ? AND version = ?",
+        (user_id, version),
+    ).fetchone()
+    vistas_actuales = int(row['vistas']) if row else 0
+    if vistas_actuales >= max_vistas:
+        return None
+
+    return {
+        'imagen': imagen,
+        'version': version,
+        'max_vistas': max_vistas,
+        'vistas_actuales': vistas_actuales,
+    }
+
+
 init_db()
 
 
@@ -1528,9 +1575,18 @@ def dashboard():
     stats = db.execute("SELECT COUNT(*) as total_pedidos, COALESCE(SUM(total), 0) as total_gastado FROM pedidos WHERE usuario_id = ?", (user['id'],)).fetchone()
     ultimos = db.execute("SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC LIMIT 5", (user['id'],)).fetchall()
     categorias = db.execute("SELECT c.*, (SELECT COUNT(*) FROM productos p WHERE p.categoria_id = c.id AND p.activo = 1) as total_productos FROM categorias c WHERE c.activo = 1 ORDER BY c.orden").fetchall()
+    popup_publicitario = _obtener_popup_publicitario_para_usuario(db, user['id'])
     saldo = get_saldo(user['id'])
     db.close()
-    return render_template('dashboard.html', user=user, stats=stats, ultimos=ultimos, categorias=categorias, saldo=saldo)
+    return render_template(
+        'dashboard.html',
+        user=user,
+        stats=stats,
+        ultimos=ultimos,
+        categorias=categorias,
+        saldo=saldo,
+        popup_publicitario=popup_publicitario,
+    )
 
 
 # ===== CATALOGO =====
@@ -2692,6 +2748,95 @@ def admin_metodos_pago():
             'nota': config.get(f'metodo_{key}_nota', ''),
         })
     return render_template('admin/metodos_pago.html', metodos=metodos, recarga_minima=recarga_minima)
+
+
+@app.route('/admin/popup-publicitario', methods=['GET', 'POST'])
+@admin_required
+def admin_popup_publicitario():
+    db = get_db()
+    if request.method == 'POST':
+        activo = '1' if request.form.get('activo') else '0'
+        imagen = request.form.get('imagen_url', '').strip()
+        archivo = request.files.get('imagen_file')
+        uploaded = save_upload(archivo)
+        reiniciar_vistas = 1 if request.form.get('reiniciar_vistas') else 0
+
+        if uploaded:
+            imagen = uploaded
+            reiniciar_vistas = 1
+
+        max_vistas_raw = request.form.get('max_vistas', '1').strip()
+        try:
+            max_vistas = int(max_vistas_raw or 1)
+        except (TypeError, ValueError):
+            max_vistas = 1
+        if max_vistas < 0:
+            max_vistas = 0
+        if max_vistas > 200:
+            max_vistas = 200
+
+        current_version_raw = _config_get(db, 'popup_publicitario_version', '1')
+        try:
+            current_version = int(current_version_raw or 1)
+        except (TypeError, ValueError):
+            current_version = 1
+        if reiniciar_vistas:
+            current_version += 1
+
+        _config_set(db, 'popup_publicitario_activo', activo)
+        _config_set(db, 'popup_publicitario_imagen', imagen)
+        _config_set(db, 'popup_publicitario_max_vistas', str(max_vistas))
+        _config_set(db, 'popup_publicitario_version', str(current_version))
+
+        db.commit()
+        db.close()
+        flash('Popup publicitario actualizado correctamente.', 'success')
+        return redirect(url_for('admin_popup_publicitario'))
+
+    popup_config = {
+        'activo': _config_get(db, 'popup_publicitario_activo', '0'),
+        'imagen': _config_get(db, 'popup_publicitario_imagen', ''),
+        'max_vistas': _config_get(db, 'popup_publicitario_max_vistas', '1'),
+        'version': _config_get(db, 'popup_publicitario_version', '1'),
+    }
+    db.close()
+    return render_template('admin/popup_publicitario.html', popup_config=popup_config)
+
+
+@app.route('/api/popup-publicitario/visto', methods=['POST'])
+@login_required
+def api_popup_publicitario_visto():
+    db = get_db()
+    popup = _obtener_popup_publicitario_para_usuario(db, session['user_id'])
+    if not popup:
+        db.close()
+        return jsonify({'ok': False, 'mostrar': False})
+
+    version = int(popup['version'])
+    max_vistas = int(popup['max_vistas'])
+    row = db.execute(
+        "SELECT vistas FROM popup_publicidad_vistas WHERE usuario_id = ? AND version = ?",
+        (session['user_id'], version),
+    ).fetchone()
+    vistas_actuales = int(row['vistas']) if row else 0
+    nuevas_vistas = vistas_actuales + 1
+    if nuevas_vistas > max_vistas:
+        nuevas_vistas = max_vistas
+
+    db.execute(
+        "INSERT INTO popup_publicidad_vistas (usuario_id, version, vistas, fecha_ultima_vista) VALUES (?,?,?,datetime('now','localtime')) "
+        "ON CONFLICT(usuario_id, version) DO UPDATE SET vistas = excluded.vistas, fecha_ultima_vista = excluded.fecha_ultima_vista",
+        (session['user_id'], version, nuevas_vistas),
+    )
+    db.commit()
+    db.close()
+
+    return jsonify({
+        'ok': True,
+        'mostrar': nuevas_vistas < max_vistas,
+        'vistas': nuevas_vistas,
+        'max_vistas': max_vistas,
+    })
 
 
 @app.route('/admin/bonus-recarga', methods=['GET', 'POST'])
