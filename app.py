@@ -40,6 +40,10 @@ PINCENTRAL_CAPTURE_QUEUE_MAX_ATTEMPTS = max(3, int(os.environ.get('PINCENTRAL_CA
 PINCENTRAL_CAPTURE_QUEUE_BATCH_SIZE = max(1, int(os.environ.get('PINCENTRAL_CAPTURE_QUEUE_BATCH_SIZE', '25')))
 PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_UNTIL = {}
 PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_LOCK = threading.Lock()
+RECARGA_STATUS_CACHE_TTL_SECONDS = max(1, int(os.environ.get('RECARGA_STATUS_CACHE_TTL_SECONDS', '2')))
+RECARGA_STATUS_CACHE_MAX_ITEMS = max(100, int(os.environ.get('RECARGA_STATUS_CACHE_MAX_ITEMS', '5000')))
+RECARGA_STATUS_CACHE = {}
+RECARGA_STATUS_CACHE_LOCK = threading.Lock()
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -94,6 +98,33 @@ def _config_set(db, key, value):
         db.execute("UPDATE configuracion SET valor = ? WHERE clave = ?", (value, key))
     else:
         db.execute("INSERT INTO configuracion (clave, valor) VALUES (?,?)", (key, value))
+
+
+def _recarga_status_cache_get(cache_key):
+    now = time.time()
+    with RECARGA_STATUS_CACHE_LOCK:
+        item = RECARGA_STATUS_CACHE.get(cache_key)
+        if not item:
+            return None
+        expires_at, status_code, payload = item
+        if expires_at <= now:
+            RECARGA_STATUS_CACHE.pop(cache_key, None)
+            return None
+        return status_code, payload
+
+
+def _recarga_status_cache_set(cache_key, status_code, payload):
+    now = time.time()
+    expires_at = now + RECARGA_STATUS_CACHE_TTL_SECONDS
+    with RECARGA_STATUS_CACHE_LOCK:
+        if len(RECARGA_STATUS_CACHE) >= RECARGA_STATUS_CACHE_MAX_ITEMS:
+            expiradas = [k for k, (exp, _, _) in RECARGA_STATUS_CACHE.items() if exp <= now]
+            for k in expiradas:
+                RECARGA_STATUS_CACHE.pop(k, None)
+            if len(RECARGA_STATUS_CACHE) >= RECARGA_STATUS_CACHE_MAX_ITEMS:
+                oldest_key = min(RECARGA_STATUS_CACHE.items(), key=lambda kv: kv[1][0])[0]
+                RECARGA_STATUS_CACHE.pop(oldest_key, None)
+        RECARGA_STATUS_CACHE[cache_key] = (expires_at, int(status_code), dict(payload))
 
 
 def _obtener_popup_publicitario_para_usuario(db, user_id):
@@ -4752,6 +4783,12 @@ def api_recarga_status_por_referencia():
     if not merchant_ref and pedido_id <= 0:
         return jsonify({'ok': False, 'error': 'Debes enviar merchant_ref o pedido_id'}), 400
 
+    cache_key = f"{int(user['id'])}:{merchant_ref or ('id:' + str(pedido_id))}"
+    cached = _recarga_status_cache_get(cache_key)
+    if cached is not None:
+        status_code, payload = cached
+        return jsonify(payload), status_code
+
     db = get_db()
     try:
         if merchant_ref:
@@ -4772,7 +4809,9 @@ def api_recarga_status_por_referencia():
         db.close()
 
     if not pedido:
-        return jsonify({'ok': False, 'error': 'Pedido no encontrado'}), 404
+        payload = {'ok': False, 'error': 'Pedido no encontrado'}
+        _recarga_status_cache_set(cache_key, 404, payload)
+        return jsonify(payload), 404
 
     estado_interno = str(pedido['estado'] or '').strip().lower()
     estado_api = {
@@ -4782,7 +4821,7 @@ def api_recarga_status_por_referencia():
         'cancelado': 'failed',
     }.get(estado_interno, 'processing')
 
-    return jsonify({
+    payload = {
         'ok': True,
         'pedido_id': int(pedido['id']),
         'merchant_ref': str(pedido['referencia_cliente'] or ''),
@@ -4796,7 +4835,9 @@ def api_recarga_status_por_referencia():
         'cantidad': int(pedido['cantidad'] or 0),
         'total': float(pedido['total'] or 0),
         'fecha': str(pedido['fecha_pedido'] or ''),
-    })
+    }
+    _recarga_status_cache_set(cache_key, 200, payload)
+    return jsonify(payload)
 
 
 @app.route('/api/v1/transacciones', methods=['GET'])
