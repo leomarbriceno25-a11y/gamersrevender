@@ -10,10 +10,16 @@
 
 <section class="section">
     <div class="container">
+        <form method="get" action="{{ url_for('mis_pines') }}" style="margin-bottom:1rem; display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
+            <input type="text" name="q" class="form-input" placeholder="Buscar por producto, código, pedido..." style="max-width:400px;" value="{{ search_query or '' }}">
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fas fa-search"></i> Buscar</button>
+            {% if search_query %}
+            <a href="{{ url_for('mis_pines') }}" class="btn btn-secondary btn-sm">Limpiar</a>
+            {% endif %}
+        </form>
         {% if pines %}
         <div style="margin-bottom:1rem; display:flex; gap:1rem; align-items:center; flex-wrap:wrap;">
-            <input type="text" id="filtroPines" class="form-input" placeholder="Buscar por producto, código, pedido..." style="max-width:400px;" oninput="filtrarPines()">
-            <button type="button" class="btn btn-secondary btn-sm" onclick="copiarTodosGlobal()"><i class="fas fa-copy"></i> Copiar todos los códigos</button>
+            <button type="button" class="btn btn-secondary btn-sm" onclick="copiarTodosGlobal(this)"><i class="fas fa-copy"></i> Copiar todos los códigos</button>
         </div>
         <!-- Desktop table -->
         <div class="table-responsive d-none-mobile">
@@ -85,19 +91,20 @@
             </div>
             {% endfor %}
         </div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:0.75rem; flex-wrap:wrap; margin-top:1rem;">
+            <div style="font-size:0.85rem; color:var(--text-secondary);">
+                Mostrando {{ ((page - 1) * per_page) + 1 }} - {{ ((page - 1) * per_page) + (pines|length) }} de {{ total_pines }} códigos
+            </div>
+            <div style="display:flex; gap:0.5rem;">
+                {% if has_prev %}
+                <a href="{{ url_for('mis_pines', page=page-1, q=search_query) }}" class="btn btn-secondary btn-sm"><i class="fas fa-chevron-left"></i> Anterior</a>
+                {% endif %}
+                {% if has_more %}
+                <a href="{{ url_for('mis_pines', page=page+1, q=search_query) }}" class="btn btn-primary btn-sm">Cargar más <i class="fas fa-chevron-right"></i></a>
+                {% endif %}
+            </div>
+        </div>
         <script>
-        function filtrarPines(){
-            var texto = document.getElementById('filtroPines').value.toLowerCase();
-            var filas = document.querySelectorAll('#tablaPines tbody tr');
-            filas.forEach(function(fila){
-                fila.style.display = fila.textContent.toLowerCase().includes(texto) ? '' : 'none';
-            });
-            var cards = document.querySelectorAll('.pin-card-item');
-            cards.forEach(function(card){
-                var data = (card.getAttribute('data-search') || '').toLowerCase();
-                card.style.display = data.includes(texto) || card.textContent.toLowerCase().includes(texto) ? '' : 'none';
-            });
-        }
         function copiar(texto, btn) {
             navigator.clipboard.writeText(texto).then(function(){
                 var orig = btn.innerHTML;
@@ -116,12 +123,11 @@
                 setTimeout(function(){ btn.innerHTML = orig; btn.style.color = ''; }, 1500);
             });
         }
-        function copiarTodosGlobal() {
+        function copiarTodosGlobal(btn) {
             var celdas = document.querySelectorAll('.celda-codigos');
             var todos = [];
             celdas.forEach(function(c){ todos.push(c.getAttribute('data-codigos').split('|||').join('\n')); });
             var texto = todos.join('\n');
-            var btn = event.target.closest('button');
             navigator.clipboard.writeText(texto).then(function(){
                 var orig = btn.innerHTML;
                 btn.innerHTML = '<i class="fas fa-check"></i> Copiados!';
@@ -130,6 +136,12 @@
             });
         }
         </script>
+        {% elif search_query %}
+        <div class="empty-state">
+            <i class="fas fa-search"></i>
+            <h2>Sin resultados</h2>
+            <p>No encontramos códigos para "{{ search_query }}"</p>
+        </div>
         {% else %}
         <div class="empty-state">
             <i class="fas fa-key"></i>

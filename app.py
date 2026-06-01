@@ -2184,16 +2184,66 @@ def pedido_detalle(id):
 @login_required
 def mis_pines():
     db = get_db()
+    search_query = str(request.args.get('q', '') or '').strip()
+    search_like = f"%{search_query.lower()}%"
+    try:
+        page = int(request.args.get('page', '1'))
+    except (ValueError, TypeError):
+        page = 1
+    if page < 1:
+        page = 1
+    per_page = 20
+    offset = (page - 1) * per_page
+
+    where_clause = (
+        "WHERE p.usuario_id = ? "
+        "AND p.codigo_entregado IS NOT NULL AND p.codigo_entregado != '' "
+        "AND c.tipo = 'giftcards'"
+    )
+    params = [session['user_id']]
+    if search_query:
+        where_clause += (
+            " AND ("
+            "CAST(p.id AS TEXT) LIKE ? OR "
+            "LOWER(pr.nombre) LIKE ? OR "
+            "LOWER(p.codigo_entregado) LIKE ? OR "
+            "LOWER(COALESCE(p.estado, '')) LIKE ? OR "
+            "LOWER(COALESCE(p.fecha_pedido, '')) LIKE ?"
+            ")"
+        )
+        params.extend([search_like, search_like, search_like, search_like, search_like])
+
+    total_pines = db.execute(
+        "SELECT COUNT(*) as c FROM pedidos p "
+        "JOIN productos pr ON p.producto_id = pr.id "
+        "JOIN categorias c ON pr.categoria_id = c.id "
+        + where_clause,
+        tuple(params),
+    ).fetchone()['c']
+
+    pines_params = list(params)
+    pines_params.extend([per_page, offset])
     pines = db.execute(
         "SELECT p.id as pedido_id, p.codigo_entregado, p.cantidad, p.total, p.estado, p.fecha_pedido, pr.nombre as producto_nombre "
         "FROM pedidos p JOIN productos pr ON p.producto_id = pr.id "
         "JOIN categorias c ON pr.categoria_id = c.id "
-        "WHERE p.usuario_id = ? AND p.codigo_entregado IS NOT NULL AND p.codigo_entregado != '' "
-        "AND c.tipo = 'giftcards' "
-        "ORDER BY p.fecha_pedido DESC", (session['user_id'],)
+        + where_clause +
+        " ORDER BY p.fecha_pedido DESC LIMIT ? OFFSET ?",
+        tuple(pines_params),
     ).fetchall()
+    has_prev = page > 1
+    has_more = (offset + len(pines)) < total_pines
     db.close()
-    return render_template('mis_pines.html', pines=pines)
+    return render_template(
+        'mis_pines.html',
+        pines=pines,
+        page=page,
+        per_page=per_page,
+        total_pines=total_pines,
+        has_prev=has_prev,
+        has_more=has_more,
+        search_query=search_query,
+    )
 
 
 @app.route('/mis-pedidos')
