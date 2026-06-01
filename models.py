@@ -218,6 +218,13 @@ def init_db():
     except Exception:
         db.execute("ALTER TABLE pedidos ADD COLUMN referencia_cliente TEXT DEFAULT ''")
     db.execute("CREATE INDEX IF NOT EXISTS idx_pedidos_usuario_ref_cliente ON pedidos(usuario_id, referencia_cliente)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pedidos_usuario_fecha ON pedidos(usuario_id, fecha_pedido)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pedidos_estado_fecha ON pedidos(estado, fecha_pedido)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_productos_categoria_activo ON productos(categoria_id, activo)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_productos_categoria_orden_precio ON productos(categoria_id, orden, precio)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_categorias_activo_orden ON categorias(activo, orden)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pines_producto_estado_fecha ON pines(producto_id, estado, fecha_agregado)")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_solicitudes_usuario_estado_fecha ON solicitudes_recarga(usuario_id, estado, fecha_solicitud)")
     try:
         db.execute("SELECT recarga_manual FROM productos LIMIT 1")
     except Exception:

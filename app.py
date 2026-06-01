@@ -1574,7 +1574,16 @@ def dashboard():
     db = get_db()
     stats = db.execute("SELECT COUNT(*) as total_pedidos, COALESCE(SUM(total), 0) as total_gastado FROM pedidos WHERE usuario_id = ?", (user['id'],)).fetchone()
     ultimos = db.execute("SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.usuario_id = ? ORDER BY p.fecha_pedido DESC LIMIT 5", (user['id'],)).fetchall()
-    categorias = db.execute("SELECT c.*, (SELECT COUNT(*) FROM productos p WHERE p.categoria_id = c.id AND p.activo = 1) as total_productos FROM categorias c WHERE c.activo = 1 ORDER BY c.orden").fetchall()
+    categorias = db.execute(
+        "SELECT c.*, COALESCE(pc.total_productos, 0) as total_productos "
+        "FROM categorias c "
+        "LEFT JOIN ("
+        "  SELECT categoria_id, COUNT(*) as total_productos "
+        "  FROM productos WHERE activo = 1 GROUP BY categoria_id"
+        ") pc ON pc.categoria_id = c.id "
+        "WHERE c.activo = 1 "
+        "ORDER BY c.orden"
+    ).fetchall()
     popup_publicitario = _obtener_popup_publicitario_para_usuario(db, user['id'])
     saldo = get_saldo(user['id'])
     db.close()
@@ -1594,7 +1603,16 @@ def dashboard():
 @login_required
 def catalogo():
     db = get_db()
-    categorias = db.execute("SELECT c.*, (SELECT COUNT(*) FROM productos p WHERE p.categoria_id = c.id AND p.activo = 1) as total_productos FROM categorias c WHERE c.activo = 1 ORDER BY c.orden").fetchall()
+    categorias = db.execute(
+        "SELECT c.*, COALESCE(pc.total_productos, 0) as total_productos "
+        "FROM categorias c "
+        "LEFT JOIN ("
+        "  SELECT categoria_id, COUNT(*) as total_productos "
+        "  FROM productos WHERE activo = 1 GROUP BY categoria_id"
+        ") pc ON pc.categoria_id = c.id "
+        "WHERE c.activo = 1 "
+        "ORDER BY c.orden"
+    ).fetchall()
     db.close()
     return render_template('catalogo.html', categorias=categorias)
 
