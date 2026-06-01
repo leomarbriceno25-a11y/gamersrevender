@@ -224,7 +224,6 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_productos_categoria_orden_precio ON productos(categoria_id, orden, precio)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_categorias_activo_orden ON categorias(activo, orden)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_pines_producto_estado_fecha ON pines(producto_id, estado, fecha_agregado)")
-    db.execute("CREATE INDEX IF NOT EXISTS idx_solicitudes_usuario_estado_fecha ON solicitudes_recarga(usuario_id, estado, fecha_solicitud)")
     try:
         db.execute("SELECT recarga_manual FROM productos LIMIT 1")
     except Exception:
@@ -384,6 +383,7 @@ def init_db():
                 FOREIGN KEY (admin_id) REFERENCES usuarios(id)
             );
         """)
+    db.execute("CREATE INDEX IF NOT EXISTS idx_solicitudes_usuario_estado_fecha ON solicitudes_recarga(usuario_id, estado, fecha_solicitud)")
 
     # Referencias Binance usadas para evitar reutilización entre clientes
     try:
