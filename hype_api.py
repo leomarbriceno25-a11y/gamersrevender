@@ -86,6 +86,24 @@ def _is_confirm_delivery_ok(body):
     return any(f in txt_norm for f in frases_ok)
 
 
+def _is_retryable_transport_error(error_text):
+    txt = str(error_text or '').strip().lower()
+    if not txt:
+        return False
+    retryable_signals = (
+        'read timed out',
+        'connect timeout',
+        'connection aborted',
+        'connection reset',
+        'temporarily unavailable',
+        'remote end closed connection',
+        '502',
+        '503',
+        '504',
+    )
+    return any(s in txt for s in retryable_signals)
+
+
 def redeem_account(game_account_id, pin, monto_api=1, nombre="Juan Perez", fecha="15/03/1995", pais="VE"):
     """Paso 2: Asociar PIN a cuenta"""
     url = "https://redeem.hype.games/validate/account"
@@ -151,7 +169,15 @@ def canjear_pin_completo(pin, game_account_id, monto_api=1, nombre="Juan Perez",
     # Paso 1
     paso1 = redeem_validate(pin)
     if not paso1.get("ok"):
-        return {"ok": False, "paso": 1, "error": paso1.get("error", "Error validando PIN"), "pin_error": True, "paso1": paso1}
+        err = paso1.get("error", "Error validando PIN")
+        return {
+            "ok": False,
+            "paso": 1,
+            "error": err,
+            "pin_error": True,
+            "retry_same_pin": _is_retryable_transport_error(err),
+            "paso1": paso1,
+        }
 
     fail_1, msg_1 = _is_failed_provider_body(paso1.get("body", ""))
     if fail_1:
@@ -160,7 +186,16 @@ def canjear_pin_completo(pin, game_account_id, monto_api=1, nombre="Juan Perez",
     # Paso 2 - Aquí devuelve el Username del jugador
     paso2 = redeem_account(game_account_id, pin, monto_api, nombre, fecha, pais)
     if not paso2.get("ok"):
-        return {"ok": False, "paso": 2, "error": paso2.get("error", "Error asociando cuenta"), "pin_error": False, "paso1": paso1, "paso2": paso2}
+        err = paso2.get("error", "Error asociando cuenta")
+        return {
+            "ok": False,
+            "paso": 2,
+            "error": err,
+            "pin_error": False,
+            "retry_same_pin": _is_retryable_transport_error(err),
+            "paso1": paso1,
+            "paso2": paso2,
+        }
 
     # Extraer nombre del jugador
     body2 = paso2.get("body", {})
@@ -181,12 +216,14 @@ def canjear_pin_completo(pin, game_account_id, monto_api=1, nombre="Juan Perez",
     # Paso 3
     paso3 = redeem_confirm(game_account_id, pin, monto_api, nombre, fecha, pais)
     if not paso3.get("ok"):
+        err = paso3.get("error", "Error confirmando canje")
         return {
             "ok": False,
             "paso": 3,
-            "error": paso3.get("error", "Error confirmando canje"),
+            "error": err,
             "username": username,
             "pin_error": True,
+            "retry_same_pin": _is_retryable_transport_error(err),
             "paso1": paso1,
             "paso2": paso2,
             "paso3": paso3,

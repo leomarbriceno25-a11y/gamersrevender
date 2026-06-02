@@ -2076,7 +2076,8 @@ def comprar():
                     )
                     if resultado_api.get('ok'):
                         break
-                    if not bool(resultado_api.get('pin_error')):
+                    should_retry_same_pin = bool(resultado_api.get('pin_error')) or bool(resultado_api.get('retry_same_pin'))
+                    if not should_retry_same_pin:
                         break
                     if intento < max_intentos_pin_error:
                         continue
@@ -4600,7 +4601,8 @@ def api_comprar():
                     )
                     if resultado_api.get('ok'):
                         break
-                    if not bool(resultado_api.get('pin_error')):
+                    should_retry_same_pin = bool(resultado_api.get('pin_error')) or bool(resultado_api.get('retry_same_pin'))
+                    if not should_retry_same_pin:
                         break
                     if intento < max_intentos_pin_error:
                         continue
