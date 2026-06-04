@@ -11,6 +11,26 @@
 
 <section class="section">
     <div class="container">
+        <div class="admin-card" style="margin-bottom:1rem;">
+            <h2 style="margin:0 0 1rem 0;"><i class="fas fa-calculator"></i> Tasa de cambio y margen (GamePoint)</h2>
+            <form method="post" action="{{ url_for('admin_gamepoint_catalogo') }}" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:0.75rem; align-items:end;">
+                <div>
+                    <label style="display:block; margin-bottom:0.35rem; color:var(--text-secondary); font-size:0.85rem;">1 MYR = ? USD</label>
+                    <input type="number" name="myr_usd_rate" value="{{ myr_usd_rate }}" min="0.00000001" step="0.00000001" required style="width:100%; padding:0.55rem 0.75rem; border:1px solid var(--border); border-radius:8px; background:var(--bg-primary); color:var(--text-primary);">
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom:0.35rem; color:var(--text-secondary); font-size:0.85rem;">Margen de venta (%)</label>
+                    <input type="number" name="margin_percent" value="{{ margin_percent }}" min="0" step="0.01" required style="width:100%; padding:0.55rem 0.75rem; border:1px solid var(--border); border-radius:8px; background:var(--bg-primary); color:var(--text-primary);">
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;"><i class="fas fa-sync"></i> Guardar y actualizar precios</button>
+                </div>
+            </form>
+            <p style="margin-top:0.65rem; font-size:0.82rem; color:var(--text-secondary);">
+                Al guardar, se recalculan automáticamente los precios USD de todos los productos vinculados a GamePoint
+                (con <code>GamePoint Product ID</code> y <code>GamePoint Package ID</code>).
+            </p>
+        </div>
         <div class="stats-grid">
             <div class="stat-card stat-card-wallet">
                 <div class="stat-icon"><i class="fas fa-wallet"></i></div>

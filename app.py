@@ -100,6 +100,71 @@ def _config_set(db, key, value):
         db.execute("INSERT INTO configuracion (clave, valor) VALUES (?,?)", (key, value))
 
 
+def _to_decimal(value, default=None):
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return default
+
+
+def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje):
+    from gamepoint_api import detalle_producto
+
+    productos = db.execute(
+        "SELECT id, nombre, gamepoint_product_id, gamepoint_package_id "
+        "FROM productos WHERE gamepoint_product_id > 0 AND gamepoint_package_id > 0"
+    ).fetchall()
+    if not productos:
+        return {'total': 0, 'actualizados': 0, 'omitidos': 0, 'errores': []}
+
+    factor_margen = Decimal('1') + (margen_porcentaje / Decimal('100'))
+    detalle_cache = {}
+    errores = []
+    actualizados = 0
+    omitidos = 0
+
+    for prod in productos:
+        gp_product_id = int(prod['gamepoint_product_id'] or 0)
+        gp_package_id = str(int(prod['gamepoint_package_id'] or 0))
+
+        if gp_product_id not in detalle_cache:
+            detalle_cache[gp_product_id] = detalle_producto(gp_product_id)
+        detalle = detalle_cache[gp_product_id]
+
+        if not detalle.get('ok'):
+            omitidos += 1
+            errores.append(f"{prod['nombre']}: no se pudo consultar Product ID {gp_product_id}")
+            continue
+
+        paquete = None
+        for pkg in (detalle.get('packages') or []):
+            if str(pkg.get('id', '')).strip() == gp_package_id:
+                paquete = pkg
+                break
+
+        if not paquete:
+            omitidos += 1
+            errores.append(f"{prod['nombre']}: no existe Package ID {gp_package_id} en GamePoint")
+            continue
+
+        precio_myr = _to_decimal(paquete.get('price'))
+        if precio_myr is None or precio_myr <= 0:
+            omitidos += 1
+            errores.append(f"{prod['nombre']}: precio MYR inválido para Package ID {gp_package_id}")
+            continue
+
+        precio_usd = (precio_myr * tasa_myr_usd * factor_margen).quantize(Decimal('0.00000001'))
+        db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_usd), prod['id']))
+        actualizados += 1
+
+    return {
+        'total': len(productos),
+        'actualizados': actualizados,
+        'omitidos': omitidos,
+        'errores': errores,
+    }
+
+
 def _recarga_status_cache_get(cache_key):
     now = time.time()
     with RECARGA_STATUS_CACHE_LOCK:
@@ -3325,10 +3390,54 @@ def admin_producto_orden():
     return jsonify({'ok': True})
 
 
-@app.route('/admin/gamepoint')
+@app.route('/admin/gamepoint', methods=['GET', 'POST'])
 @admin_required
 def admin_gamepoint_catalogo():
-    return render_template('admin/gamepoint.html')
+    db = get_db()
+
+    if request.method == 'POST':
+        tasa_txt = str(request.form.get('myr_usd_rate', '') or '').strip().replace(',', '.')
+        margen_txt = str(request.form.get('margin_percent', '') or '').strip().replace(',', '.')
+
+        tasa_myr_usd = _to_decimal(tasa_txt)
+        margen_porcentaje = _to_decimal(margen_txt, Decimal('0'))
+
+        if tasa_myr_usd is None or tasa_myr_usd <= 0:
+            db.close()
+            flash('La tasa MYR→USD es inválida. Ejemplo: 0.252205', 'error')
+            return redirect(url_for('admin_gamepoint_catalogo'))
+
+        if margen_porcentaje is None or margen_porcentaje < 0:
+            db.close()
+            flash('El margen % es inválido. Debe ser un número mayor o igual a 0.', 'error')
+            return redirect(url_for('admin_gamepoint_catalogo'))
+
+        _config_set(db, 'gamepoint_myr_usd_rate', str(tasa_myr_usd))
+        _config_set(db, 'gamepoint_margin_percent', str(margen_porcentaje))
+
+        resumen = _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje)
+        db.commit()
+        db.close()
+
+        msg = (
+            f"Precios GamePoint actualizados. "
+            f"Total vinculados: {resumen['total']} · "
+            f"Actualizados: {resumen['actualizados']} · "
+            f"Omitidos: {resumen['omitidos']}"
+        )
+        if resumen['errores']:
+            msg += f" · Ejemplo: {resumen['errores'][0]}"
+        flash(msg, 'success' if resumen['actualizados'] > 0 else 'warning')
+        return redirect(url_for('admin_gamepoint_catalogo'))
+
+    myr_usd_rate = _config_get(db, 'gamepoint_myr_usd_rate', '0.252205')
+    margin_percent = _config_get(db, 'gamepoint_margin_percent', '6')
+    db.close()
+    return render_template(
+        'admin/gamepoint.html',
+        myr_usd_rate=myr_usd_rate,
+        margin_percent=margin_percent,
+    )
 
 
 @app.route('/admin/pincentral', methods=['GET', 'POST'])
