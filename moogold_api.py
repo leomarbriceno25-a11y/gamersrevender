@@ -68,7 +68,25 @@ def _request(path, payload, timeout=45):
     ok_http = 200 <= resp.status_code < 300
     status_field = data.get('status') if isinstance(data, dict) else None
     err_code = str(data.get('err_code', '') or '') if isinstance(data, dict) else ''
-    ok_business = bool(status_field is True or str(status_field).lower() == 'success') and not err_code
+
+    if isinstance(data, dict):
+        status_txt = str(status_field).strip().lower() if status_field is not None else ''
+        has_explicit_success = status_field is True or status_txt == 'success'
+        has_explicit_failure = status_field is False or status_txt in ('error', 'failed', 'fail')
+        message_txt = str(data.get('err_message') or data.get('message') or '').strip().lower()
+        has_error_message = bool(message_txt and any(w in message_txt for w in ('error', 'failed', 'invalid', 'unauthorized', 'not found')))
+
+        if has_explicit_success:
+            ok_business = not err_code
+        elif has_explicit_failure:
+            ok_business = False
+        else:
+            # Algunos endpoints (ej: product_detail) responden 200 con objeto de datos y sin campo "status".
+            ok_business = not err_code and not has_error_message
+    else:
+        # Endpoints que retornan lista JSON (ej: list_product)
+        ok_business = True
+
     ok = ok_http and ok_business
 
     return {
