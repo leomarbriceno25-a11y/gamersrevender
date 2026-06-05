@@ -34,7 +34,13 @@
         </div>
 
         <div class="admin-card">
-            <h2 style="margin:0 0 0.75rem 0;"><i class="fas fa-list"></i> Productos de la categoría</h2>
+            <div style="display:flex; gap:0.75rem; justify-content:space-between; align-items:center; flex-wrap:wrap; margin-bottom:0.75rem;">
+                <h2 style="margin:0;"><i class="fas fa-list"></i> Productos de la categoría</h2>
+                <div style="display:flex; gap:0.65rem; align-items:center; flex-wrap:wrap;">
+                    <input type="text" id="mg-filtro" class="form-input" placeholder="Buscar por ID o nombre..." style="min-width:260px;" oninput="filtrarProductosMG()">
+                    <span id="mg-total" style="font-size:0.82rem; color:var(--text-secondary);">0 resultados</span>
+                </div>
+            </div>
             <div id="mg-loading" style="display:none; text-align:center; padding:1.2rem; color:var(--text-secondary);">
                 <i class="fas fa-spinner fa-spin"></i> Consultando MooGold...
             </div>
@@ -71,6 +77,8 @@
 
 {% block scripts %}
 <script>
+var mgProductosCache = [];
+
 function mostrarSaldoMG(saldoObj) {
     var saldoTxt = '--';
     if (saldoObj && saldoObj.ok && saldoObj.data) {
@@ -92,29 +100,51 @@ function cargarProductosMooGold() {
         .then(function(data){
             document.getElementById('mg-loading').style.display = 'none';
             mostrarSaldoMG(data.saldo);
-            var body = document.getElementById('mg-productos-body');
             var prods = (data.productos && data.productos.data) ? data.productos.data : [];
-            if (!Array.isArray(prods) || prods.length === 0) {
-                body.innerHTML = '<tr><td colspan="3" style="text-align:center; color:var(--text-secondary);">Sin productos o sin respuesta válida.</td></tr>';
-                return;
-            }
-            var html = '';
-            for (var i = 0; i < prods.length; i++) {
-                var p = prods[i] || {};
-                var pid = String(p.ID || '').trim();
-                var name = String(p.post_title || '').trim();
-                html += '<tr>';
-                html += '<td><code>' + pid + '</code></td>';
-                html += '<td>' + name + '</td>';
-                html += '<td><button class="btn btn-sm btn-primary" onclick="verDetalleMG(' + parseInt(pid || '0', 10) + ',\'' + name.replace(/'/g, "\\'") + '\')"><i class="fas fa-search"></i> Ver detalle</button></td>';
-                html += '</tr>';
-            }
-            body.innerHTML = html;
+            mgProductosCache = Array.isArray(prods) ? prods : [];
+            filtrarProductosMG();
         })
         .catch(function(e){
             document.getElementById('mg-loading').style.display = 'none';
             alert('Error de conexión: ' + e.message);
         });
+}
+
+function filtrarProductosMG() {
+    var body = document.getElementById('mg-productos-body');
+    var filtro = String(document.getElementById('mg-filtro').value || '').toLowerCase().trim();
+    var lista = mgProductosCache || [];
+
+    if (!Array.isArray(lista) || lista.length === 0) {
+        body.innerHTML = '<tr><td colspan="3" style="text-align:center; color:var(--text-secondary);">Sin productos o sin respuesta válida.</td></tr>';
+        document.getElementById('mg-total').textContent = '0 resultados';
+        return;
+    }
+
+    var html = '';
+    var encontrados = 0;
+    for (var i = 0; i < lista.length; i++) {
+        var p = lista[i] || {};
+        var pid = String(p.ID || '').trim();
+        var name = String(p.post_title || '').trim();
+        var text = (pid + ' ' + name).toLowerCase();
+        if (filtro && text.indexOf(filtro) === -1) {
+            continue;
+        }
+        encontrados += 1;
+        html += '<tr>';
+        html += '<td><code>' + pid + '</code></td>';
+        html += '<td>' + name + '</td>';
+        html += '<td><button class="btn btn-sm btn-primary" onclick="verDetalleMG(' + parseInt(pid || '0', 10) + ',\'' + name.replace(/'/g, "\\'") + '\')"><i class="fas fa-search"></i> Ver detalle</button></td>';
+        html += '</tr>';
+    }
+
+    if (!encontrados) {
+        body.innerHTML = '<tr><td colspan="3" style="text-align:center; color:var(--text-secondary);">Sin coincidencias para "' + filtro.replace(/"/g, '&quot;') + '".</td></tr>';
+    } else {
+        body.innerHTML = html;
+    }
+    document.getElementById('mg-total').textContent = encontrados + (encontrados === 1 ? ' resultado' : ' resultados');
 }
 
 function verDetalleMG(productId, nombre) {
