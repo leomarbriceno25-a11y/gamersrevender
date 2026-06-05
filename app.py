@@ -165,6 +165,87 @@ def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje
     }
 
 
+def _estado_interno_desde_moogold(estado_moogold):
+    estado = str(estado_moogold or '').strip().lower()
+    if estado in ('completed', 'success', 'delivered'):
+        return 'completado'
+    if estado in ('refunded', 'incorrect-details', 'failed', 'cancelled', 'canceled'):
+        return 'cancelado'
+    return 'procesando'
+
+
+def _procesar_callback_moogold(db, pedido, payload):
+    pedido_id = int(pedido['id'])
+    usuario_id = int(pedido['usuario_id'])
+    producto_id = int(pedido['producto_id'])
+    estado_actual = str(pedido['estado'] or '').strip().lower()
+    total = float(pedido['total'] or 0)
+
+    estado_moogold = str(payload.get('status', '') or '').strip().lower()
+    mensaje = str(payload.get('message', '') or '').strip()
+    estado_nuevo = _estado_interno_desde_moogold(estado_moogold)
+    ref_externa = str(payload.get('order_id', '') or '').strip()
+
+    account_details = payload.get('account_details') if isinstance(payload.get('account_details'), dict) else {}
+    nombre_jugador = (
+        str(account_details.get('Username', '') or '').strip()
+        or str(account_details.get('User ID', '') or '').strip()
+        or str(pedido.get('nombre_jugador', '') or '').strip()
+    )
+
+    _registrar_auditoria_recarga(
+        pedido_id=pedido_id,
+        usuario_id=usuario_id,
+        producto_id=producto_id,
+        proveedor='moogold',
+        etapa='callback',
+        estado=estado_moogold,
+        detalle=mensaje,
+        referencia=ref_externa or str(pedido.get('referencia_externa', '') or ''),
+        payload=payload,
+    )
+
+    if estado_nuevo == 'completado' and estado_actual != 'completado':
+        db.execute(
+            "UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = COALESCE(NULLIF(referencia_externa, ''), ?) WHERE id = ?",
+            (nombre_jugador, ref_externa, pedido_id),
+        )
+        enviar_webhook(usuario_id, {
+            'evento': 'pedido_actualizado',
+            'pedido_id': pedido_id,
+            'estado': 'completado',
+            'referencia': ref_externa,
+            'nombre_jugador': nombre_jugador,
+            'mensaje': mensaje or 'Pedido completado por callback MooGold',
+        })
+        return {'accion': 'completado'}
+
+    if estado_nuevo == 'cancelado' and estado_actual != 'cancelado':
+        db.execute(
+            "UPDATE pedidos SET estado = 'cancelado', referencia_externa = COALESCE(NULLIF(referencia_externa, ''), ?) WHERE id = ?",
+            (ref_externa, pedido_id),
+        )
+        recargar_saldo(usuario_id, total, f"Reembolso MooGold callback pedido #{pedido_id} ({estado_moogold or 'cancelado'})")
+        enviar_webhook(usuario_id, {
+            'evento': 'pedido_actualizado',
+            'pedido_id': pedido_id,
+            'estado': 'cancelado',
+            'referencia': ref_externa,
+            'razon': mensaje or estado_moogold or 'Pedido cancelado por MooGold',
+            'reembolso': float(total),
+        })
+        return {'accion': 'cancelado_reembolsado'}
+
+    if estado_nuevo == 'procesando' and estado_actual in ('pendiente', 'procesando'):
+        db.execute(
+            "UPDATE pedidos SET estado = 'procesando', referencia_externa = COALESCE(NULLIF(referencia_externa, ''), referencia_externa) WHERE id = ?",
+            (pedido_id,),
+        )
+        return {'accion': 'procesando'}
+
+    return {'accion': 'sin_cambios'}
+
+
 def _recarga_status_cache_get(cache_key):
     now = time.time()
     with RECARGA_STATUS_CACHE_LOCK:
@@ -4959,6 +5040,64 @@ def api_transacciones():
     trans = db.execute("SELECT id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion, fecha FROM transacciones WHERE usuario_id = ? ORDER BY fecha DESC LIMIT 50", (user['id'],)).fetchall()
     db.close()
     return jsonify({'ok': True, 'transacciones': [dict(t) for t in trans]})
+
+
+@app.route('/webhook/moogold', methods=['GET', 'POST'])
+def webhook_moogold():
+    if request.method == 'GET':
+        return jsonify({
+            'ok': True,
+            'service': 'moogold',
+            'callback_url': 'https://tiendagiftven.tech/webhook/moogold',
+        })
+
+    token_cfg = str(config.MOOGOLD_CALLBACK_TOKEN or '').strip()
+    if token_cfg:
+        token_in = str(request.args.get('token', '') or request.headers.get('X-Callback-Token', '') or '').strip()
+        if token_in != token_cfg:
+            return jsonify({'status': 'error', 'message': 'Unauthorized callback token'}), 401
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({'status': 'error', 'message': 'Invalid JSON payload'}), 400
+
+    order_id = str(payload.get('order_id', '') or '').strip()
+    partner_order_id = str(payload.get('partner_order_id', '') or payload.get('partnerOrderId', '') or '').strip()
+    estado_moogold = str(payload.get('status', '') or '').strip()
+
+    if not estado_moogold:
+        return jsonify({'status': 'error', 'message': 'Missing status'}), 400
+    if not order_id and not partner_order_id:
+        return jsonify({'status': 'error', 'message': 'Missing order reference'}), 400
+
+    db = get_db()
+    try:
+        pedido = None
+        if order_id:
+            pedido = db.execute(
+                "SELECT id, usuario_id, producto_id, total, estado, nombre_jugador, referencia_externa, referencia_cliente "
+                "FROM pedidos WHERE referencia_externa = ? ORDER BY id DESC LIMIT 1",
+                (order_id,),
+            ).fetchone()
+        if not pedido and partner_order_id:
+            pedido = db.execute(
+                "SELECT id, usuario_id, producto_id, total, estado, nombre_jugador, referencia_externa, referencia_cliente "
+                "FROM pedidos WHERE referencia_cliente = ? ORDER BY id DESC LIMIT 1",
+                (partner_order_id,),
+            ).fetchone()
+
+        if not pedido:
+            db.commit()
+            return jsonify({'status': 'success', 'message': 'Callback recibido sin pedido local asociado'}), 200
+
+        resultado = _procesar_callback_moogold(db, pedido, payload)
+        db.commit()
+        return jsonify({'status': 'success', 'message': 'Callback procesado', 'resultado': resultado}), 200
+    except Exception as e:
+        db.rollback()
+        return jsonify({'status': 'error', 'message': str(e)}), 500
+    finally:
+        db.close()
 
 
 @app.route('/api/v1/webhook', methods=['GET', 'POST'])
