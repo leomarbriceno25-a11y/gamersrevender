@@ -1,0 +1,186 @@
+{% extends 'base.html' %}
+{% block title %}MooGold API - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-coins"></i> MooGold API</h1>
+        <p>Sincroniza y consulta catálogo para copiar IDs al panel de productos</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="admin-card" style="margin-bottom:1rem;">
+            <div style="display:grid; grid-template-columns:2fr 1fr auto; gap:0.75rem; align-items:end;">
+                <div>
+                    <label style="display:block; margin-bottom:0.35rem; color:var(--text-secondary); font-size:0.85rem;">Categoría MooGold</label>
+                    <select id="mg-categoria" class="form-select">
+                        <option value="">Selecciona una categoría...</option>
+                        {% for c in categorias_moogold %}
+                        <option value="{{ c.id }}">{{ c.id }} - {{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom:0.35rem; color:var(--text-secondary); font-size:0.85rem;">Saldo MooGold</label>
+                    <div id="mg-saldo" style="padding:0.55rem 0.75rem; border:1px solid var(--border); border-radius:8px; background:var(--bg-primary);">--</div>
+                </div>
+                <button class="btn btn-primary" onclick="cargarProductosMooGold()"><i class="fas fa-sync"></i> Cargar</button>
+            </div>
+            <p style="margin-top:0.65rem; font-size:0.82rem; color:var(--text-secondary);">
+                Al abrir detalle de un producto verás sus <strong>Variation ID</strong>. Ese ID se usa en tu producto local como <code>MooGold Variation ID</code>.
+            </p>
+        </div>
+
+        <div class="admin-card">
+            <h2 style="margin:0 0 0.75rem 0;"><i class="fas fa-list"></i> Productos de la categoría</h2>
+            <div id="mg-loading" style="display:none; text-align:center; padding:1.2rem; color:var(--text-secondary);">
+                <i class="fas fa-spinner fa-spin"></i> Consultando MooGold...
+            </div>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr><th>ID</th><th>Nombre</th><th>Acción</th></tr>
+                    </thead>
+                    <tbody id="mg-productos-body">
+                        <tr><td colspan="3" style="text-align:center; color:var(--text-secondary);">Selecciona una categoría y pulsa Cargar.</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
+
+<div id="mg-modal" style="display:none; position:fixed; inset:0; background:rgba(10,14,23,0.88); z-index:9999; justify-content:center; align-items:center; padding:1rem;">
+    <div style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:14px; max-width:860px; width:100%; max-height:86vh; overflow:auto; padding:1rem 1rem 1.25rem 1rem;">
+        <div style="display:flex; justify-content:space-between; gap:0.5rem; align-items:center; margin-bottom:0.8rem;">
+            <h3 id="mg-modal-title" style="margin:0;"><i class="fas fa-box-open"></i> Detalle</h3>
+            <button class="btn btn-sm btn-secondary" onclick="cerrarModalMG()"><i class="fas fa-times"></i></button>
+        </div>
+        <div id="mg-modal-fields" style="margin-bottom:0.8rem;"></div>
+        <div class="table-responsive">
+            <table class="table">
+                <thead><tr><th>Variation ID</th><th>Nombre</th><th>Precio</th><th>Stock</th><th>Copiar</th></tr></thead>
+                <tbody id="mg-variaciones-body"></tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function mostrarSaldoMG(saldoObj) {
+    var saldoTxt = '--';
+    if (saldoObj && saldoObj.ok && saldoObj.data) {
+        var d = saldoObj.data;
+        saldoTxt = (d.balance || '--') + ' ' + (d.currency || 'USD');
+    }
+    document.getElementById('mg-saldo').textContent = saldoTxt;
+}
+
+function cargarProductosMooGold() {
+    var cat = document.getElementById('mg-categoria').value;
+    if (!cat) {
+        alert('Selecciona una categoría primero.');
+        return;
+    }
+    document.getElementById('mg-loading').style.display = 'block';
+    fetch('/admin/moogold/productos?category_id=' + encodeURIComponent(cat))
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+            document.getElementById('mg-loading').style.display = 'none';
+            mostrarSaldoMG(data.saldo);
+            var body = document.getElementById('mg-productos-body');
+            var prods = (data.productos && data.productos.data) ? data.productos.data : [];
+            if (!Array.isArray(prods) || prods.length === 0) {
+                body.innerHTML = '<tr><td colspan="3" style="text-align:center; color:var(--text-secondary);">Sin productos o sin respuesta válida.</td></tr>';
+                return;
+            }
+            var html = '';
+            for (var i = 0; i < prods.length; i++) {
+                var p = prods[i] || {};
+                var pid = String(p.ID || '').trim();
+                var name = String(p.post_title || '').trim();
+                html += '<tr>';
+                html += '<td><code>' + pid + '</code></td>';
+                html += '<td>' + name + '</td>';
+                html += '<td><button class="btn btn-sm btn-primary" onclick="verDetalleMG(' + parseInt(pid || '0', 10) + ',\'' + name.replace(/'/g, "\\'") + '\')"><i class="fas fa-search"></i> Ver detalle</button></td>';
+                html += '</tr>';
+            }
+            body.innerHTML = html;
+        })
+        .catch(function(e){
+            document.getElementById('mg-loading').style.display = 'none';
+            alert('Error de conexión: ' + e.message);
+        });
+}
+
+function verDetalleMG(productId, nombre) {
+    if (!productId) return;
+    fetch('/admin/moogold/productos?product_id=' + encodeURIComponent(productId))
+        .then(function(r){ return r.json(); })
+        .then(function(data){
+            mostrarSaldoMG(data.saldo);
+            var det = data.detalle || {};
+            if (!det.ok || !det.data) {
+                alert('No se pudo cargar el detalle: ' + (det.error || 'sin respuesta'));
+                return;
+            }
+            var d = det.data;
+            var fields = d.fields || [];
+            var fieldHtml = '';
+            if (Array.isArray(fields) && fields.length > 0) {
+                fieldHtml += '<div style="padding:0.7rem; border:1px solid var(--border); border-radius:8px;">';
+                fieldHtml += '<strong>Campos requeridos:</strong> ';
+                for (var i = 0; i < fields.length; i++) {
+                    var f = fields[i] || {};
+                    fieldHtml += '<span style="display:inline-block; margin:0.2rem; padding:0.2rem 0.55rem; border-radius:6px; background:var(--bg-primary); border:1px solid var(--border);">' + (f.name || '-') + '</span>';
+                }
+                fieldHtml += '</div>';
+            }
+            document.getElementById('mg-modal-fields').innerHTML = fieldHtml;
+            document.getElementById('mg-modal-title').innerHTML = '<i class="fas fa-box-open"></i> ' + nombre + ' <span style="color:var(--text-secondary); font-size:0.85rem;">(ID: ' + productId + ')</span>';
+
+            var vars = d.Variation || [];
+            var html = '';
+            if (!Array.isArray(vars) || vars.length === 0) {
+                html = '<tr><td colspan="5" style="text-align:center; color:var(--text-secondary);">Sin variaciones</td></tr>';
+            } else {
+                for (var j = 0; j < vars.length; j++) {
+                    var v = vars[j] || {};
+                    var vid = String(v.variation_id || '').trim();
+                    var vname = String(v.variation_name || '').trim();
+                    var vprice = String(v.variation_price || '');
+                    var vstock = String(v.stock_status || '');
+                    html += '<tr>';
+                    html += '<td><code>' + vid + '</code></td>';
+                    html += '<td>' + vname + '</td>';
+                    html += '<td>' + vprice + '</td>';
+                    html += '<td>' + vstock + '</td>';
+                    html += '<td><button class="btn btn-sm btn-secondary" onclick="copiarTextoMG(\'' + vid.replace(/'/g, "\\'") + '\')"><i class="fas fa-copy"></i> Variation ID</button></td>';
+                    html += '</tr>';
+                }
+            }
+            document.getElementById('mg-variaciones-body').innerHTML = html;
+            document.getElementById('mg-modal').style.display = 'flex';
+        })
+        .catch(function(e){
+            alert('Error de conexión: ' + e.message);
+        });
+}
+
+function copiarTextoMG(txt) {
+    navigator.clipboard.writeText(String(txt || '')).then(function(){
+        alert('Copiado: ' + txt);
+    }).catch(function(){
+        alert('No se pudo copiar automáticamente. Valor: ' + txt);
+    });
+}
+
+function cerrarModalMG() {
+    document.getElementById('mg-modal').style.display = 'none';
+}
+</script>
+{% endblock %}

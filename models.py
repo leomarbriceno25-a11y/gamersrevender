@@ -134,6 +134,10 @@ def init_db():
             gamepoint_product_id INTEGER DEFAULT 0,
             gamepoint_package_id INTEGER DEFAULT 0,
             gamepoint_fields TEXT DEFAULT '',
+            moogold_category_id INTEGER DEFAULT 0,
+            moogold_product_id INTEGER DEFAULT 0,
+            moogold_variation_id INTEGER DEFAULT 0,
+            moogold_fields TEXT DEFAULT '',
             orden INTEGER DEFAULT 0,
             fecha_creacion TEXT DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (categoria_id) REFERENCES categorias(id)
@@ -290,6 +294,22 @@ def init_db():
         db.execute("SELECT pincentral_entrega_directa FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN pincentral_entrega_directa INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT moogold_category_id FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN moogold_category_id INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT moogold_product_id FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN moogold_product_id INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT moogold_variation_id FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN moogold_variation_id INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT moogold_fields FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN moogold_fields TEXT DEFAULT ''")
     # Bonus por monto de recarga
     try:
         db.execute("SELECT id FROM bonus_recarga LIMIT 1")

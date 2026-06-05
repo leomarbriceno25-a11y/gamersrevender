@@ -174,6 +174,33 @@ def _estado_interno_desde_moogold(estado_moogold):
     return 'procesando'
 
 
+def _moogold_category_catalogo():
+    return [
+        {'id': 50, 'name': 'Direct Top Up'},
+        {'id': 51, 'name': 'Other Gift Cards'},
+        {'id': 451, 'name': 'Razer Gold'},
+        {'id': 538, 'name': 'Google Play'},
+        {'id': 765, 'name': 'PSN'},
+        {'id': 766, 'name': 'Garena Shells'},
+        {'id': 874, 'name': 'Netflix'},
+        {'id': 992, 'name': 'Spotify'},
+        {'id': 993, 'name': 'Steam'},
+        {'id': 1223, 'name': 'League of Legends'},
+        {'id': 1261, 'name': 'Riot Access Code'},
+        {'id': 1391, 'name': 'Amazon Gift Cards'},
+        {'id': 1444, 'name': 'Apple Music'},
+        {'id': 2377, 'name': 'Apex Legends'},
+        {'id': 2433, 'name': 'iTunes Gift Card'},
+        {'id': 3075, 'name': 'Bilibili'},
+        {'id': 3154, 'name': 'XBox Gift Card'},
+        {'id': 3351, 'name': 'Astro Pay'},
+        {'id': 3381, 'name': 'NetEase Pay'},
+        {'id': 3382, 'name': 'iQIYI'},
+        {'id': 3563, 'name': 'Roblox'},
+        {'id': 3737, 'name': 'Nintendo Gift Card'},
+    ]
+
+
 def _procesar_callback_moogold(db, pedido, payload):
     pedido_id = int(pedido['id'])
     usuario_id = int(pedido['usuario_id'])
@@ -3321,6 +3348,11 @@ def admin_productos():
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
+            usa_moogold = 1 if request.form.get('usa_moogold') else 0
+            moogold_category_id = int(request.form.get('moogold_category_id', 0) or 0)
+            moogold_product_id = int(request.form.get('moogold_product_id', 0) or 0)
+            moogold_variation_id = int(request.form.get('moogold_variation_id', 0) or 0)
+            moogold_fields = request.form.get('moogold_fields', '').strip()
             recarga_manual = 1 if request.form.get('recarga_manual') else 0
             orden = int(request.form.get('orden', 0))
             pin_origen_producto_id = int(request.form.get('pin_origen_producto_id', 0))
@@ -3329,9 +3361,14 @@ def admin_productos():
             canjes_por_compra = int(request.form.get('canjes_por_compra', 1)) or 1
             if not usa_pincentral:
                 pincentral_entrega_directa = 0
+            if not usa_moogold:
+                moogold_category_id = 0
+                moogold_product_id = 0
+                moogold_variation_id = 0
+                moogold_fields = ''
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -3354,6 +3391,11 @@ def admin_productos():
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
+            usa_moogold = 1 if request.form.get('usa_moogold') else 0
+            moogold_category_id = int(request.form.get('moogold_category_id', 0) or 0)
+            moogold_product_id = int(request.form.get('moogold_product_id', 0) or 0)
+            moogold_variation_id = int(request.form.get('moogold_variation_id', 0) or 0)
+            moogold_fields = request.form.get('moogold_fields', '').strip()
             recarga_manual = 1 if request.form.get('recarga_manual') else 0
             orden = int(request.form.get('orden', 0))
             pin_origen_producto_id = int(request.form.get('pin_origen_producto_id', 0))
@@ -3362,9 +3404,14 @@ def admin_productos():
             canjes_por_compra = int(request.form.get('canjes_por_compra', 1)) or 1
             if not usa_pincentral:
                 pincentral_entrega_directa = 0
+            if not usa_moogold:
+                moogold_category_id = 0
+                moogold_product_id = 0
+                moogold_variation_id = 0
+                moogold_fields = ''
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -3426,9 +3473,10 @@ def admin_productos_editar_masivo():
     for p in productos:
         try:
             db.execute(
-                "UPDATE productos SET nombre=?, precio=?, activo=?, recarga_manual=?, gamepoint_product_id=?, gamepoint_package_id=? WHERE id=?",
+                "UPDATE productos SET nombre=?, precio=?, activo=?, recarga_manual=?, gamepoint_product_id=?, gamepoint_package_id=?, moogold_product_id=?, moogold_variation_id=? WHERE id=?",
                 (p['nombre'], float(p['precio']), int(p['activo']), int(p.get('recarga_manual', 0)),
-                 int(p.get('gamepoint_product_id', 0)), int(p.get('gamepoint_package_id', 0)), int(p['id']))
+                 int(p.get('gamepoint_product_id', 0)), int(p.get('gamepoint_package_id', 0)),
+                 int(p.get('moogold_product_id', 0)), int(p.get('moogold_variation_id', 0)), int(p['id']))
             )
             actualizados += 1
         except Exception:
@@ -3519,6 +3567,38 @@ def admin_gamepoint_catalogo():
         myr_usd_rate=myr_usd_rate,
         margin_percent=margin_percent,
     )
+
+
+@app.route('/admin/moogold', methods=['GET'])
+@admin_required
+def admin_moogold_catalogo():
+    return render_template('admin/moogold.html', categorias_moogold=_moogold_category_catalogo())
+
+
+@app.route('/admin/moogold/productos', methods=['GET'])
+@admin_required
+def admin_moogold_productos():
+    from moogold_api import obtener_saldo, listar_productos, detalle_producto
+
+    category_id_raw = str(request.args.get('category_id', '') or '').strip()
+    product_id_raw = str(request.args.get('product_id', '') or '').strip()
+
+    saldo = obtener_saldo()
+    if product_id_raw:
+        try:
+            detail = detalle_producto(int(product_id_raw))
+            return jsonify({'saldo': saldo, 'detalle': detail})
+        except Exception as e:
+            return jsonify({'saldo': saldo, 'detalle': {'ok': False, 'error': str(e)}})
+
+    if not category_id_raw:
+        return jsonify({'saldo': saldo, 'productos': {'ok': False, 'error': 'Debes enviar category_id'}}), 400
+
+    try:
+        productos = listar_productos(int(category_id_raw))
+    except Exception as e:
+        productos = {'ok': False, 'error': str(e)}
+    return jsonify({'saldo': saldo, 'productos': productos})
 
 
 @app.route('/admin/pincentral', methods=['GET', 'POST'])
