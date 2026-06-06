@@ -201,6 +201,65 @@ def _moogold_category_catalogo():
     ]
 
 
+def _moogold_parse_fields(fields_raw):
+    txt = str(fields_raw or '').strip()
+    if not txt:
+        return []
+    try:
+        payload = json.loads(txt)
+    except Exception:
+        return []
+    if not isinstance(payload, list):
+        return []
+    names = []
+    for f in payload:
+        if not isinstance(f, dict):
+            continue
+        n = str(f.get('name', '') or '').strip()
+        if n:
+            names.append(n)
+    return names
+
+
+def _moogold_build_account_fields(fields_raw, id_juego, input2=''):
+    names = _moogold_parse_fields(fields_raw)
+    v1 = str(id_juego or '').strip()
+    v2 = str(input2 or '').strip()
+
+    if v1 and not v2:
+        for sep in ('|', ',', ':'):
+            if sep in v1:
+                left, right = v1.split(sep, 1)
+                v1 = left.strip()
+                v2 = right.strip()
+                break
+
+    if not names:
+        base = {}
+        if v1:
+            base['User ID'] = v1
+        if v2:
+            base['Zone ID'] = v2
+        return base
+
+    out = {}
+    if len(names) >= 1 and v1:
+        out[names[0]] = v1
+    if len(names) >= 2 and v2:
+        out[names[1]] = v2
+    return out
+
+
+def _moogold_extract_ref(data):
+    if not isinstance(data, dict):
+        return ''
+    for key in ('order_id', 'orderid', 'id', 'transaction_id', 'trx_id'):
+        val = str(data.get(key, '') or '').strip()
+        if val:
+            return val
+    return ''
+
+
 def _procesar_callback_moogold(db, pedido, payload):
     pedido_id = int(pedido['id'])
     usuario_id = int(pedido['usuario_id'])
@@ -1874,11 +1933,16 @@ def comprar():
 
     usa_razer = prod['usa_razer'] if 'usa_razer' in prod.keys() else 0
     usa_deltaforce = prod['usa_deltaforce'] if 'usa_deltaforce' in prod.keys() else 0
+    moogold_category_id = int((prod['moogold_category_id'] if 'moogold_category_id' in prod.keys() else 0) or 0)
+    moogold_variation_id = int((prod['moogold_variation_id'] if 'moogold_variation_id' in prod.keys() else 0) or 0)
+    moogold_fields_raw = (prod['moogold_fields'] if 'moogold_fields' in prod.keys() else '') or ''
+    usa_moogold = moogold_category_id > 0 and moogold_variation_id > 0
     usa_pincentral = int((prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0) or 0)
     pincentral_entrega_directa = int((prod['pincentral_entrega_directa'] if 'pincentral_entrega_directa' in prod.keys() else 0) or 0)
     if prod['categoria_tipo'] == 'giftcards' and usa_pincentral and pincentral_entrega_directa:
         cantidad = 1
-    if (prod['usa_api'] or usa_razer or usa_deltaforce) and not id_juego:
+    requiere_id_moogold = usa_moogold and bool(_moogold_parse_fields(moogold_fields_raw))
+    if (prod['usa_api'] or usa_razer or usa_deltaforce or requiere_id_moogold) and not id_juego:
         flash('Debes ingresar el ID del jugador para esta recarga.', 'error')
         db.close()
         return redirect(url_for('producto', id=producto_id))
@@ -2101,6 +2165,66 @@ def comprar():
                 recargar_saldo(user_id, total, f"Reembolso: Excepción GamePoint pedido #{pedido_id}")
                 flash(f'Error inesperado en la recarga. Se reembolsó ${total:.4f} a tu cartera.', 'error')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
+
+    # Si el producto usa MooGold API
+    elif usa_moogold:
+        from moogold_api import crear_orden
+
+        mg_input2 = request.form.get('input2', '').strip()
+        account_fields = _moogold_build_account_fields(moogold_fields_raw, id_juego, mg_input2)
+        partner_order_id = f"MGW{pedido_id}"
+
+        db.close()
+        try:
+            resultado_api = crear_orden(
+                category=moogold_category_id,
+                variation_id=moogold_variation_id,
+                quantity=cantidad,
+                account_fields=account_fields,
+                partner_order_id=partner_order_id,
+            )
+            db2 = get_db()
+            if resultado_api.get('ok'):
+                data_mg = resultado_api.get('data') if isinstance(resultado_api.get('data'), dict) else {}
+                ref = _moogold_extract_ref(data_mg)
+                mg_status = str(data_mg.get('status', '') or '').strip().lower()
+                estado_final = _estado_interno_desde_moogold(mg_status) if mg_status else 'procesando'
+                nombre_jugador = str(data_mg.get('username', '') or data_mg.get('ingame_name', '') or id_juego or '').strip()
+                codigo = str(data_mg.get('code', '') or data_mg.get('voucher', '') or '').strip()
+
+                if estado_final == 'completado' and codigo:
+                    db2.execute(
+                        "UPDATE pedidos SET estado = ?, nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ?, referencia_cliente = ? WHERE id = ?",
+                        (estado_final, nombre_jugador, codigo, ref, partner_order_id, pedido_id),
+                    )
+                else:
+                    db2.execute(
+                        "UPDATE pedidos SET estado = ?, nombre_jugador = ?, referencia_externa = ?, referencia_cliente = ? WHERE id = ?",
+                        (estado_final, nombre_jugador, ref, partner_order_id, pedido_id),
+                    )
+                db2.commit()
+                db2.close()
+
+                if estado_final == 'completado':
+                    flash(f'Pedido #{pedido_id} completado por MooGold (Ref: {ref or "sin referencia"}).', 'success')
+                else:
+                    flash(f'Pedido #{pedido_id} enviado a MooGold (Ref: {ref or "pendiente"}). Estado: {estado_final}.', 'warning')
+                return redirect(url_for('pedido_detalle', id=pedido_id))
+
+            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_cliente = ? WHERE id = ?", (partner_order_id, pedido_id))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id, total, f"Reembolso: Error MooGold pedido #{pedido_id}")
+            flash(f"Error MooGold: {resultado_api.get('error', 'Sin respuesta válida')}. Se reembolsó ${total:.4f}.", 'error')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
+        except Exception as e:
+            db2 = get_db()
+            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_cliente = ? WHERE id = ?", (partner_order_id, pedido_id))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id, total, f"Reembolso: Excepción MooGold pedido #{pedido_id}")
+            flash(f'Error inesperado en MooGold: {e}. Se reembolsó ${total:.4f}.', 'error')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Razer (separada), recarga directa por paquete
     elif (prod['usa_razer'] if 'usa_razer' in prod.keys() else 0) and id_juego:
@@ -4418,11 +4542,21 @@ def api_comprar():
         pass
     usa_razer = prod['usa_razer'] if 'usa_razer' in prod.keys() else 0
     usa_deltaforce = prod['usa_deltaforce'] if 'usa_deltaforce' in prod.keys() else 0
+    moogold_category_id = int((prod['moogold_category_id'] if 'moogold_category_id' in prod.keys() else 0) or 0)
+    moogold_variation_id = int((prod['moogold_variation_id'] if 'moogold_variation_id' in prod.keys() else 0) or 0)
+    moogold_fields_raw = (prod['moogold_fields'] if 'moogold_fields' in prod.keys() else '') or ''
+    usa_moogold = moogold_category_id > 0 and moogold_variation_id > 0
     usa_pincentral = int((prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0) or 0)
     pincentral_entrega_directa = int((prod['pincentral_entrega_directa'] if 'pincentral_entrega_directa' in prod.keys() else 0) or 0)
     if prod['categoria_tipo'] == 'giftcards' and usa_pincentral and pincentral_entrega_directa:
         cantidad = 1
-    requiere_id = prod['usa_api'] or usa_razer or usa_deltaforce or (prod['gamepoint_product_id'] and gp_fields_raw)
+    requiere_id = (
+        prod['usa_api']
+        or usa_razer
+        or usa_deltaforce
+        or (prod['gamepoint_product_id'] and gp_fields_raw)
+        or (usa_moogold and bool(_moogold_parse_fields(moogold_fields_raw)))
+    )
     if requiere_id and not id_juego:
         db.close()
         return jsonify({'ok': False, 'error': 'Se requiere id_juego (Player ID)'}), 400
@@ -4697,6 +4831,83 @@ def api_comprar():
                     'ok': False, 'error': str(e), 'pedido_id': pedido_id,
                     'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
                 }), 500
+
+    # MooGold API
+    elif usa_moogold:
+        from moogold_api import crear_orden
+
+        partner_order_id = merchant_ref or f"MGA{pedido_id}"
+        account_fields = _moogold_build_account_fields(moogold_fields_raw, id_juego, input2)
+        db.close()
+        try:
+            resultado_api = crear_orden(
+                category=moogold_category_id,
+                variation_id=moogold_variation_id,
+                quantity=cantidad,
+                account_fields=account_fields,
+                partner_order_id=partner_order_id,
+            )
+            db2 = get_db()
+            if resultado_api.get('ok'):
+                data_mg = resultado_api.get('data') if isinstance(resultado_api.get('data'), dict) else {}
+                ref = _moogold_extract_ref(data_mg)
+                mg_status = str(data_mg.get('status', '') or '').strip().lower()
+                estado_final = _estado_interno_desde_moogold(mg_status) if mg_status else 'procesando'
+                nombre_jugador = str(data_mg.get('username', '') or data_mg.get('ingame_name', '') or id_juego or '').strip()
+                codigo = str(data_mg.get('code', '') or data_mg.get('voucher', '') or '').strip()
+
+                if estado_final == 'completado' and codigo:
+                    db2.execute(
+                        "UPDATE pedidos SET estado = ?, nombre_jugador = ?, codigo_entregado = ?, referencia_externa = ?, referencia_cliente = ? WHERE id = ?",
+                        (estado_final, nombre_jugador, codigo, ref, partner_order_id, pedido_id),
+                    )
+                else:
+                    db2.execute(
+                        "UPDATE pedidos SET estado = ?, nombre_jugador = ?, referencia_externa = ?, referencia_cliente = ? WHERE id = ?",
+                        (estado_final, nombre_jugador, ref, partner_order_id, pedido_id),
+                    )
+                db2.commit()
+                db2.close()
+
+                return jsonify({
+                    'ok': True,
+                    'pedido_id': pedido_id,
+                    'estado': estado_final,
+                    'merchant_ref': partner_order_id,
+                    'referencia': ref,
+                    'total': total,
+                    'saldo_restante': get_saldo(user_id_api),
+                    'nombre_jugador': nombre_jugador,
+                    'codigo': codigo,
+                    'mensaje': 'Pedido enviado a MooGold' if estado_final != 'completado' else 'Pedido completado por MooGold',
+                })
+
+            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_cliente = ? WHERE id = ?", (partner_order_id, pedido_id))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id_api, total, f"Reembolso API: Error MooGold pedido #{pedido_id}")
+            return jsonify({
+                'ok': False,
+                'error': resultado_api.get('error', 'Error MooGold'),
+                'pedido_id': pedido_id,
+                'merchant_ref': partner_order_id,
+                'reembolsado': True,
+                'saldo_restante': get_saldo(user_id_api),
+            }), 400
+        except Exception as e:
+            db2 = get_db()
+            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_cliente = ? WHERE id = ?", (partner_order_id, pedido_id))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id_api, total, f"Reembolso API: Excepción MooGold pedido #{pedido_id}")
+            return jsonify({
+                'ok': False,
+                'error': str(e),
+                'pedido_id': pedido_id,
+                'merchant_ref': partner_order_id,
+                'reembolsado': True,
+                'saldo_restante': get_saldo(user_id_api),
+            }), 500
 
     # API Razer separada (recarga directa)
     elif (prod['usa_razer'] if 'usa_razer' in prod.keys() else 0) and id_juego:
