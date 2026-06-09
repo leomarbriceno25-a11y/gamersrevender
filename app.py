@@ -176,8 +176,10 @@ def _estado_interno_desde_moogold(estado_moogold):
 
 def _moogold_category_catalogo():
     return [
-        {'id': 50, 'name': 'Direct Top Up'},
-        {'id': 51, 'name': 'Other Gift Cards'},
+        {'id': 1, 'name': 'DTLU (Direct Top Up)'},
+        {'id': 2, 'name': 'Gift Cards'},
+        {'id': 50, 'name': 'Direct Top Up (legacy)'},
+        {'id': 51, 'name': 'Other Gift Cards (legacy)'},
         {'id': 451, 'name': 'Razer Gold'},
         {'id': 538, 'name': 'Google Play'},
         {'id': 765, 'name': 'PSN'},
@@ -199,6 +201,25 @@ def _moogold_category_catalogo():
         {'id': 3563, 'name': 'Roblox'},
         {'id': 3737, 'name': 'Nintendo Gift Card'},
     ]
+
+
+def _moogold_category_efectiva(categoria_tipo, category_configured):
+    tipo = str(categoria_tipo or '').strip().lower()
+    if tipo == 'giftcards':
+        return 2
+
+    try:
+        cat = int(category_configured or 0)
+    except Exception:
+        cat = 0
+
+    if cat == 51:
+        return 2
+    if cat == 50:
+        return 1
+    if cat in (1, 2):
+        return cat
+    return 1
 
 
 def _moogold_parse_fields(fields_raw):
@@ -260,6 +281,75 @@ def _moogold_extract_ref(data):
     return ''
 
 
+def _moogold_clean_code(value):
+    return str(value or '').replace('\r', '').replace('\n', '').strip()
+
+
+def _moogold_extract_code(data):
+    if not isinstance(data, dict):
+        return ''
+
+    for key in ('voucher_code', 'voucher', 'code', 'pin', 'gift_code', 'giftcode'):
+        val = data.get(key)
+        if isinstance(val, list):
+            for x in val:
+                txt = _moogold_clean_code(x)
+                if txt:
+                    return txt
+        else:
+            txt = _moogold_clean_code(val)
+            if txt:
+                return txt
+
+    items = data.get('item')
+    if isinstance(items, list):
+        for row in items:
+            if not isinstance(row, dict):
+                continue
+            for key in ('voucher_code', 'voucher', 'code', 'pin', 'gift_code', 'giftcode'):
+                val = row.get(key)
+                if isinstance(val, list):
+                    for x in val:
+                        txt = _moogold_clean_code(x)
+                        if txt:
+                            return txt
+                else:
+                    txt = _moogold_clean_code(val)
+                    if txt:
+                        return txt
+    return ''
+
+
+def _moogold_extract_nombre(data, fallback=''):
+    if isinstance(data, dict):
+        account_details = data.get('account_details') if isinstance(data.get('account_details'), dict) else {}
+        for key in ('Username', 'username', 'Ingame Name', 'Player ID', 'User ID'):
+            txt = str(account_details.get(key, '') or '').strip()
+            if txt:
+                return txt
+
+        for key in ('username', 'ingame_name', 'player_id', 'user_id'):
+            txt = str(data.get(key, '') or '').strip()
+            if txt:
+                return txt
+    return str(fallback or '').strip()
+
+
+def _moogold_order_detail_safe(order_ref):
+    ref = str(order_ref or '').strip()
+    if not ref.isdigit():
+        return {}
+    try:
+        from moogold_api import consultar_orden
+        detalle = consultar_orden(int(ref))
+    except Exception:
+        return {}
+    if not isinstance(detalle, dict) or not detalle.get('ok'):
+        return {}
+    data = detalle.get('data')
+    return data if isinstance(data, dict) else {}
+
+
 def _procesar_callback_moogold(db, pedido, payload):
     pedido_id = int(pedido['id'])
     usuario_id = int(pedido['usuario_id'])
@@ -278,6 +368,7 @@ def _procesar_callback_moogold(db, pedido, payload):
         or str(account_details.get('User ID', '') or '').strip()
         or str(pedido.get('nombre_jugador', '') or '').strip()
     )
+    codigo = _moogold_extract_code(payload)
 
     _registrar_auditoria_recarga(
         pedido_id=pedido_id,
@@ -292,16 +383,23 @@ def _procesar_callback_moogold(db, pedido, payload):
     )
 
     if estado_nuevo == 'completado' and estado_actual != 'completado':
-        db.execute(
-            "UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = COALESCE(NULLIF(referencia_externa, ''), ?) WHERE id = ?",
-            (nombre_jugador, ref_externa, pedido_id),
-        )
+        if codigo:
+            db.execute(
+                "UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, codigo_entregado = ?, referencia_externa = COALESCE(NULLIF(referencia_externa, ''), ?) WHERE id = ?",
+                (nombre_jugador, codigo, ref_externa, pedido_id),
+            )
+        else:
+            db.execute(
+                "UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = COALESCE(NULLIF(referencia_externa, ''), ?) WHERE id = ?",
+                (nombre_jugador, ref_externa, pedido_id),
+            )
         enviar_webhook(usuario_id, {
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
             'estado': 'completado',
             'referencia': ref_externa,
             'nombre_jugador': nombre_jugador,
+            'codigo': codigo,
             'mensaje': mensaje or 'Pedido completado por callback MooGold',
         })
         return {'accion': 'completado'}
@@ -2178,11 +2276,12 @@ def comprar():
         mg_input2 = request.form.get('input2', '').strip()
         account_fields = _moogold_build_account_fields(moogold_fields_raw, id_juego, mg_input2)
         partner_order_id = f"MGW{pedido_id}"
+        moogold_category_orden = _moogold_category_efectiva(prod['categoria_tipo'], moogold_category_id)
 
         db.close()
         try:
             resultado_api = crear_orden(
-                category=moogold_category_id,
+                category=moogold_category_orden,
                 variation_id=moogold_variation_id,
                 quantity=cantidad,
                 account_fields=account_fields,
@@ -2193,9 +2292,19 @@ def comprar():
                 data_mg = resultado_api.get('data') if isinstance(resultado_api.get('data'), dict) else {}
                 ref = _moogold_extract_ref(data_mg)
                 mg_status = str(data_mg.get('status', '') or '').strip().lower()
+                nombre_jugador = _moogold_extract_nombre(data_mg, id_juego)
+                codigo = _moogold_extract_code(data_mg)
+
+                if prod['categoria_tipo'] == 'giftcards' and not codigo and ref:
+                    detail_data = _moogold_order_detail_safe(ref)
+                    if detail_data:
+                        mg_status = str(detail_data.get('order_status', '') or detail_data.get('status', '') or mg_status).strip().lower()
+                        nombre_jugador = _moogold_extract_nombre(detail_data, nombre_jugador)
+                        codigo = _moogold_extract_code(detail_data) or codigo
+
                 estado_final = _estado_interno_desde_moogold(mg_status) if mg_status else 'procesando'
-                nombre_jugador = str(data_mg.get('username', '') or data_mg.get('ingame_name', '') or id_juego or '').strip()
-                codigo = str(data_mg.get('code', '') or data_mg.get('voucher', '') or '').strip()
+                if codigo and estado_final != 'cancelado':
+                    estado_final = 'completado'
 
                 if estado_final == 'completado' and codigo:
                     db2.execute(
@@ -4850,10 +4959,11 @@ def api_comprar():
 
         partner_order_id = merchant_ref or f"MGA{pedido_id}"
         account_fields = _moogold_build_account_fields(moogold_fields_raw, id_juego, input2)
+        moogold_category_orden = _moogold_category_efectiva(prod['categoria_tipo'], moogold_category_id)
         db.close()
         try:
             resultado_api = crear_orden(
-                category=moogold_category_id,
+                category=moogold_category_orden,
                 variation_id=moogold_variation_id,
                 quantity=cantidad,
                 account_fields=account_fields,
@@ -4864,9 +4974,19 @@ def api_comprar():
                 data_mg = resultado_api.get('data') if isinstance(resultado_api.get('data'), dict) else {}
                 ref = _moogold_extract_ref(data_mg)
                 mg_status = str(data_mg.get('status', '') or '').strip().lower()
+                nombre_jugador = _moogold_extract_nombre(data_mg, id_juego)
+                codigo = _moogold_extract_code(data_mg)
+
+                if prod['categoria_tipo'] == 'giftcards' and not codigo and ref:
+                    detail_data = _moogold_order_detail_safe(ref)
+                    if detail_data:
+                        mg_status = str(detail_data.get('order_status', '') or detail_data.get('status', '') or mg_status).strip().lower()
+                        nombre_jugador = _moogold_extract_nombre(detail_data, nombre_jugador)
+                        codigo = _moogold_extract_code(detail_data) or codigo
+
                 estado_final = _estado_interno_desde_moogold(mg_status) if mg_status else 'procesando'
-                nombre_jugador = str(data_mg.get('username', '') or data_mg.get('ingame_name', '') or id_juego or '').strip()
-                codigo = str(data_mg.get('code', '') or data_mg.get('voucher', '') or '').strip()
+                if codigo and estado_final != 'cancelado':
+                    estado_final = 'completado'
 
                 if estado_final == 'completado' and codigo:
                     db2.execute(
