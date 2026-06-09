@@ -217,5 +217,14 @@ function calcularBonus() {
         infoDiv.style.display = 'none';
     }
 }
+
+const montoInput = document.getElementById('monto_input');
+if (montoInput) {
+    montoInput.addEventListener('keydown', function(e) {
+        if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+        }
+    });
+}
 </script>
 {% endblock %}
