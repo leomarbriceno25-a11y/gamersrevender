@@ -67,7 +67,7 @@
         <div id="mg-modal-fields" style="margin-bottom:0.8rem;"></div>
         <div class="table-responsive">
             <table class="table">
-                <thead><tr><th>Variation ID</th><th>Nombre</th><th>Precio</th><th>Stock</th><th>Copiar</th></tr></thead>
+                <thead><tr><th>Variation ID</th><th>Nombre</th><th>Precio</th><th>Stock</th><th>Requiere para procesar</th><th>Copiar</th></tr></thead>
                 <tbody id="mg-variaciones-body"></tbody>
             </table>
         </div>
@@ -161,22 +161,31 @@ function verDetalleMG(productId, nombre) {
             var d = det.data;
             var fields = d.fields || [];
             var fieldHtml = '';
+            var requiredNames = [];
             if (Array.isArray(fields) && fields.length > 0) {
                 fieldHtml += '<div style="padding:0.7rem; border:1px solid var(--border); border-radius:8px;">';
                 fieldHtml += '<strong>Campos requeridos:</strong> ';
                 for (var i = 0; i < fields.length; i++) {
                     var f = fields[i] || {};
+                    var fname = String(f.name || '').trim();
+                    if (fname) {
+                        requiredNames.push(fname);
+                    }
                     fieldHtml += '<span style="display:inline-block; margin:0.2rem; padding:0.2rem 0.55rem; border-radius:6px; background:var(--bg-primary); border:1px solid var(--border);">' + (f.name || '-') + '</span>';
                 }
                 fieldHtml += '</div>';
             }
+            var requiereTxt = requiredNames.length > 0 ? requiredNames.join(' + ') : 'Sin campos';
+            var requiereHtml = requiredNames.length > 0
+                ? '<span style="display:inline-block; padding:0.2rem 0.55rem; border-radius:6px; background:var(--bg-primary); border:1px solid var(--border);">' + requiereTxt + '</span>'
+                : '<span style="color:var(--text-secondary);">Sin campos</span>';
             document.getElementById('mg-modal-fields').innerHTML = fieldHtml;
             document.getElementById('mg-modal-title').innerHTML = '<i class="fas fa-box-open"></i> ' + nombre + ' <span style="color:var(--text-secondary); font-size:0.85rem;">(ID: ' + productId + ')</span>';
 
             var vars = d.Variation || [];
             var html = '';
             if (!Array.isArray(vars) || vars.length === 0) {
-                html = '<tr><td colspan="5" style="text-align:center; color:var(--text-secondary);">Sin variaciones</td></tr>';
+                html = '<tr><td colspan="6" style="text-align:center; color:var(--text-secondary);">Sin variaciones</td></tr>';
             } else {
                 for (var j = 0; j < vars.length; j++) {
                     var v = vars[j] || {};
@@ -189,6 +198,7 @@ function verDetalleMG(productId, nombre) {
                     html += '<td>' + vname + '</td>';
                     html += '<td>' + vprice + '</td>';
                     html += '<td>' + vstock + '</td>';
+                    html += '<td>' + requiereHtml + '</td>';
                     html += '<td><button class="btn btn-sm btn-secondary" onclick="copiarTextoMG(\'' + vid.replace(/'/g, "\\'") + '\')"><i class="fas fa-copy"></i> Variation ID</button></td>';
                     html += '</tr>';
                 }
