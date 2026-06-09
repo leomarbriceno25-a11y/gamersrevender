@@ -227,6 +227,7 @@
                     <div class="form-grid-2">
                         <div class="form-group">
                             <label><i class="fas fa-gamepad" style="color:#06b6d4;"></i> Producto MooGold</label>
+                            <input type="text" id="form-mg-product-filter" class="form-input" placeholder="Buscar producto por ID o nombre..." style="margin-bottom:0.45rem;" oninput="filtrarProductosMGSelect()">
                             <select id="form-mg-product-select" class="form-select" onchange="onProductoMGChange()">
                                 <option value="">Selecciona producto...</option>
                             </select>
@@ -404,6 +405,7 @@ function toggleMoogold() {
         document.getElementById('form-mg-variation').value = '0';
         document.getElementById('form-mg-fields').value = '';
         document.getElementById('form-mg-category-select').value = '';
+        document.getElementById('form-mg-product-filter').value = '';
         document.getElementById('form-mg-product-select').innerHTML = '<option value="">Selecciona producto...</option>';
         document.getElementById('form-mg-variation-select').innerHTML = '<option value="">Selecciona variación...</option>';
         document.getElementById('mg-fields-list').innerHTML = '';
@@ -415,6 +417,7 @@ function toggleMoogold() {
 
 var mgCatalogCache = {};
 var mgDetailCache = {};
+var mgCurrentProducts = [];
 
 function safeHtml(txt) {
     return String(txt || '')
@@ -436,27 +439,19 @@ function onCategoriaMGChange(selectedProductId, selectedVariationId) {
     document.getElementById('mg-price-text').textContent = '';
     document.getElementById('mg-price-preview').style.display = 'none';
 
-    var productSelect = document.getElementById('form-mg-product-select');
     var variationSelect = document.getElementById('form-mg-variation-select');
-    productSelect.innerHTML = '<option value="">Selecciona producto...</option>';
+    document.getElementById('form-mg-product-filter').value = '';
+    mgCurrentProducts = [];
+    renderMGProductOptions();
     variationSelect.innerHTML = '<option value="">Selecciona variación...</option>';
     if (!cat) return;
 
     function fillProducts(list) {
-        var html = '<option value="">Selecciona producto...</option>';
-        for (var i = 0; i < list.length; i++) {
-            var p = list[i] || {};
-            var pid = String(p.ID || '').trim();
-            var pname = String(p.post_title || '').trim();
-            if (!pid) continue;
-            html += '<option value="' + safeHtml(pid) + '">' + safeHtml(pid + ' - ' + pname) + '</option>';
-        }
-        productSelect.innerHTML = html;
-        if (selectedProductId) {
-            productSelect.value = String(selectedProductId);
-            if (productSelect.value) {
-                onProductoMGChange(selectedVariationId);
-            }
+        mgCurrentProducts = Array.isArray(list) ? list : [];
+        renderMGProductOptions(selectedProductId);
+        var selectedNow = String(document.getElementById('form-mg-product-select').value || '').trim();
+        if (selectedNow) {
+            onProductoMGChange(selectedVariationId);
         }
     }
 
@@ -476,6 +471,34 @@ function onCategoriaMGChange(selectedProductId, selectedVariationId) {
         .catch(function(e) {
             alert('No se pudo cargar productos MooGold: ' + e.message);
         });
+}
+
+function renderMGProductOptions(selectedProductId) {
+    var productSelect = document.getElementById('form-mg-product-select');
+    var filtro = String(document.getElementById('form-mg-product-filter').value || '').toLowerCase().trim();
+    var list = Array.isArray(mgCurrentProducts) ? mgCurrentProducts : [];
+
+    var html = '<option value="">Selecciona producto...</option>';
+    for (var i = 0; i < list.length; i++) {
+        var p = list[i] || {};
+        var pid = String(p.ID || '').trim();
+        var pname = String(p.post_title || '').trim();
+        if (!pid) continue;
+        var haystack = (pid + ' ' + pname).toLowerCase();
+        if (filtro && haystack.indexOf(filtro) === -1) {
+            continue;
+        }
+        html += '<option value="' + safeHtml(pid) + '">' + safeHtml(pid + ' - ' + pname) + '</option>';
+    }
+    productSelect.innerHTML = html;
+    if (selectedProductId) {
+        productSelect.value = String(selectedProductId);
+    }
+}
+
+function filtrarProductosMGSelect() {
+    var current = String(document.getElementById('form-mg-product').value || '').trim();
+    renderMGProductOptions(current);
 }
 
 function actualizarPreciosMooGold() {
@@ -872,6 +895,8 @@ function resetForm() {
     document.getElementById('form-mg-variation').value = '0';
     document.getElementById('form-mg-fields').value = '';
     document.getElementById('form-mg-category-select').value = '';
+    document.getElementById('form-mg-product-filter').value = '';
+    mgCurrentProducts = [];
     document.getElementById('form-mg-product-select').innerHTML = '<option value="">Selecciona producto...</option>';
     document.getElementById('form-mg-variation-select').innerHTML = '<option value="">Selecciona variación...</option>';
     document.getElementById('mg-fields-list').innerHTML = '';
