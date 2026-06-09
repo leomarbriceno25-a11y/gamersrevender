@@ -1,6 +1,20 @@
 {% extends 'base.html' %}
 {% block title %}Solicitar Recarga - {{ tienda_nombre }}{% endblock %}
 {% block content %}
+<style>
+/* Ocultar flechas del input numérico de monto */
+#monto_input::-webkit-outer-spin-button,
+#monto_input::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+#monto_input {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+</style>
+
 <section class="page-header">
     <div class="container">
         <a href="{{ url_for('cartera') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Mi Cartera</a>
