@@ -201,23 +201,53 @@
                     </label>
                 </div>
                 <div id="moogold-group" style="display:none;">
+                    <input type="hidden" name="moogold_category_id" id="form-mg-category" value="0">
+                    <input type="hidden" name="moogold_product_id" id="form-mg-product" value="0">
+                    <input type="hidden" name="moogold_variation_id" id="form-mg-variation" value="0">
                     <input type="hidden" name="moogold_fields" id="form-mg-fields" value="">
                     <div class="form-grid-2">
                         <div class="form-group">
-                            <label><i class="fas fa-layer-group" style="color:#06b6d4;"></i> MooGold Category ID</label>
-                            <input type="number" name="moogold_category_id" id="form-mg-category" value="0" min="0" placeholder="Ej: 50">
+                            <label><i class="fas fa-percent" style="color:#06b6d4;"></i> Margen MooGold (%)</label>
+                            <input type="number" name="moogold_margin_percent" id="form-mg-margin" value="{{ moogold_margin_percent|default('6') }}" min="0" step="0.01" placeholder="Ej: 6">
+                            <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Se usa para calcular el precio de venta desde el costo USD de MooGold.</small>
+                            <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.45rem;" onclick="actualizarPreciosMooGold()">
+                                <i class="fas fa-sync"></i> Actualizar precios MooGold con este margen
+                            </button>
                         </div>
                         <div class="form-group">
-                            <label><i class="fas fa-gamepad" style="color:#06b6d4;"></i> MooGold Product ID</label>
-                            <input type="number" name="moogold_product_id" id="form-mg-product" value="0" min="0" placeholder="Ej: 7847">
+                            <label><i class="fas fa-layer-group" style="color:#06b6d4;"></i> Categoría MooGold</label>
+                            <select id="form-mg-category-select" class="form-select" onchange="onCategoriaMGChange()">
+                                <option value="">Selecciona categoría...</option>
+                                {% for c in categorias_moogold|default([]) %}
+                                <option value="{{ c.id }}">{{ c.id }} - {{ c.name }}</option>
+                                {% endfor %}
+                            </select>
                         </div>
                     </div>
-                    <div class="form-group">
-                        <label><i class="fas fa-box-open" style="color:#06b6d4;"></i> MooGold Variation ID (product-id en create_order)</label>
-                        <input type="number" name="moogold_variation_id" id="form-mg-variation" value="0" min="0" placeholder="Ej: 215570">
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label><i class="fas fa-gamepad" style="color:#06b6d4;"></i> Producto MooGold</label>
+                            <select id="form-mg-product-select" class="form-select" onchange="onProductoMGChange()">
+                                <option value="">Selecciona producto...</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-box-open" style="color:#06b6d4;"></i> Variación MooGold</label>
+                            <select id="form-mg-variation-select" class="form-select" onchange="onVariationMGChange()">
+                                <option value="">Selecciona variación...</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div id="mg-fields-preview" style="display:none; margin-top:0.5rem; padding:0.75rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px;">
+                        <p style="font-size:0.85rem; margin-bottom:0.5rem;"><strong><i class="fas fa-keyboard"></i> Campos requeridos para compra:</strong></p>
+                        <div id="mg-fields-list"></div>
+                    </div>
+                    <div id="mg-price-preview" style="display:none; margin-top:0.5rem; padding:0.75rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px;">
+                        <strong><i class="fas fa-calculator"></i> Precio sugerido:</strong>
+                        <span id="mg-price-text" style="margin-left:0.45rem;"></span>
                     </div>
                     <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.5rem;">
-                        Puedes consultar catálogo en <a href="{{ url_for('admin_moogold_catalogo') }}" target="_blank">MooGold API</a> y copiar Category/Product/Variation IDs.
+                        Selecciona categoría/producto/variación y el sistema llena IDs + campos automáticamente. Catálogo completo en <a href="{{ url_for('admin_moogold_catalogo') }}" target="_blank">MooGold API</a>.
                     </p>
                 </div>
                 <div class="form-actions">
@@ -273,6 +303,7 @@
                         data-mg-category="{{ p.moogold_category_id|default(0) }}"
                         data-mg-product="{{ p.moogold_product_id|default(0) }}"
                         data-mg-variation="{{ p.moogold_variation_id|default(0) }}"
+                        data-mg-fields="{{ p.moogold_fields|default('')|e }}"
                         data-usa-razer="{{ p.usa_razer|default(0) }}"
                         data-razer-paquete="{{ p.razer_paquete|default(0) }}"
                         data-razer-paquete-extra="{{ p.razer_paquete_extra|default(0) }}"
@@ -372,6 +403,198 @@ function toggleMoogold() {
         document.getElementById('form-mg-product').value = '0';
         document.getElementById('form-mg-variation').value = '0';
         document.getElementById('form-mg-fields').value = '';
+        document.getElementById('form-mg-category-select').value = '';
+        document.getElementById('form-mg-product-select').innerHTML = '<option value="">Selecciona producto...</option>';
+        document.getElementById('form-mg-variation-select').innerHTML = '<option value="">Selecciona variación...</option>';
+        document.getElementById('mg-fields-list').innerHTML = '';
+        document.getElementById('mg-fields-preview').style.display = 'none';
+        document.getElementById('mg-price-text').textContent = '';
+        document.getElementById('mg-price-preview').style.display = 'none';
+    }
+}
+
+var mgCatalogCache = {};
+var mgDetailCache = {};
+
+function safeHtml(txt) {
+    return String(txt || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function onCategoriaMGChange(selectedProductId, selectedVariationId) {
+    var cat = String(document.getElementById('form-mg-category-select').value || '').trim();
+    document.getElementById('form-mg-category').value = cat || '0';
+    document.getElementById('form-mg-product').value = '0';
+    document.getElementById('form-mg-variation').value = '0';
+    document.getElementById('form-mg-fields').value = '';
+    document.getElementById('mg-fields-list').innerHTML = '';
+    document.getElementById('mg-fields-preview').style.display = 'none';
+    document.getElementById('mg-price-text').textContent = '';
+    document.getElementById('mg-price-preview').style.display = 'none';
+
+    var productSelect = document.getElementById('form-mg-product-select');
+    var variationSelect = document.getElementById('form-mg-variation-select');
+    productSelect.innerHTML = '<option value="">Selecciona producto...</option>';
+    variationSelect.innerHTML = '<option value="">Selecciona variación...</option>';
+    if (!cat) return;
+
+    function fillProducts(list) {
+        var html = '<option value="">Selecciona producto...</option>';
+        for (var i = 0; i < list.length; i++) {
+            var p = list[i] || {};
+            var pid = String(p.ID || '').trim();
+            var pname = String(p.post_title || '').trim();
+            if (!pid) continue;
+            html += '<option value="' + safeHtml(pid) + '">' + safeHtml(pid + ' - ' + pname) + '</option>';
+        }
+        productSelect.innerHTML = html;
+        if (selectedProductId) {
+            productSelect.value = String(selectedProductId);
+            if (productSelect.value) {
+                onProductoMGChange(selectedVariationId);
+            }
+        }
+    }
+
+    if (mgCatalogCache[cat]) {
+        fillProducts(mgCatalogCache[cat]);
+        return;
+    }
+
+    fetch('/admin/moogold/productos?category_id=' + encodeURIComponent(cat))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var prods = (data.productos && data.productos.data) ? data.productos.data : [];
+            if (!Array.isArray(prods)) prods = [];
+            mgCatalogCache[cat] = prods;
+            fillProducts(prods);
+        })
+        .catch(function(e) {
+            alert('No se pudo cargar productos MooGold: ' + e.message);
+        });
+}
+
+function actualizarPreciosMooGold() {
+    var margen = String(document.getElementById('form-mg-margin').value || '').trim();
+    var formData = new FormData();
+    formData.append('moogold_margin_percent', margen);
+    fetch('/admin/moogold/actualizar-precios', {
+        method: 'POST',
+        body: formData
+    })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.ok) {
+                alert('Error al actualizar precios MooGold: ' + (data.error || 'sin detalle'));
+                return;
+            }
+            var res = data.resumen || {};
+            alert(
+                'Precios MooGold actualizados\n' +
+                'Total vinculados: ' + (res.total || 0) + '\n' +
+                'Actualizados: ' + (res.actualizados || 0) + '\n' +
+                'Omitidos: ' + (res.omitidos || 0)
+            );
+            location.reload();
+        })
+        .catch(function(e) {
+            alert('No se pudo actualizar precios MooGold: ' + e.message);
+        });
+}
+
+function onProductoMGChange(selectedVariationId) {
+    var cat = String(document.getElementById('form-mg-category-select').value || '').trim();
+    var productId = String(document.getElementById('form-mg-product-select').value || '').trim();
+    document.getElementById('form-mg-category').value = cat || '0';
+    document.getElementById('form-mg-product').value = productId || '0';
+    document.getElementById('form-mg-variation').value = '0';
+    document.getElementById('form-mg-fields').value = '';
+
+    var variationSelect = document.getElementById('form-mg-variation-select');
+    variationSelect.innerHTML = '<option value="">Selecciona variación...</option>';
+    document.getElementById('mg-fields-list').innerHTML = '';
+    document.getElementById('mg-fields-preview').style.display = 'none';
+    document.getElementById('mg-price-text').textContent = '';
+    document.getElementById('mg-price-preview').style.display = 'none';
+    if (!productId) return;
+
+    function fillDetail(detailData) {
+        var fields = Array.isArray(detailData.fields) ? detailData.fields : [];
+        document.getElementById('form-mg-fields').value = JSON.stringify(fields);
+
+        if (fields.length > 0) {
+            var fhtml = '';
+            for (var i = 0; i < fields.length; i++) {
+                var fname = String((fields[i] || {}).name || '').trim() || '-';
+                fhtml += '<span style="display:inline-block; background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:0.25rem 0.75rem; margin:0.25rem; font-size:0.85rem;">' + safeHtml(fname) + '</span>';
+            }
+            document.getElementById('mg-fields-list').innerHTML = fhtml;
+            document.getElementById('mg-fields-preview').style.display = 'block';
+        }
+
+        var vars = Array.isArray(detailData.Variation) ? detailData.Variation : [];
+        var html = '<option value="">Selecciona variación...</option>';
+        for (var j = 0; j < vars.length; j++) {
+            var v = vars[j] || {};
+            var vid = String(v.variation_id || '').trim();
+            if (!vid) continue;
+            var vname = String(v.variation_name || '').trim();
+            var vprice = String(v.variation_price || '').trim();
+            html += '<option value="' + safeHtml(vid) + '" data-price="' + safeHtml(vprice) + '">' + safeHtml(vid + ' - ' + vname + (vprice ? ' ($' + vprice + ')' : '')) + '</option>';
+        }
+        variationSelect.innerHTML = html;
+        if (selectedVariationId) {
+            variationSelect.value = String(selectedVariationId);
+            if (variationSelect.value) {
+                onVariationMGChange();
+            }
+        }
+    }
+
+    if (mgDetailCache[productId]) {
+        fillDetail(mgDetailCache[productId]);
+        return;
+    }
+
+    fetch('/admin/moogold/productos?product_id=' + encodeURIComponent(productId))
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            var det = data.detalle || {};
+            if (!det.ok || !det.data) {
+                alert('No se pudo cargar detalle MooGold: ' + (det.error || 'sin respuesta'));
+                return;
+            }
+            mgDetailCache[productId] = det.data;
+            fillDetail(det.data);
+        })
+        .catch(function(e) {
+            alert('No se pudo cargar variaciones MooGold: ' + e.message);
+        });
+}
+
+function onVariationMGChange() {
+    var variationSelect = document.getElementById('form-mg-variation-select');
+    var variationId = String(variationSelect.value || '').trim();
+    document.getElementById('form-mg-variation').value = variationId || '0';
+    if (!variationId) {
+        document.getElementById('mg-price-text').textContent = '';
+        document.getElementById('mg-price-preview').style.display = 'none';
+        return;
+    }
+
+    var opt = variationSelect.options[variationSelect.selectedIndex];
+    var costo = opt ? parseFloat(opt.getAttribute('data-price') || '0') : 0;
+    var margen = parseFloat(document.getElementById('form-mg-margin').value || '0');
+    if (!isFinite(margen) || margen < 0) margen = 0;
+    if (isFinite(costo) && costo > 0) {
+        var venta = costo * (1 + (margen / 100));
+        document.getElementById('form-precio').value = venta.toFixed(4);
+        document.getElementById('mg-price-text').textContent = 'Costo $' + costo.toFixed(4) + ' + ' + margen.toFixed(2) + '% = Venta $' + venta.toFixed(4);
+        document.getElementById('mg-price-preview').style.display = 'block';
     }
 }
 
@@ -569,6 +792,7 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     var mgCategory = row ? (parseInt(row.getAttribute('data-mg-category')) || 0) : 0;
     var mgProduct = row ? (parseInt(row.getAttribute('data-mg-product')) || 0) : 0;
     var mgVariation = row ? (parseInt(row.getAttribute('data-mg-variation')) || 0) : 0;
+    var mgFields = row ? (row.getAttribute('data-mg-fields') || '') : '';
     document.getElementById('form-accion').value = 'editar';
     document.getElementById('form-producto-id').value = id;
     document.getElementById('form-nombre').value = nombre;
@@ -595,6 +819,8 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     document.getElementById('form-mg-category').value = mgCategory || 0;
     document.getElementById('form-mg-product').value = mgProduct || 0;
     document.getElementById('form-mg-variation').value = mgVariation || 0;
+    document.getElementById('form-mg-fields').value = mgFields || '';
+    document.getElementById('form-mg-category-select').value = mgCategory > 0 ? String(mgCategory) : '';
     document.getElementById('form-recarga-manual').checked = recargaManual == 1;
     document.getElementById('form-pin-origen').value = pinOrigenId || 0;
     document.getElementById('form-stock-minimo').value = stockMin || 0;
@@ -607,6 +833,7 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     toggleGamepoint();
     toggleMoogold();
     if (gpProduct > 0) { cargarCamposGP(); }
+    if (mgProduct > 0 && mgCategory > 0) { onCategoriaMGChange(mgProduct, mgVariation); }
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-edit"></i> Editar Producto #' + id;
     document.getElementById('form-btn-text').textContent = 'Guardar Cambios';
     document.getElementById('form-btn').querySelector('i').className = 'fas fa-save';
@@ -644,6 +871,13 @@ function resetForm() {
     document.getElementById('form-mg-product').value = '0';
     document.getElementById('form-mg-variation').value = '0';
     document.getElementById('form-mg-fields').value = '';
+    document.getElementById('form-mg-category-select').value = '';
+    document.getElementById('form-mg-product-select').innerHTML = '<option value="">Selecciona producto...</option>';
+    document.getElementById('form-mg-variation-select').innerHTML = '<option value="">Selecciona variación...</option>';
+    document.getElementById('mg-fields-list').innerHTML = '';
+    document.getElementById('mg-fields-preview').style.display = 'none';
+    document.getElementById('mg-price-text').textContent = '';
+    document.getElementById('mg-price-preview').style.display = 'none';
     document.getElementById('form-pin-origen').value = '0';
     document.getElementById('form-stock-minimo').value = '0';
     document.getElementById('form-stock-objetivo').value = '0';

@@ -165,6 +165,67 @@ def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje
     }
 
 
+def _actualizar_precios_moogold_desde_margen(db, margen_porcentaje):
+    from moogold_api import detalle_producto
+
+    productos = db.execute(
+        "SELECT id, nombre, moogold_product_id, moogold_variation_id "
+        "FROM productos WHERE moogold_product_id > 0 AND moogold_variation_id > 0"
+    ).fetchall()
+    if not productos:
+        return {'total': 0, 'actualizados': 0, 'omitidos': 0, 'errores': []}
+
+    factor_margen = Decimal('1') + (margen_porcentaje / Decimal('100'))
+    detalle_cache = {}
+    errores = []
+    actualizados = 0
+    omitidos = 0
+
+    for prod in productos:
+        mg_product_id = int(prod['moogold_product_id'] or 0)
+        mg_variation_id = str(int(prod['moogold_variation_id'] or 0))
+
+        if mg_product_id not in detalle_cache:
+            detalle_cache[mg_product_id] = detalle_producto(mg_product_id)
+        detalle = detalle_cache[mg_product_id]
+
+        if not detalle.get('ok'):
+            omitidos += 1
+            errores.append(f"{prod['nombre']}: no se pudo consultar Product ID {mg_product_id}")
+            continue
+
+        data = detalle.get('data') if isinstance(detalle.get('data'), dict) else {}
+        variaciones = data.get('Variation') if isinstance(data.get('Variation'), list) else []
+
+        variacion = None
+        for var in variaciones:
+            if str((var or {}).get('variation_id', '')).strip() == mg_variation_id:
+                variacion = var or {}
+                break
+
+        if not variacion:
+            omitidos += 1
+            errores.append(f"{prod['nombre']}: no existe Variation ID {mg_variation_id} en MooGold")
+            continue
+
+        costo_usd = _to_decimal(variacion.get('variation_price'))
+        if costo_usd is None or costo_usd <= 0:
+            omitidos += 1
+            errores.append(f"{prod['nombre']}: costo USD inválido en Variation ID {mg_variation_id}")
+            continue
+
+        precio_venta = (costo_usd * factor_margen).quantize(Decimal('0.00000001'))
+        db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_venta), prod['id']))
+        actualizados += 1
+
+    return {
+        'total': len(productos),
+        'actualizados': actualizados,
+        'omitidos': omitidos,
+        'errores': errores,
+    }
+
+
 def _estado_interno_desde_moogold(estado_moogold):
     estado = str(estado_moogold or '').strip().lower()
     if estado in ('completed', 'success', 'delivered'):
@@ -3566,6 +3627,12 @@ def admin_recargas():
 def admin_productos():
     db = get_db()
     if request.method == 'POST':
+        mg_margin_txt = str(request.form.get('moogold_margin_percent', '') or '').strip().replace(',', '.')
+        if mg_margin_txt:
+            mg_margin = _to_decimal(mg_margin_txt)
+            if mg_margin is not None and mg_margin >= 0:
+                _config_set(db, 'moogold_margin_percent', str(mg_margin))
+
         accion = request.form.get('accion')
         if accion == 'crear':
             nombre = request.form.get('nombre', '').strip()
@@ -3678,8 +3745,16 @@ def admin_productos():
     for gc in productos_giftcard_raw:
         stock = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (gc['id'],)).fetchone()['c']
         productos_giftcard.append({'id': gc['id'], 'nombre': gc['nombre'], 'stock': stock})
+    moogold_margin_percent = _config_get(db, 'moogold_margin_percent', '6')
     db.close()
-    return render_template('admin/productos.html', productos=productos, categorias=categorias, productos_giftcard=productos_giftcard)
+    return render_template(
+        'admin/productos.html',
+        productos=productos,
+        categorias=categorias,
+        productos_giftcard=productos_giftcard,
+        categorias_moogold=_moogold_category_catalogo(),
+        moogold_margin_percent=moogold_margin_percent,
+    )
 
 
 @app.route('/admin/productos/eliminar-lote', methods=['POST'])
@@ -3839,6 +3914,30 @@ def admin_moogold_productos():
     except Exception as e:
         productos = {'ok': False, 'error': str(e)}
     return jsonify({'saldo': saldo, 'productos': productos})
+
+
+@app.route('/admin/moogold/actualizar-precios', methods=['POST'])
+@admin_required
+def admin_moogold_actualizar_precios():
+    db = get_db()
+    try:
+        margen_txt = str(request.form.get('moogold_margin_percent', '') or '').strip().replace(',', '.')
+        if not margen_txt:
+            margen_txt = _config_get(db, 'moogold_margin_percent', '6')
+
+        margen_porcentaje = _to_decimal(margen_txt, Decimal('0'))
+        if margen_porcentaje is None or margen_porcentaje < 0:
+            return jsonify({'ok': False, 'error': 'Margen inválido. Debe ser mayor o igual a 0.'}), 400
+
+        _config_set(db, 'moogold_margin_percent', str(margen_porcentaje))
+        resumen = _actualizar_precios_moogold_desde_margen(db, margen_porcentaje)
+        db.commit()
+        return jsonify({'ok': True, 'resumen': resumen, 'margin_percent': str(margen_porcentaje)})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    finally:
+        db.close()
 
 
 @app.route('/admin/pincentral', methods=['GET', 'POST'])
