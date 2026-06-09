@@ -138,6 +138,7 @@ def init_db():
             moogold_product_id INTEGER DEFAULT 0,
             moogold_variation_id INTEGER DEFAULT 0,
             moogold_fields TEXT DEFAULT '',
+            rechazo_automatico INTEGER DEFAULT 0,
             orden INTEGER DEFAULT 0,
             fecha_creacion TEXT DEFAULT (datetime('now','localtime')),
             FOREIGN KEY (categoria_id) REFERENCES categorias(id)
@@ -310,6 +311,10 @@ def init_db():
         db.execute("SELECT moogold_fields FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN moogold_fields TEXT DEFAULT ''")
+    try:
+        db.execute("SELECT rechazo_automatico FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN rechazo_automatico INTEGER DEFAULT 0")
     # Bonus por monto de recarga
     try:
         db.execute("SELECT id FROM bonus_recarga LIMIT 1")

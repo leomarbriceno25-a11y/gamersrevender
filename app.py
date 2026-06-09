@@ -1931,6 +1931,11 @@ def comprar():
         db.close()
         return redirect(url_for('catalogo'))
 
+    if int((prod['rechazo_automatico'] if 'rechazo_automatico' in prod.keys() else 0) or 0):
+        flash('Este producto está temporalmente deshabilitado por fallas del proveedor. Intenta más tarde.', 'error')
+        db.close()
+        return redirect(url_for('producto', id=producto_id))
+
     usa_razer = prod['usa_razer'] if 'usa_razer' in prod.keys() else 0
     usa_deltaforce = prod['usa_deltaforce'] if 'usa_deltaforce' in prod.keys() else 0
     moogold_category_id = int((prod['moogold_category_id'] if 'moogold_category_id' in prod.keys() else 0) or 0)
@@ -3477,6 +3482,7 @@ def admin_productos():
             moogold_product_id = int(request.form.get('moogold_product_id', 0) or 0)
             moogold_variation_id = int(request.form.get('moogold_variation_id', 0) or 0)
             moogold_fields = request.form.get('moogold_fields', '').strip()
+            rechazo_automatico = 1 if request.form.get('rechazo_automatico') else 0
             recarga_manual = 1 if request.form.get('recarga_manual') else 0
             orden = int(request.form.get('orden', 0))
             pin_origen_producto_id = int(request.form.get('pin_origen_producto_id', 0))
@@ -3491,8 +3497,8 @@ def admin_productos():
                 moogold_variation_id = 0
                 moogold_fields = ''
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -3520,6 +3526,7 @@ def admin_productos():
             moogold_product_id = int(request.form.get('moogold_product_id', 0) or 0)
             moogold_variation_id = int(request.form.get('moogold_variation_id', 0) or 0)
             moogold_fields = request.form.get('moogold_fields', '').strip()
+            rechazo_automatico = 1 if request.form.get('rechazo_automatico') else 0
             recarga_manual = 1 if request.form.get('recarga_manual') else 0
             orden = int(request.form.get('orden', 0))
             pin_origen_producto_id = int(request.form.get('pin_origen_producto_id', 0))
@@ -3534,8 +3541,8 @@ def admin_productos():
                 moogold_variation_id = 0
                 moogold_fields = ''
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -4455,7 +4462,7 @@ def api_saldo():
 def api_productos():
     import json as _json
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
@@ -4494,6 +4501,7 @@ def api_productos():
         d['deltaforce_paquete'] = int(deltaforce_paquete or 0)
         d['usa_pincentral'] = bool(usa_api_pincentral)
         d['pincentral_product_code'] = pincentral_product_code
+        d['rechazo_automatico'] = bool(d.get('rechazo_automatico', 0))
         d['procesamiento_manual'] = bool(d.pop('recarga_manual', 0))
         result.append(d)
     return jsonify({'ok': True, 'productos': result})
@@ -4533,6 +4541,10 @@ def api_comprar():
     if not prod:
         db.close()
         return jsonify({'ok': False, 'error': 'Producto no encontrado'}), 404
+
+    if int((prod['rechazo_automatico'] if 'rechazo_automatico' in prod.keys() else 0) or 0):
+        db.close()
+        return jsonify({'ok': False, 'error': 'Producto temporalmente deshabilitado por proveedor'}), 503
 
     # Validar que se envíe id_juego si el producto lo requiere (no aplica a gift cards sin campos)
     gp_fields_raw = ''
