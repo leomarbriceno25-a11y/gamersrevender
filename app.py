@@ -553,6 +553,59 @@ def _procesar_callback_moogold(db, pedido, payload):
     return {'accion': 'sin_cambios'}
 
 
+def _sincronizar_pedido_moogold_si_pendiente(db, pedido):
+    if not pedido:
+        return {'accion': 'sin_pedido'}
+
+    estado_actual = str(pedido['estado'] or '').strip().lower()
+    if estado_actual not in ('pendiente', 'procesando'):
+        return {'accion': 'estado_final'}
+
+    prod = db.execute(
+        "SELECT moogold_category_id, moogold_variation_id FROM productos WHERE id = ? LIMIT 1",
+        (int(pedido['producto_id']),),
+    ).fetchone()
+    if not prod:
+        return {'accion': 'sin_producto'}
+
+    mg_cat = int((prod['moogold_category_id'] if 'moogold_category_id' in prod.keys() else 0) or 0)
+    mg_var = int((prod['moogold_variation_id'] if 'moogold_variation_id' in prod.keys() else 0) or 0)
+    if mg_cat <= 0 or mg_var <= 0:
+        return {'accion': 'no_moogold'}
+
+    ref_externa = str(pedido['referencia_externa'] or '').strip()
+    ref_cliente = str(pedido['referencia_cliente'] or '').strip()
+
+    detail_data = {}
+    if ref_externa:
+        detail_data = _moogold_order_detail_safe(ref_externa)
+
+    if not detail_data and ref_cliente:
+        try:
+            from moogold_api import consultar_orden_partner
+            by_partner = consultar_orden_partner(ref_cliente)
+            if isinstance(by_partner, dict) and by_partner.get('ok'):
+                data = by_partner.get('data')
+                if isinstance(data, dict):
+                    detail_data = data
+        except Exception:
+            detail_data = {}
+
+    if not detail_data:
+        return {'accion': 'sin_detalle'}
+
+    estado_mg = str(detail_data.get('order_status', '') or detail_data.get('status', '') or '').strip().lower()
+    if not estado_mg:
+        return {'accion': 'sin_estado'}
+
+    payload = dict(detail_data)
+    payload['status'] = estado_mg
+    if ref_externa and not payload.get('order_id'):
+        payload['order_id'] = ref_externa
+
+    return _procesar_callback_moogold(db, pedido, payload)
+
+
 def _recarga_status_cache_get(cache_key):
     now = time.time()
     with RECARGA_STATUS_CACHE_LOCK:
@@ -2747,10 +2800,23 @@ def comprar():
 def pedido_detalle(id):
     db = get_db()
     pedido = db.execute("SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.id = ? AND p.usuario_id = ?", (id, session['user_id'])).fetchone()
-    db.close()
     if not pedido:
+        db.close()
         flash('Pedido no encontrado', 'error')
         return redirect(url_for('mis_pedidos'))
+
+    try:
+        _sincronizar_pedido_moogold_si_pendiente(db, pedido)
+        pedido = db.execute(
+            "SELECT p.*, pr.nombre as producto_nombre FROM pedidos p JOIN productos pr ON p.producto_id = pr.id WHERE p.id = ? AND p.usuario_id = ?",
+            (id, session['user_id']),
+        ).fetchone()
+        db.commit()
+    except Exception:
+        db.rollback()
+    finally:
+        db.close()
+
     return render_template('pedido.html', pedido=pedido)
 
 
