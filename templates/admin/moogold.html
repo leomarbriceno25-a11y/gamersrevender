@@ -79,6 +79,79 @@
 <script>
 var mgProductosCache = [];
 
+function escHtml(txt) {
+    return String(txt || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function _toFieldArray(raw) {
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'string') {
+        var t = String(raw || '').trim();
+        if (!t) return [];
+        try {
+            var parsed = JSON.parse(t);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch (e) {
+            return [];
+        }
+    }
+    return [];
+}
+
+function normalizeMGFieldDefs(raw) {
+    var arr = _toFieldArray(raw);
+    var out = [];
+    for (var i = 0; i < arr.length; i++) {
+        var f = arr[i] || {};
+        if (typeof f === 'string') {
+            var n0 = String(f || '').trim();
+            if (n0) {
+                out.push({ name: n0, desc: n0, type: 'text', options: [] });
+            }
+            continue;
+        }
+        var name = String(f.name || f.field || f.key || '').trim();
+        var desc = String(f.desc || f.label || f.placeholder || '').trim();
+        if (!name && desc) name = desc;
+        if (!name) name = 'Campo #' + (i + 1) + ' (sin nombre)';
+        var type = String(f.type || f.input_type || 'text').trim().toLowerCase();
+        var options = f.options;
+        if (!Array.isArray(options)) {
+            options = Array.isArray(f.values) ? f.values : [];
+        }
+        out.push({
+            name: name,
+            desc: desc || name,
+            type: type || 'text',
+            options: options,
+        });
+    }
+    return out;
+}
+
+function getMGVariationFields(detailData, variationData) {
+    var v = variationData || {};
+    var candidates = [
+        { src: 'variation.fields', raw: v.fields },
+        { src: 'variation.required_fields', raw: v.required_fields },
+        { src: 'variation.account_fields', raw: v.account_fields },
+        { src: 'variation.input_fields', raw: v.input_fields },
+        { src: 'detail.fields', raw: (detailData || {}).fields }
+    ];
+    for (var i = 0; i < candidates.length; i++) {
+        var fields = normalizeMGFieldDefs(candidates[i].raw);
+        if (fields.length > 0) {
+            return { fields: fields, source: candidates[i].src };
+        }
+    }
+    return { fields: [], source: 'none' };
+}
+
 function mostrarSaldoMG(saldoObj) {
     var saldoTxt = '--';
     if (saldoObj && saldoObj.ok && saldoObj.data) {
@@ -159,26 +232,25 @@ function verDetalleMG(productId, nombre) {
                 return;
             }
             var d = det.data;
-            var fields = d.fields || [];
+            var fields = normalizeMGFieldDefs(d.fields || []);
             var fieldHtml = '';
-            var requiredNames = [];
-            if (Array.isArray(fields) && fields.length > 0) {
+            if (fields.length > 0) {
                 fieldHtml += '<div style="padding:0.7rem; border:1px solid var(--border); border-radius:8px;">';
                 fieldHtml += '<strong>Campos requeridos:</strong> ';
                 for (var i = 0; i < fields.length; i++) {
                     var f = fields[i] || {};
                     var fname = String(f.name || '').trim();
-                    if (fname) {
-                        requiredNames.push(fname);
-                    }
-                    fieldHtml += '<span style="display:inline-block; margin:0.2rem; padding:0.2rem 0.55rem; border-radius:6px; background:var(--bg-primary); border:1px solid var(--border);">' + (f.name || '-') + '</span>';
+                    var desc = String(f.desc || '').trim();
+                    var tag = fname;
+                    if (desc && desc !== fname) tag += ' · ' + desc;
+                    if (f.type) tag += ' [' + f.type + ']';
+                    if (Array.isArray(f.options) && f.options.length > 0) tag += ' {' + f.options.length + ' opciones}';
+                    fieldHtml += '<span style="display:inline-block; margin:0.2rem; padding:0.2rem 0.55rem; border-radius:6px; background:var(--bg-primary); border:1px solid var(--border);">' + escHtml(tag) + '</span>';
                 }
                 fieldHtml += '</div>';
+            } else {
+                fieldHtml = '<div style="padding:0.7rem; border:1px solid var(--border); border-radius:8px; color:var(--text-secondary);">MooGold no devolvió campos claros para este producto.</div>';
             }
-            var requiereTxt = requiredNames.length > 0 ? requiredNames.join(' + ') : 'Sin campos';
-            var requiereHtml = requiredNames.length > 0
-                ? '<span style="display:inline-block; padding:0.2rem 0.55rem; border-radius:6px; background:var(--bg-primary); border:1px solid var(--border);">' + requiereTxt + '</span>'
-                : '<span style="color:var(--text-secondary);">Sin campos</span>';
             document.getElementById('mg-modal-fields').innerHTML = fieldHtml;
             document.getElementById('mg-modal-title').innerHTML = '<i class="fas fa-box-open"></i> ' + nombre + ' <span style="color:var(--text-secondary); font-size:0.85rem;">(ID: ' + productId + ')</span>';
 
@@ -193,6 +265,14 @@ function verDetalleMG(productId, nombre) {
                     var vname = String(v.variation_name || '').trim();
                     var vprice = String(v.variation_price || '');
                     var vstock = String(v.stock_status || '');
+                    var vf = getMGVariationFields(d, v);
+                    var vfNames = [];
+                    for (var k = 0; k < vf.fields.length; k++) {
+                        vfNames.push(String((vf.fields[k] || {}).name || '').trim());
+                    }
+                    var requiereHtml = vfNames.length > 0
+                        ? '<span style="display:inline-block; padding:0.2rem 0.55rem; border-radius:6px; background:var(--bg-primary); border:1px solid var(--border);">' + escHtml(vfNames.join(' + ')) + '</span><div style="font-size:0.74rem; color:var(--text-secondary); margin-top:0.2rem;">Fuente: ' + escHtml(vf.source) + '</div>'
+                        : '<span style="color:var(--text-secondary);">Sin campos</span>';
                     html += '<tr>';
                     html += '<td><code>' + vid + '</code></td>';
                     html += '<td>' + vname + '</td>';
