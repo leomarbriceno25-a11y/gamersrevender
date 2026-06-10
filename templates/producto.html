@@ -52,6 +52,30 @@
                         <div id="resultado-verificacion" style="display:none; margin-top:0.5rem; padding:0.75rem; border-radius:8px;"></div>
                     </div>
                     {% endif %}
+                    {% elif producto.moogold_variation_id and producto.moogold_fields %}
+                    {% for field in producto.moogold_fields %}
+                    <div class="form-group">
+                        <label><i class="fas fa-coins"></i> {{ field.desc or field.name }} *</label>
+                        {% if field.type == 'servervalue' and field.options %}
+                        <select name="mg_field_{{ loop.index0 }}" class="form-select" required {{ 'id=input-id-juego' if loop.first }} {{ 'id=input-zone-id' if loop.index == 2 }}>
+                            <option value="">Selecciona {{ field.desc or field.name }}</option>
+                            {% for opt in field.options %}
+                            <option value="{{ opt.value if opt is mapping else opt }}">{{ opt.label if opt is mapping else opt }}</option>
+                            {% endfor %}
+                        </select>
+                        {% else %}
+                        <input type="text" name="mg_field_{{ loop.index0 }}" placeholder="{{ field.desc or field.name }}" required {{ 'id=input-id-juego' if loop.first }} {{ 'id=input-zone-id' if loop.index == 2 }}>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                    {% if producto.verificar_nombre %}
+                    <div id="verificacion-nombre" style="margin-bottom:1rem;">
+                        <button type="button" class="btn btn-secondary btn-block" id="btn-verificar" onclick="verificarNombre()">
+                            <i class="fas fa-user-check"></i> Verificar nombre del jugador
+                        </button>
+                        <div id="resultado-verificacion" style="display:none; margin-top:0.5rem; padding:0.75rem; border-radius:8px;"></div>
+                    </div>
+                    {% endif %}
                     {% elif producto.categoria_tipo != 'giftcards' %}
                     <div class="form-group">
                         <label><i class="fas fa-gamepad"></i> ID del Juego *</label>

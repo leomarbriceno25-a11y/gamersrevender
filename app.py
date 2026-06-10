@@ -284,6 +284,10 @@ def _moogold_category_efectiva(categoria_tipo, category_configured):
 
 
 def _moogold_parse_fields(fields_raw):
+    return [f.get('name', '') for f in _moogold_parse_field_defs(fields_raw)]
+
+
+def _moogold_parse_field_defs(fields_raw):
     txt = str(fields_raw or '').strip()
     if not txt:
         return []
@@ -293,20 +297,67 @@ def _moogold_parse_fields(fields_raw):
         return []
     if not isinstance(payload, list):
         return []
-    names = []
-    for f in payload:
-        if not isinstance(f, dict):
+
+    out = []
+    for idx, f in enumerate(payload):
+        if isinstance(f, dict):
+            name = str(f.get('name', '') or '').strip()
+            if not name:
+                continue
+            desc = str(f.get('desc', '') or f.get('label', '') or name).strip()
+            ftype = str(f.get('type', '') or 'text').strip().lower()
+            options = f.get('options', [])
+            if not isinstance(options, list):
+                options = []
+            out.append({
+                'name': name,
+                'desc': desc or name,
+                'type': ftype or 'text',
+                'options': options,
+                'index': idx,
+            })
             continue
-        n = str(f.get('name', '') or '').strip()
-        if n:
-            names.append(n)
-    return names
+
+        name = str(f or '').strip()
+        if name:
+            out.append({
+                'name': name,
+                'desc': name,
+                'type': 'text',
+                'options': [],
+                'index': idx,
+            })
+    return out
 
 
-def _moogold_build_account_fields(fields_raw, id_juego, input2=''):
+def _extract_named_inputs(source, field_names, prefix='mg_field_'):
+    def _read(key):
+        if not key:
+            return ''
+        try:
+            val = source.get(key, '')
+        except Exception:
+            return ''
+        return str(val or '').strip()
+
+    out = {}
+    for idx, name in enumerate(field_names or []):
+        key_idx = f'{prefix}{idx}'
+        value = _read(key_idx)
+        if not value and name:
+            value = _read(name)
+        if value:
+            out[key_idx] = value
+            if name:
+                out[name] = value
+    return out
+
+
+def _moogold_build_account_fields(fields_raw, id_juego, input2='', extra_inputs=None):
     names = _moogold_parse_fields(fields_raw)
     v1 = str(id_juego or '').strip()
     v2 = str(input2 or '').strip()
+    extra = extra_inputs if isinstance(extra_inputs, dict) else {}
 
     if v1 and not v2:
         for sep in ('|', ',', ':'):
@@ -325,10 +376,21 @@ def _moogold_build_account_fields(fields_raw, id_juego, input2=''):
         return base
 
     out = {}
-    if len(names) >= 1 and v1:
-        out[names[0]] = v1
-    if len(names) >= 2 and v2:
-        out[names[1]] = v2
+    for idx, name in enumerate(names):
+        value = ''
+        if name:
+            value = str(extra.get(name, '') or '').strip()
+        if not value:
+            value = str(extra.get(f'mg_field_{idx}', '') or '').strip()
+        if not value:
+            if idx == 0:
+                value = v1
+            elif idx == 1:
+                value = v2
+            elif idx >= 2:
+                value = str(extra.get(f'input{idx + 1}', '') or '').strip()
+        if value:
+            out[name] = value
     return out
 
 
@@ -2071,6 +2133,10 @@ def producto(id):
             prod_dict['gamepoint_fields'] = []
     else:
         prod_dict['gamepoint_fields'] = []
+    if prod_dict.get('moogold_fields'):
+        prod_dict['moogold_fields'] = _moogold_parse_field_defs(prod_dict.get('moogold_fields'))
+    else:
+        prod_dict['moogold_fields'] = []
     saldo = get_saldo(session['user_id'])
     return render_template('producto.html', producto=prod_dict, saldo=saldo)
 
@@ -2100,12 +2166,16 @@ def comprar():
     moogold_category_id = int((prod['moogold_category_id'] if 'moogold_category_id' in prod.keys() else 0) or 0)
     moogold_variation_id = int((prod['moogold_variation_id'] if 'moogold_variation_id' in prod.keys() else 0) or 0)
     moogold_fields_raw = (prod['moogold_fields'] if 'moogold_fields' in prod.keys() else '') or ''
+    moogold_field_names = _moogold_parse_fields(moogold_fields_raw)
+    mg_inputs = _extract_named_inputs(request.form, moogold_field_names)
+    if moogold_field_names and not id_juego:
+        id_juego = str(mg_inputs.get('mg_field_0', '') or mg_inputs.get(moogold_field_names[0], '') or '').strip()
     usa_moogold = moogold_category_id > 0 and moogold_variation_id > 0
     usa_pincentral = int((prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0) or 0)
     pincentral_entrega_directa = int((prod['pincentral_entrega_directa'] if 'pincentral_entrega_directa' in prod.keys() else 0) or 0)
     if prod['categoria_tipo'] == 'giftcards' and usa_pincentral and pincentral_entrega_directa:
         cantidad = 1
-    requiere_id_moogold = usa_moogold and bool(_moogold_parse_fields(moogold_fields_raw))
+    requiere_id_moogold = usa_moogold and bool(moogold_field_names)
     if (prod['usa_api'] or usa_razer or usa_deltaforce or requiere_id_moogold) and not id_juego:
         flash('Debes ingresar el ID del jugador para esta recarga.', 'error')
         db.close()
@@ -2334,8 +2404,8 @@ def comprar():
     elif usa_moogold:
         from moogold_api import crear_orden
 
-        mg_input2 = request.form.get('input2', '').strip()
-        account_fields = _moogold_build_account_fields(moogold_fields_raw, id_juego, mg_input2)
+        mg_input2 = str(request.form.get('input2', '') or mg_inputs.get('mg_field_1', '')).strip()
+        account_fields = _moogold_build_account_fields(moogold_fields_raw, id_juego, mg_input2, mg_inputs)
         partner_order_id = f"MGW{pedido_id}"
         moogold_category_orden = _moogold_category_efectiva(prod['categoria_tipo'], moogold_category_id)
 
@@ -4670,7 +4740,7 @@ def api_saldo():
 def api_productos():
     import json as _json
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.moogold_category_id, p.moogold_variation_id, p.moogold_fields, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
@@ -4682,6 +4752,10 @@ def api_productos():
         deltaforce_paquete = d.pop('deltaforce_paquete', 0)
         usa_api_pincentral = d.pop('usa_pincentral', 0)
         pincentral_product_code = (d.pop('pincentral_product_code', '') or '').strip()
+        moogold_category_id = int(d.pop('moogold_category_id', 0) or 0)
+        moogold_variation_id = int(d.pop('moogold_variation_id', 0) or 0)
+        moogold_fields_raw = d.pop('moogold_fields', '') or ''
+        usa_moogold = moogold_category_id > 0 and moogold_variation_id > 0
         # Parsear campos requeridos para que el revendedor sepa qué enviar
         fields_raw = d.pop('gamepoint_fields', '') or ''
         campos = []
@@ -4692,6 +4766,18 @@ def api_productos():
                 campos = []
         if campos:
             d['campos_requeridos'] = [{'nombre': f['name'], 'descripcion': f['desc'], 'tipo': f['type'], 'opciones': f.get('options', [])} for f in campos]
+        elif usa_moogold:
+            mg_campos = _moogold_parse_field_defs(moogold_fields_raw)
+            d['campos_requeridos'] = [
+                {
+                    'nombre': f.get('name', ''),
+                    'descripcion': f.get('desc', f.get('name', '')),
+                    'tipo': f.get('type', 'text'),
+                    'opciones': f.get('options', []),
+                }
+                for f in mg_campos
+                if f.get('name', '')
+            ]
         elif usa_api_hype:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador en Free Fire', 'tipo': 'string', 'opciones': []}]
         elif usa_api_razer:
@@ -4765,6 +4851,19 @@ def api_comprar():
     moogold_category_id = int((prod['moogold_category_id'] if 'moogold_category_id' in prod.keys() else 0) or 0)
     moogold_variation_id = int((prod['moogold_variation_id'] if 'moogold_variation_id' in prod.keys() else 0) or 0)
     moogold_fields_raw = (prod['moogold_fields'] if 'moogold_fields' in prod.keys() else '') or ''
+    moogold_field_names = _moogold_parse_fields(moogold_fields_raw)
+    mg_inputs = _extract_named_inputs(data, moogold_field_names)
+    payload_account_fields = data.get('account_fields') if isinstance(data, dict) else None
+    if isinstance(payload_account_fields, dict):
+        for k, v in payload_account_fields.items():
+            key = str(k or '').strip()
+            val = str(v or '').strip()
+            if key and val:
+                mg_inputs[key] = val
+    if moogold_field_names and not id_juego:
+        id_juego = str(mg_inputs.get('mg_field_0', '') or mg_inputs.get(moogold_field_names[0], '') or '').strip()
+    if moogold_field_names and not input2 and len(moogold_field_names) > 1:
+        input2 = str(mg_inputs.get('mg_field_1', '') or mg_inputs.get(moogold_field_names[1], '') or '').strip()
     usa_moogold = moogold_category_id > 0 and moogold_variation_id > 0
     usa_pincentral = int((prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0) or 0)
     pincentral_entrega_directa = int((prod['pincentral_entrega_directa'] if 'pincentral_entrega_directa' in prod.keys() else 0) or 0)
@@ -4775,7 +4874,7 @@ def api_comprar():
         or usa_razer
         or usa_deltaforce
         or (prod['gamepoint_product_id'] and gp_fields_raw)
-        or (usa_moogold and bool(_moogold_parse_fields(moogold_fields_raw)))
+        or (usa_moogold and bool(moogold_field_names))
     )
     if requiere_id and not id_juego:
         db.close()
@@ -5057,7 +5156,7 @@ def api_comprar():
         from moogold_api import crear_orden
 
         partner_order_id = merchant_ref or f"MGA{pedido_id}"
-        account_fields = _moogold_build_account_fields(moogold_fields_raw, id_juego, input2)
+        account_fields = _moogold_build_account_fields(moogold_fields_raw, id_juego, input2, mg_inputs)
         moogold_category_orden = _moogold_category_efectiva(prod['categoria_tipo'], moogold_category_id)
         db.close()
         try:

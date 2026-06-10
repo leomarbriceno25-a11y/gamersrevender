@@ -243,6 +243,11 @@
                         <p style="font-size:0.85rem; margin-bottom:0.5rem;"><strong><i class="fas fa-keyboard"></i> Campos requeridos para compra:</strong></p>
                         <div id="mg-fields-list"></div>
                     </div>
+                    <div class="form-group" style="margin-top:0.5rem;">
+                        <label><i class="fas fa-sliders-h" style="color:#06b6d4;"></i> Campos a solicitar (editable)</label>
+                        <textarea id="form-mg-fields-manual" class="form-input" rows="3" placeholder="Ej:\nUser ID\nZone ID\nServer" oninput="onMGManualFieldsChange()"></textarea>
+                        <small style="color:var(--text-secondary);display:block;margin-top:0.25rem;">Uno por línea. Si lo dejas vacío se usan los campos que devuelve MooGold.</small>
+                    </div>
                     <div id="mg-price-preview" style="display:none; margin-top:0.5rem; padding:0.75rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px;">
                         <strong><i class="fas fa-calculator"></i> Precio sugerido:</strong>
                         <span id="mg-price-text" style="margin-left:0.45rem;"></span>
@@ -404,12 +409,13 @@ function toggleMoogold() {
         document.getElementById('form-mg-product').value = '0';
         document.getElementById('form-mg-variation').value = '0';
         document.getElementById('form-mg-fields').value = '';
+        document.getElementById('form-mg-fields-manual').value = '';
+        mgAutoFieldsRaw = '[]';
         document.getElementById('form-mg-category-select').value = '';
         document.getElementById('form-mg-product-filter').value = '';
         document.getElementById('form-mg-product-select').innerHTML = '<option value="">Selecciona producto...</option>';
         document.getElementById('form-mg-variation-select').innerHTML = '<option value="">Selecciona variación...</option>';
-        document.getElementById('mg-fields-list').innerHTML = '';
-        document.getElementById('mg-fields-preview').style.display = 'none';
+        renderMGFieldsPreview('[]');
         document.getElementById('mg-price-text').textContent = '';
         document.getElementById('mg-price-preview').style.display = 'none';
     }
@@ -418,6 +424,7 @@ function toggleMoogold() {
 var mgCatalogCache = {};
 var mgDetailCache = {};
 var mgCurrentProducts = [];
+var mgAutoFieldsRaw = '[]';
 
 function safeHtml(txt) {
     return String(txt || '')
@@ -428,14 +435,102 @@ function safeHtml(txt) {
         .replace(/'/g, '&#39;');
 }
 
-function onCategoriaMGChange(selectedProductId, selectedVariationId) {
+function parseMGFieldsRaw(raw) {
+    var txt = String(raw || '').trim();
+    if (!txt) return [];
+    try {
+        var payload = JSON.parse(txt);
+        if (!Array.isArray(payload)) return [];
+        var out = [];
+        for (var i = 0; i < payload.length; i++) {
+            var f = payload[i] || {};
+            if (typeof f === 'string') {
+                var n0 = String(f || '').trim();
+                if (n0) out.push({ name: n0, desc: n0, type: 'text', options: [] });
+                continue;
+            }
+            var n = String(f.name || '').trim();
+            if (!n) continue;
+            out.push({
+                name: n,
+                desc: String(f.desc || f.label || n).trim() || n,
+                type: String(f.type || 'text').toLowerCase(),
+                options: Array.isArray(f.options) ? f.options : []
+            });
+        }
+        return out;
+    } catch (e) {
+        return [];
+    }
+}
+
+function renderMGFieldsPreview(raw) {
+    var fields = parseMGFieldsRaw(raw);
+    var listEl = document.getElementById('mg-fields-list');
+    var boxEl = document.getElementById('mg-fields-preview');
+    if (!fields.length) {
+        listEl.innerHTML = '';
+        boxEl.style.display = 'none';
+        return;
+    }
+    var html = '';
+    for (var i = 0; i < fields.length; i++) {
+        var fname = String(fields[i].name || '').trim() || ('Campo #' + (i + 1));
+        html += '<span style="display:inline-block; background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:0.25rem 0.75rem; margin:0.25rem; font-size:0.85rem;">' + safeHtml(fname) + '</span>';
+    }
+    listEl.innerHTML = html;
+    boxEl.style.display = 'block';
+}
+
+function syncMGFieldsHiddenWithEditor() {
+    var editor = document.getElementById('form-mg-fields-manual');
+    var rawLines = String(editor.value || '').split(/\r?\n/);
+    var names = [];
+    for (var i = 0; i < rawLines.length; i++) {
+        var line = String(rawLines[i] || '').trim();
+        if (line) names.push(line);
+    }
+    var rawToSave = mgAutoFieldsRaw || '[]';
+    if (names.length > 0) {
+        var manualFields = [];
+        for (var j = 0; j < names.length; j++) {
+            manualFields.push({
+                name: names[j],
+                desc: names[j],
+                type: 'text',
+                options: []
+            });
+        }
+        rawToSave = JSON.stringify(manualFields);
+    }
+    document.getElementById('form-mg-fields').value = rawToSave;
+    renderMGFieldsPreview(rawToSave);
+}
+
+function setMGFieldEditorFromRaw(raw) {
+    var fields = parseMGFieldsRaw(raw);
+    var names = [];
+    for (var i = 0; i < fields.length; i++) {
+        var n = String(fields[i].name || '').trim();
+        if (n) names.push(n);
+    }
+    document.getElementById('form-mg-fields-manual').value = names.join('\n');
+    syncMGFieldsHiddenWithEditor();
+}
+
+function onMGManualFieldsChange() {
+    syncMGFieldsHiddenWithEditor();
+}
+
+function onCategoriaMGChange(selectedProductId, selectedVariationId, selectedFieldsRaw) {
     var cat = String(document.getElementById('form-mg-category-select').value || '').trim();
     document.getElementById('form-mg-category').value = cat || '0';
     document.getElementById('form-mg-product').value = '0';
     document.getElementById('form-mg-variation').value = '0';
+    mgAutoFieldsRaw = '[]';
     document.getElementById('form-mg-fields').value = '';
-    document.getElementById('mg-fields-list').innerHTML = '';
-    document.getElementById('mg-fields-preview').style.display = 'none';
+    document.getElementById('form-mg-fields-manual').value = '';
+    renderMGFieldsPreview('[]');
     document.getElementById('mg-price-text').textContent = '';
     document.getElementById('mg-price-preview').style.display = 'none';
 
@@ -451,7 +546,7 @@ function onCategoriaMGChange(selectedProductId, selectedVariationId) {
         renderMGProductOptions(selectedProductId);
         var selectedNow = String(document.getElementById('form-mg-product-select').value || '').trim();
         if (selectedNow) {
-            onProductoMGChange(selectedVariationId);
+            onProductoMGChange(selectedVariationId, selectedFieldsRaw);
         }
     }
 
@@ -529,35 +624,29 @@ function actualizarPreciosMooGold() {
         });
 }
 
-function onProductoMGChange(selectedVariationId) {
+function onProductoMGChange(selectedVariationId, selectedFieldsRaw) {
     var cat = String(document.getElementById('form-mg-category-select').value || '').trim();
     var productId = String(document.getElementById('form-mg-product-select').value || '').trim();
     document.getElementById('form-mg-category').value = cat || '0';
     document.getElementById('form-mg-product').value = productId || '0';
     document.getElementById('form-mg-variation').value = '0';
     document.getElementById('form-mg-fields').value = '';
+    document.getElementById('form-mg-fields-manual').value = '';
+    mgAutoFieldsRaw = '[]';
 
     var variationSelect = document.getElementById('form-mg-variation-select');
     variationSelect.innerHTML = '<option value="">Selecciona variación...</option>';
-    document.getElementById('mg-fields-list').innerHTML = '';
-    document.getElementById('mg-fields-preview').style.display = 'none';
+    renderMGFieldsPreview('[]');
     document.getElementById('mg-price-text').textContent = '';
     document.getElementById('mg-price-preview').style.display = 'none';
     if (!productId) return;
 
     function fillDetail(detailData) {
         var fields = Array.isArray(detailData.fields) ? detailData.fields : [];
-        document.getElementById('form-mg-fields').value = JSON.stringify(fields);
-
-        if (fields.length > 0) {
-            var fhtml = '';
-            for (var i = 0; i < fields.length; i++) {
-                var fname = String((fields[i] || {}).name || '').trim() || '-';
-                fhtml += '<span style="display:inline-block; background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:0.25rem 0.75rem; margin:0.25rem; font-size:0.85rem;">' + safeHtml(fname) + '</span>';
-            }
-            document.getElementById('mg-fields-list').innerHTML = fhtml;
-            document.getElementById('mg-fields-preview').style.display = 'block';
-        }
+        mgAutoFieldsRaw = JSON.stringify(fields || []);
+        var initialFieldsRaw = String(selectedFieldsRaw || '').trim();
+        if (!initialFieldsRaw) initialFieldsRaw = mgAutoFieldsRaw;
+        setMGFieldEditorFromRaw(initialFieldsRaw);
 
         var vars = Array.isArray(detailData.Variation) ? detailData.Variation : [];
         var html = '<option value="">Selecciona variación...</option>';
@@ -843,6 +932,8 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     document.getElementById('form-mg-product').value = mgProduct || 0;
     document.getElementById('form-mg-variation').value = mgVariation || 0;
     document.getElementById('form-mg-fields').value = mgFields || '';
+    mgAutoFieldsRaw = mgFields || '[]';
+    setMGFieldEditorFromRaw(mgFields || '[]');
     document.getElementById('form-mg-category-select').value = mgCategory > 0 ? String(mgCategory) : '';
     document.getElementById('form-recarga-manual').checked = recargaManual == 1;
     document.getElementById('form-pin-origen').value = pinOrigenId || 0;
@@ -856,7 +947,7 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     toggleGamepoint();
     toggleMoogold();
     if (gpProduct > 0) { cargarCamposGP(); }
-    if (mgProduct > 0 && mgCategory > 0) { onCategoriaMGChange(mgProduct, mgVariation); }
+    if (mgProduct > 0 && mgCategory > 0) { onCategoriaMGChange(mgProduct, mgVariation, mgFields || ''); }
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-edit"></i> Editar Producto #' + id;
     document.getElementById('form-btn-text').textContent = 'Guardar Cambios';
     document.getElementById('form-btn').querySelector('i').className = 'fas fa-save';
@@ -894,6 +985,8 @@ function resetForm() {
     document.getElementById('form-mg-product').value = '0';
     document.getElementById('form-mg-variation').value = '0';
     document.getElementById('form-mg-fields').value = '';
+    document.getElementById('form-mg-fields-manual').value = '';
+    mgAutoFieldsRaw = '[]';
     document.getElementById('form-mg-category-select').value = '';
     document.getElementById('form-mg-product-filter').value = '';
     mgCurrentProducts = [];
