@@ -486,10 +486,12 @@ def _procesar_callback_moogold(db, pedido, payload):
     ref_externa = str(payload.get('order_id', '') or '').strip()
 
     account_details = payload.get('account_details') if isinstance(payload.get('account_details'), dict) else {}
+    nombre_jugador_prev = str((pedido['nombre_jugador'] if 'nombre_jugador' in pedido.keys() else '') or '').strip()
+    referencia_prev = str((pedido['referencia_externa'] if 'referencia_externa' in pedido.keys() else '') or '').strip()
     nombre_jugador = (
         str(account_details.get('Username', '') or '').strip()
         or str(account_details.get('User ID', '') or '').strip()
-        or str(pedido.get('nombre_jugador', '') or '').strip()
+        or nombre_jugador_prev
     )
     codigo = _moogold_extract_code(payload)
 
@@ -501,7 +503,7 @@ def _procesar_callback_moogold(db, pedido, payload):
         etapa='callback',
         estado=estado_moogold,
         detalle=mensaje,
-        referencia=ref_externa or str(pedido.get('referencia_externa', '') or ''),
+        referencia=ref_externa or referencia_prev,
         payload=payload,
     )
 
@@ -532,7 +534,21 @@ def _procesar_callback_moogold(db, pedido, payload):
             "UPDATE pedidos SET estado = 'cancelado', referencia_externa = COALESCE(NULLIF(referencia_externa, ''), ?) WHERE id = ?",
             (ref_externa, pedido_id),
         )
-        recargar_saldo(usuario_id, total, f"Reembolso MooGold callback pedido #{pedido_id} ({estado_moogold or 'cancelado'})")
+        db.commit()
+        try:
+            recargar_saldo(usuario_id, total, f"Reembolso MooGold callback pedido #{pedido_id} ({estado_moogold or 'cancelado'})")
+        except Exception as e:
+            _registrar_auditoria_recarga(
+                pedido_id=pedido_id,
+                usuario_id=usuario_id,
+                producto_id=producto_id,
+                proveedor='moogold',
+                etapa='callback_refund_error',
+                estado=estado_moogold,
+                detalle=f"Error en recargar_saldo: {e}",
+                referencia=ref_externa or referencia_prev,
+                payload=payload,
+            )
         enviar_webhook(usuario_id, {
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
@@ -592,6 +608,21 @@ def _sincronizar_pedido_moogold_si_pendiente(db, pedido):
             detail_data = {}
 
     if not detail_data:
+        aud = db.execute(
+            "SELECT estado, detalle, referencia FROM recargas_auditoria "
+            "WHERE pedido_id = ? AND proveedor = 'moogold' AND etapa = 'callback' "
+            "ORDER BY id DESC LIMIT 1",
+            (int(pedido['id']),),
+        ).fetchone()
+        if aud:
+            estado_aud = str((aud['estado'] if 'estado' in aud.keys() else '') or '').strip().lower()
+            if estado_aud:
+                payload = {
+                    'status': estado_aud,
+                    'message': str((aud['detalle'] if 'detalle' in aud.keys() else '') or '').strip(),
+                    'order_id': str((aud['referencia'] if 'referencia' in aud.keys() else '') or ref_externa or '').strip(),
+                }
+                return _procesar_callback_moogold(db, pedido, payload)
         return {'accion': 'sin_detalle'}
 
     estado_mg = str(detail_data.get('order_status', '') or detail_data.get('status', '') or '').strip().lower()
