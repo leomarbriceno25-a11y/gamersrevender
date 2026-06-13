@@ -247,6 +247,24 @@
                         <label><i class="fas fa-sliders-h" style="color:#06b6d4;"></i> Campos a solicitar (editable)</label>
                         <textarea id="form-mg-fields-manual" class="form-input" rows="4" placeholder="Formato:\nNombre Campo\nServer|select|Asia, NA / EU" oninput="onMGManualFieldsChange()"></textarea>
                         <small style="color:var(--text-secondary);display:block;margin-top:0.25rem;">Uno por línea. Puedes usar <code>nombre|tipo|opcion1, opcion2</code> para listas desplegables. Si lo dejas vacío se usan los campos que devuelve MooGold automáticamente.</small>
+                        <div style="margin-top:0.6rem; padding:0.65rem; border:1px dashed var(--border); border-radius:8px; background:var(--bg-primary);">
+                            <div style="font-size:0.8rem; color:var(--text-secondary); margin-bottom:0.45rem;">
+                                Constructor rápido (sin escribir formato manual)
+                            </div>
+                            <div class="form-grid-2" style="gap:0.45rem;">
+                                <input type="text" id="form-mg-manual-name" class="form-input" placeholder="Nombre del campo (ej: Server)">
+                                <select id="form-mg-manual-type" class="form-select" onchange="onMGManualTypeChange()">
+                                    <option value="text">Texto</option>
+                                    <option value="select">Lista desplegable</option>
+                                    <option value="dropdown">Dropdown</option>
+                                    <option value="server">Server</option>
+                                </select>
+                            </div>
+                            <input type="text" id="form-mg-manual-options" class="form-input" placeholder="Opciones separadas por coma (ej: Asia, NA / EU)" style="margin-top:0.45rem; display:none;">
+                            <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.5rem;" onclick="agregarCampoManualMG()">
+                                <i class="fas fa-plus"></i> Agregar campo al editor
+                            </button>
+                        </div>
                     </div>
                     <div id="mg-price-preview" style="display:none; margin-top:0.5rem; padding:0.75rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px;">
                         <strong><i class="fas fa-calculator"></i> Precio sugerido:</strong>
@@ -578,6 +596,52 @@ function setMGFieldEditorFromRaw(raw) {
 }
 
 function onMGManualFieldsChange() {
+    syncMGFieldsHiddenWithEditor();
+}
+
+function onMGManualTypeChange() {
+    var typeEl = document.getElementById('form-mg-manual-type');
+    var optsEl = document.getElementById('form-mg-manual-options');
+    if (!typeEl || !optsEl) return;
+    var t = String(typeEl.value || 'text').toLowerCase();
+    var needsOptions = (t === 'select' || t === 'dropdown' || t === 'server');
+    optsEl.style.display = needsOptions ? 'block' : 'none';
+    if (!needsOptions) optsEl.value = '';
+}
+
+function agregarCampoManualMG() {
+    var nameEl = document.getElementById('form-mg-manual-name');
+    var typeEl = document.getElementById('form-mg-manual-type');
+    var optsEl = document.getElementById('form-mg-manual-options');
+    var editor = document.getElementById('form-mg-fields-manual');
+    if (!nameEl || !typeEl || !optsEl || !editor) return;
+
+    var name = String(nameEl.value || '').trim();
+    if (!name) {
+        alert('Escribe el nombre del campo primero.');
+        return;
+    }
+
+    var type = String(typeEl.value || 'text').trim().toLowerCase();
+    var options = String(optsEl.value || '').trim();
+
+    var line = name;
+    if (type !== 'text' || options) {
+        line += '|' + (type || 'text');
+    }
+    if (options) {
+        line += '|' + options;
+    }
+
+    var current = String(editor.value || '').trim();
+    editor.value = current ? (current + '\n' + line) : line;
+
+    nameEl.value = '';
+    if (type === 'text') {
+        typeEl.value = 'text';
+        optsEl.value = '';
+    }
+    onMGManualTypeChange();
     syncMGFieldsHiddenWithEditor();
 }
 
