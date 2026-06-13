@@ -245,8 +245,8 @@
                     </div>
                     <div class="form-group" style="margin-top:0.5rem;">
                         <label><i class="fas fa-sliders-h" style="color:#06b6d4;"></i> Campos a solicitar (editable)</label>
-                        <textarea id="form-mg-fields-manual" class="form-input" rows="3" placeholder="Ej:\nUser ID\nZone ID\nServer" oninput="onMGManualFieldsChange()"></textarea>
-                        <small style="color:var(--text-secondary);display:block;margin-top:0.25rem;">Uno por línea. Si lo dejas vacío se usan los campos que devuelve MooGold.</small>
+                        <textarea id="form-mg-fields-manual" class="form-input" rows="3" placeholder="Escribe los campos manualmente (uno por línea)" oninput="onMGManualFieldsChange()"></textarea>
+                        <small style="color:var(--text-secondary);display:block;margin-top:0.25rem;">No se cargan nombres por defecto aquí. Si lo dejas vacío se usan los campos que devuelve MooGold automáticamente.</small>
                     </div>
                     <div id="mg-price-preview" style="display:none; margin-top:0.5rem; padding:0.75rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px;">
                         <strong><i class="fas fa-calculator"></i> Precio sugerido:</strong>
@@ -691,8 +691,12 @@ function onProductoMGChange(selectedVariationId, selectedFieldsRaw) {
         var fields = Array.isArray(detailData.fields) ? detailData.fields : [];
         mgAutoFieldsRaw = JSON.stringify(fields || []);
         var initialFieldsRaw = String(selectedFieldsRaw || '').trim();
-        if (!initialFieldsRaw) initialFieldsRaw = mgAutoFieldsRaw;
-        setMGFieldEditorFromRaw(initialFieldsRaw);
+        if (initialFieldsRaw) {
+            setMGFieldEditorFromRaw(initialFieldsRaw);
+        } else {
+            document.getElementById('form-mg-fields-manual').value = '';
+            syncMGFieldsHiddenWithEditor();
+        }
 
         var vars = Array.isArray(detailData.Variation) ? detailData.Variation : [];
         var html = '<option value="">Selecciona variación...</option>';
