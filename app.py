@@ -544,7 +544,7 @@ def _procesar_callback_moogold(db, pedido, payload):
             'referencia': ref_externa,
             'nombre_jugador': nombre_jugador,
             'codigo': codigo,
-            'mensaje': mensaje or 'Pedido completado por callback MooGold',
+            'mensaje': mensaje or 'Pedido completado por proveedor',
         })
         return {'accion': 'completado'}
 
@@ -573,7 +573,7 @@ def _procesar_callback_moogold(db, pedido, payload):
             'pedido_id': pedido_id,
             'estado': 'cancelado',
             'referencia': ref_externa,
-            'razon': mensaje or estado_moogold or 'Pedido cancelado por MooGold',
+            'razon': mensaje or estado_moogold or 'Pedido cancelado por proveedor',
             'reembolso': float(total),
         })
         return {'accion': 'cancelado_reembolsado'}
@@ -2554,16 +2554,16 @@ def comprar():
                 db2.close()
 
                 if estado_final == 'completado':
-                    flash(f'Pedido #{pedido_id} completado por MooGold (Ref: {ref or "sin referencia"}).', 'success')
+                    flash(f'Pedido #{pedido_id} completado (Ref: {ref or "sin referencia"}).', 'success')
                 else:
-                    flash(f'Pedido #{pedido_id} enviado a MooGold (Ref: {ref or "pendiente"}). Estado: {estado_final}.', 'warning')
+                    flash(f'Pedido #{pedido_id} recibido por proveedor (Ref: {ref or "pendiente"}). Estado: {estado_final}.', 'warning')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
 
             db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_cliente = ? WHERE id = ?", (partner_order_id, pedido_id))
             db2.commit()
             db2.close()
             recargar_saldo(user_id, total, f"Reembolso: Error MooGold pedido #{pedido_id}")
-            flash(f"Error MooGold: {resultado_api.get('error', 'Sin respuesta válida')}. Se reembolsó ${total:.4f}.", 'error')
+            flash(f"Error del proveedor: {resultado_api.get('error', 'Sin respuesta válida')}. Se reembolsó ${total:.4f}.", 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         except Exception as e:
             db2 = get_db()
@@ -2571,7 +2571,7 @@ def comprar():
             db2.commit()
             db2.close()
             recargar_saldo(user_id, total, f"Reembolso: Excepción MooGold pedido #{pedido_id}")
-            flash(f'Error inesperado en MooGold: {e}. Se reembolsó ${total:.4f}.', 'error')
+            flash(f'Error inesperado del proveedor: {e}. Se reembolsó ${total:.4f}.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Razer (separada), recarga directa por paquete
@@ -5356,7 +5356,7 @@ def api_comprar():
                     'saldo_restante': get_saldo(user_id_api),
                     'nombre_jugador': nombre_jugador,
                     'codigo': codigo,
-                    'mensaje': 'Pedido enviado a MooGold' if estado_final != 'completado' else 'Pedido completado por MooGold',
+                    'mensaje': 'Pedido recibido por proveedor' if estado_final != 'completado' else 'Pedido completado',
                 })
 
             db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_cliente = ? WHERE id = ?", (partner_order_id, pedido_id))
@@ -5365,7 +5365,7 @@ def api_comprar():
             recargar_saldo(user_id_api, total, f"Reembolso API: Error MooGold pedido #{pedido_id}")
             return jsonify({
                 'ok': False,
-                'error': resultado_api.get('error', 'Error MooGold'),
+                'error': resultado_api.get('error', 'Error del proveedor'),
                 'pedido_id': pedido_id,
                 'merchant_ref': partner_order_id,
                 'reembolsado': True,
