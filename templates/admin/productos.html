@@ -245,8 +245,8 @@
                     </div>
                     <div class="form-group" style="margin-top:0.5rem;">
                         <label><i class="fas fa-sliders-h" style="color:#06b6d4;"></i> Campos a solicitar (editable)</label>
-                        <textarea id="form-mg-fields-manual" class="form-input" rows="3" placeholder="Escribe los campos manualmente (uno por línea)" oninput="onMGManualFieldsChange()"></textarea>
-                        <small style="color:var(--text-secondary);display:block;margin-top:0.25rem;">No se cargan nombres por defecto aquí. Si lo dejas vacío se usan los campos que devuelve MooGold automáticamente.</small>
+                        <textarea id="form-mg-fields-manual" class="form-input" rows="4" placeholder="Formato:\nNombre Campo\nServer|select|Asia, NA / EU" oninput="onMGManualFieldsChange()"></textarea>
+                        <small style="color:var(--text-secondary);display:block;margin-top:0.25rem;">Uno por línea. Puedes usar <code>nombre|tipo|opcion1, opcion2</code> para listas desplegables. Si lo dejas vacío se usan los campos que devuelve MooGold automáticamente.</small>
                     </div>
                     <div id="mg-price-preview" style="display:none; margin-top:0.5rem; padding:0.75rem; background:var(--bg-primary); border:1px solid var(--border); border-radius:8px;">
                         <strong><i class="fas fa-calculator"></i> Precio sugerido:</strong>
@@ -495,22 +495,44 @@ function renderMGFieldsPreview(raw) {
 function syncMGFieldsHiddenWithEditor() {
     var editor = document.getElementById('form-mg-fields-manual');
     var rawLines = String(editor.value || '').split(/\r?\n/);
-    var names = [];
-    for (var i = 0; i < rawLines.length; i++) {
-        var line = String(rawLines[i] || '').trim();
-        if (line) names.push(line);
-    }
-    var rawToSave = mgAutoFieldsRaw || '[]';
-    if (names.length > 0) {
-        var manualFields = [];
-        for (var j = 0; j < names.length; j++) {
-            manualFields.push({
-                name: names[j],
-                desc: names[j],
-                type: 'text',
-                options: []
-            });
+    var manualFields = [];
+
+    function parseManualLine(line) {
+        var txt = String(line || '').trim();
+        if (!txt) return null;
+        var parts = txt.split('|');
+        var name = String(parts[0] || '').trim();
+        if (!name) return null;
+
+        var ftype = String(parts.length > 1 ? (parts[1] || '') : 'text').trim().toLowerCase();
+        if (!ftype) ftype = 'text';
+
+        var options = [];
+        if (parts.length > 2) {
+            var optTxt = parts.slice(2).join('|');
+            var rawOpts = String(optTxt || '').split(',');
+            for (var oi = 0; oi < rawOpts.length; oi++) {
+                var optVal = String(rawOpts[oi] || '').trim();
+                if (!optVal) continue;
+                options.push({ value: optVal, label: optVal });
+            }
         }
+
+        return {
+            name: name,
+            desc: name,
+            type: ftype,
+            options: options
+        };
+    }
+
+    for (var i = 0; i < rawLines.length; i++) {
+        var parsed = parseManualLine(rawLines[i]);
+        if (parsed) manualFields.push(parsed);
+    }
+
+    var rawToSave = mgAutoFieldsRaw || '[]';
+    if (manualFields.length > 0) {
         rawToSave = JSON.stringify(manualFields);
     }
     document.getElementById('form-mg-fields').value = rawToSave;
@@ -520,9 +542,36 @@ function syncMGFieldsHiddenWithEditor() {
 function setMGFieldEditorFromRaw(raw) {
     var fields = parseMGFieldsRaw(raw);
     var names = [];
+
+    function optionLabel(opt) {
+        if (opt && typeof opt === 'object') {
+            return String(opt.label || opt.name || opt.title || opt.value || opt.id || '').trim();
+        }
+        return String(opt || '').trim();
+    }
+
     for (var i = 0; i < fields.length; i++) {
-        var n = String(fields[i].name || '').trim();
-        if (n) names.push(n);
+        var f = fields[i] || {};
+        var n = String(f.name || '').trim();
+        if (!n) continue;
+
+        var type = String(f.type || 'text').trim().toLowerCase();
+        var opts = Array.isArray(f.options) ? f.options : [];
+        var optLabels = [];
+        for (var j = 0; j < opts.length; j++) {
+            var lbl = optionLabel(opts[j]);
+            if (lbl) optLabels.push(lbl);
+        }
+
+        var line = n;
+        var shouldAddType = type && (type !== 'text' || optLabels.length > 0);
+        if (shouldAddType) {
+            line += '|' + type;
+        }
+        if (optLabels.length > 0) {
+            line += '|' + optLabels.join(', ');
+        }
+        names.push(line);
     }
     document.getElementById('form-mg-fields-manual').value = names.join('\n');
     syncMGFieldsHiddenWithEditor();
