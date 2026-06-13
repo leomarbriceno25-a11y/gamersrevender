@@ -56,11 +56,15 @@
                     {% for field in producto.moogold_fields %}
                     <div class="form-group">
                         <label><i class="fas fa-coins"></i> {{ field.desc or field.name }} *</label>
-                        {% if field.type == 'servervalue' and field.options %}
+                        {% if (field.options and field.options|length > 0) or (field.type in ['servervalue', 'server', 'select', 'dropdown']) %}
                         <select name="mg_field_{{ loop.index0 }}" class="form-select" required {{ 'id=input-id-juego' if loop.first }} {{ 'id=input-zone-id' if loop.index == 2 }}>
                             <option value="">Selecciona {{ field.desc or field.name }}</option>
                             {% for opt in field.options %}
-                            <option value="{{ opt.value if opt is mapping else opt }}">{{ opt.label if opt is mapping else opt }}</option>
+                            {% if opt is mapping %}
+                            <option value="{{ opt.value if opt.value is defined else (opt.id if opt.id is defined else (opt.key if opt.key is defined else (opt.code if opt.code is defined else (opt.name if opt.name is defined else (opt.label if opt.label is defined else ''))))) }}">{{ opt.label if opt.label is defined else (opt.name if opt.name is defined else (opt.title if opt.title is defined else (opt.value if opt.value is defined else (opt.id if opt.id is defined else '')))) }}</option>
+                            {% else %}
+                            <option value="{{ opt }}">{{ opt }}</option>
+                            {% endif %}
                             {% endfor %}
                         </select>
                         {% else %}

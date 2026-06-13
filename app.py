@@ -320,14 +320,41 @@ def _moogold_parse_field_defs(fields_raw):
     out = []
     for idx, f in enumerate(payload):
         if isinstance(f, dict):
-            name = str(f.get('name', '') or '').strip()
+            name = str(f.get('name', '') or f.get('field', '') or f.get('key', '') or '').strip()
             if not name:
                 continue
-            desc = str(f.get('desc', '') or f.get('label', '') or name).strip()
-            ftype = str(f.get('type', '') or 'text').strip().lower()
-            options = f.get('options', [])
-            if not isinstance(options, list):
-                options = []
+            desc = str(f.get('desc', '') or f.get('label', '') or f.get('placeholder', '') or name).strip()
+            ftype = str(f.get('type', '') or f.get('input_type', '') or 'text').strip().lower()
+
+            options_raw = f.get('options', [])
+            if not isinstance(options_raw, list):
+                for alt_key in ('values', 'choices', 'items', 'list'):
+                    alt = f.get(alt_key, [])
+                    if isinstance(alt, list):
+                        options_raw = alt
+                        break
+                else:
+                    options_raw = []
+
+            options = []
+            for opt in options_raw:
+                if isinstance(opt, dict):
+                    opt_value = str(
+                        opt.get('value', '') or opt.get('id', '') or opt.get('key', '') or opt.get('code', '')
+                        or opt.get('name', '') or opt.get('label', '')
+                    ).strip()
+                    opt_label = str(
+                        opt.get('label', '') or opt.get('name', '') or opt.get('title', '') or opt.get('value', '')
+                        or opt.get('id', '')
+                    ).strip()
+                    if opt_value:
+                        options.append({'value': opt_value, 'label': opt_label or opt_value})
+                    continue
+
+                opt_txt = str(opt or '').strip()
+                if opt_txt:
+                    options.append(opt_txt)
+
             out.append({
                 'name': name,
                 'desc': desc or name,
