@@ -211,7 +211,7 @@
                             <input type="number" name="moogold_margin_percent" id="form-mg-margin" value="{{ moogold_margin_percent|default('6') }}" min="0" step="0.01" placeholder="Ej: 6">
                             <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Se usa para calcular el precio de venta desde el costo USD de MooGold.</small>
                             <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.45rem;" onclick="actualizarPreciosMooGold()">
-                                <i class="fas fa-sync"></i> Actualizar precios MooGold con este margen
+                                <i class="fas fa-sync"></i> Actualizar precio de este producto con este margen
                             </button>
                         </div>
                         <div class="form-group">
@@ -598,8 +598,41 @@ function filtrarProductosMGSelect() {
 
 function actualizarPreciosMooGold() {
     var margen = String(document.getElementById('form-mg-margin').value || '').trim();
+    var mgProductId = String(document.getElementById('form-mg-product').value || '').trim();
+    var mgVariationId = String(document.getElementById('form-mg-variation').value || '').trim();
+    var variationSelect = document.getElementById('form-mg-variation-select');
+    var opt = variationSelect ? variationSelect.options[variationSelect.selectedIndex] : null;
+    var costo = opt ? parseFloat(opt.getAttribute('data-price') || '0') : 0;
+    var margenNum = parseFloat(margen || '0');
+
+    if (!isFinite(margenNum) || margenNum < 0) {
+        alert('Margen inválido. Debe ser mayor o igual a 0.');
+        return;
+    }
+    if (!mgProductId || !mgVariationId) {
+        alert('Selecciona producto y variación MooGold primero.');
+        return;
+    }
+
+    if (isFinite(costo) && costo > 0) {
+        var venta = costo * (1 + (margenNum / 100));
+        document.getElementById('form-precio').value = venta.toFixed(4);
+        document.getElementById('mg-price-text').textContent = 'Costo $' + costo.toFixed(4) + ' + ' + margenNum.toFixed(2) + '% = Venta $' + venta.toFixed(4);
+        document.getElementById('mg-price-preview').style.display = 'block';
+    }
+
+    var accion = String(document.getElementById('form-accion').value || '').trim();
+    var prodId = parseInt(document.getElementById('form-producto-id').value || '0', 10) || 0;
+    if (accion !== 'editar' || prodId <= 0) {
+        alert('Precio sugerido aplicado al formulario. Guarda el producto para persistir el cambio.');
+        return;
+    }
+
     var formData = new FormData();
     formData.append('moogold_margin_percent', margen);
+    formData.append('producto_id', String(prodId));
+    formData.append('moogold_product_id', mgProductId);
+    formData.append('moogold_variation_id', mgVariationId);
     fetch('/admin/moogold/actualizar-precios', {
         method: 'POST',
         body: formData
@@ -607,20 +640,23 @@ function actualizarPreciosMooGold() {
         .then(function(r) { return r.json(); })
         .then(function(data) {
             if (!data.ok) {
-                alert('Error al actualizar precios MooGold: ' + (data.error || 'sin detalle'));
+                alert('Error al actualizar precio MooGold: ' + (data.error || 'sin detalle'));
                 return;
             }
-            var res = data.resumen || {};
-            alert(
-                'Precios MooGold actualizados\n' +
-                'Total vinculados: ' + (res.total || 0) + '\n' +
-                'Actualizados: ' + (res.actualizados || 0) + '\n' +
-                'Omitidos: ' + (res.omitidos || 0)
-            );
-            location.reload();
+            var precio = parseFloat(data.precio || '0');
+            if (isFinite(precio) && precio > 0) {
+                document.getElementById('form-precio').value = precio.toFixed(4);
+                var row = document.getElementById('row-' + prodId);
+                if (row) {
+                    row.setAttribute('data-precio', precio.toFixed(4));
+                    var inp = row.querySelector('.edit-precio');
+                    if (inp) inp.value = precio.toFixed(4);
+                }
+            }
+            alert('Precio MooGold actualizado solo para este producto.');
         })
         .catch(function(e) {
-            alert('No se pudo actualizar precios MooGold: ' + e.message);
+            alert('No se pudo actualizar precio MooGold: ' + e.message);
         });
 }
 

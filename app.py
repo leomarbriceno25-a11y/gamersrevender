@@ -165,9 +165,49 @@ def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje
     }
 
 
-def _actualizar_precios_moogold_desde_margen(db, margen_porcentaje):
+def _actualizar_precio_moogold_producto_desde_margen(db, margen_porcentaje, mg_product_id, mg_variation_id, prod_id=0):
     from moogold_api import detalle_producto
 
+    mg_product_id = int(mg_product_id or 0)
+    mg_variation_id = str(int(mg_variation_id or 0)) if str(mg_variation_id or '0').strip().isdigit() else ''
+    if mg_product_id <= 0 or not mg_variation_id:
+        return {'ok': False, 'error': 'Product/Variation MooGold inválidos'}
+
+    factor_margen = Decimal('1') + (margen_porcentaje / Decimal('100'))
+    detalle = detalle_producto(mg_product_id)
+    if not detalle.get('ok'):
+        return {'ok': False, 'error': f"No se pudo consultar Product ID {mg_product_id}"}
+
+    data = detalle.get('data') if isinstance(detalle.get('data'), dict) else {}
+    variaciones = data.get('Variation') if isinstance(data.get('Variation'), list) else []
+
+    variacion = None
+    for var in variaciones:
+        if str((var or {}).get('variation_id', '')).strip() == mg_variation_id:
+            variacion = var or {}
+            break
+
+    if not variacion:
+        return {'ok': False, 'error': f"No existe Variation ID {mg_variation_id} en MooGold"}
+
+    costo_usd = _to_decimal(variacion.get('variation_price'))
+    if costo_usd is None or costo_usd <= 0:
+        return {'ok': False, 'error': f"Costo USD inválido en Variation ID {mg_variation_id}"}
+
+    precio_venta = (costo_usd * factor_margen).quantize(Decimal('0.00000001'))
+    if int(prod_id or 0) > 0:
+        db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_venta), int(prod_id)))
+
+    return {
+        'ok': True,
+        'precio': float(precio_venta),
+        'costo_usd': float(costo_usd),
+        'variation_id': mg_variation_id,
+        'product_id': mg_product_id,
+    }
+
+
+def _actualizar_precios_moogold_desde_margen(db, margen_porcentaje):
     productos = db.execute(
         "SELECT id, nombre, moogold_product_id, moogold_variation_id "
         "FROM productos WHERE moogold_product_id > 0 AND moogold_variation_id > 0"
@@ -175,47 +215,26 @@ def _actualizar_precios_moogold_desde_margen(db, margen_porcentaje):
     if not productos:
         return {'total': 0, 'actualizados': 0, 'omitidos': 0, 'errores': []}
 
-    factor_margen = Decimal('1') + (margen_porcentaje / Decimal('100'))
-    detalle_cache = {}
     errores = []
     actualizados = 0
     omitidos = 0
 
     for prod in productos:
         mg_product_id = int(prod['moogold_product_id'] or 0)
-        mg_variation_id = str(int(prod['moogold_variation_id'] or 0))
+        mg_variation_id = int(prod['moogold_variation_id'] or 0)
 
-        if mg_product_id not in detalle_cache:
-            detalle_cache[mg_product_id] = detalle_producto(mg_product_id)
-        detalle = detalle_cache[mg_product_id]
-
-        if not detalle.get('ok'):
+        result = _actualizar_precio_moogold_producto_desde_margen(
+            db,
+            margen_porcentaje,
+            mg_product_id,
+            mg_variation_id,
+            prod_id=prod['id'],
+        )
+        if not result.get('ok'):
             omitidos += 1
-            errores.append(f"{prod['nombre']}: no se pudo consultar Product ID {mg_product_id}")
+            errores.append(f"{prod['nombre']}: {result.get('error', 'sin detalle')}")
             continue
 
-        data = detalle.get('data') if isinstance(detalle.get('data'), dict) else {}
-        variaciones = data.get('Variation') if isinstance(data.get('Variation'), list) else []
-
-        variacion = None
-        for var in variaciones:
-            if str((var or {}).get('variation_id', '')).strip() == mg_variation_id:
-                variacion = var or {}
-                break
-
-        if not variacion:
-            omitidos += 1
-            errores.append(f"{prod['nombre']}: no existe Variation ID {mg_variation_id} en MooGold")
-            continue
-
-        costo_usd = _to_decimal(variacion.get('variation_price'))
-        if costo_usd is None or costo_usd <= 0:
-            omitidos += 1
-            errores.append(f"{prod['nombre']}: costo USD inválido en Variation ID {mg_variation_id}")
-            continue
-
-        precio_venta = (costo_usd * factor_margen).quantize(Decimal('0.00000001'))
-        db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_venta), prod['id']))
         actualizados += 1
 
     return {
@@ -4097,6 +4116,37 @@ def admin_moogold_actualizar_precios():
             return jsonify({'ok': False, 'error': 'Margen inválido. Debe ser mayor o igual a 0.'}), 400
 
         _config_set(db, 'moogold_margin_percent', str(margen_porcentaje))
+
+        prod_id = int(request.form.get('producto_id', 0) or 0)
+        if prod_id > 0:
+            mg_product_id = int(request.form.get('moogold_product_id', 0) or 0)
+            mg_variation_id = int(request.form.get('moogold_variation_id', 0) or 0)
+            if mg_product_id <= 0 or mg_variation_id <= 0:
+                return jsonify({'ok': False, 'error': 'Debes seleccionar Product ID y Variation ID de MooGold.'}), 400
+
+            resultado = _actualizar_precio_moogold_producto_desde_margen(
+                db,
+                margen_porcentaje,
+                mg_product_id,
+                mg_variation_id,
+                prod_id=prod_id,
+            )
+            if not resultado.get('ok'):
+                return jsonify({'ok': False, 'error': resultado.get('error', 'No se pudo actualizar el precio')}), 400
+
+            db.commit()
+            return jsonify({
+                'ok': True,
+                'actualizado': 1,
+                'producto_id': prod_id,
+                'precio': resultado.get('precio'),
+                'costo_usd': resultado.get('costo_usd'),
+                'margin_percent': str(margen_porcentaje),
+            })
+
+        if str(request.form.get('apply_all', '') or '').strip() != '1':
+            return jsonify({'ok': False, 'error': 'Para actualización masiva debes confirmar apply_all=1.'}), 400
+
         resumen = _actualizar_precios_moogold_desde_margen(db, margen_porcentaje)
         db.commit()
         return jsonify({'ok': True, 'resumen': resumen, 'margin_percent': str(margen_porcentaje)})
