@@ -3921,7 +3921,7 @@ def admin_productos():
                     flash('No se puede eliminar porque tiene pedidos asociados. Se desactivó en su lugar.', 'error')
         return redirect(url_for('admin_productos'))
 
-    productos = db.execute("SELECT p.*, c.nombre as categoria_nombre FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id ORDER BY c.orden, p.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.*, c.nombre as categoria_nombre FROM productos p LEFT JOIN categorias c ON p.categoria_id = c.id ORDER BY c.orden, c.nombre, p.orden, p.nombre").fetchall()
     categorias = db.execute("SELECT * FROM categorias ORDER BY orden").fetchall()
     # Productos giftcard para selector de restock
     productos_giftcard_raw = db.execute(

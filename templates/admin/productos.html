@@ -291,7 +291,17 @@
                     </tr>
                 </thead>
                 <tbody>
+                    {% set ns = namespace(cat_actual='') %}
                     {% for p in productos %}
+                    {% set cat_nombre = p.categoria_nombre or 'Sin categoría' %}
+                    {% if cat_nombre != ns.cat_actual %}
+                    {% set ns.cat_actual = cat_nombre %}
+                    <tr class="grupo-categoria-row">
+                        <td colspan="9" style="background:rgba(124,58,237,0.12); color:#c4b5fd; font-weight:700; letter-spacing:0.02em; border-top:1px solid rgba(124,58,237,0.35); border-bottom:1px solid rgba(124,58,237,0.25);">
+                            <i class="fas fa-gamepad" style="margin-right:0.4rem;"></i>{{ cat_nombre }}
+                        </td>
+                    </tr>
+                    {% endif %}
                     <tr
                         id="row-{{ p.id }}"
                         data-id="{{ p.id }}"
