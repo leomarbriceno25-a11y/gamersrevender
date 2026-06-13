@@ -40,7 +40,7 @@ def recargar_paquete(id_jugador, paquete):
                 'id_jugador': str(id_jugador).strip(),
                 'paquete': paquete_num,
             },
-            timeout=45,
+            timeout=90,
             verify=RAZER_VERIFY_SSL,
         )
     except Exception as e:
