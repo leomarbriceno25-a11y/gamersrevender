@@ -141,8 +141,8 @@ def _precio_producto_para_usuario(prod_row, user_row=None):
 
 def _bool_autorenovar_desde_row(user_row):
     if not user_row:
-        return True
-    return int((user_row['autorenovar_suscripcion'] if 'autorenovar_suscripcion' in user_row.keys() else 1) or 0) == 1
+        return False
+    return int((user_row['autorenovar_suscripcion'] if 'autorenovar_suscripcion' in user_row.keys() else 0) or 0) == 1
 
 
 def _procesar_autorenovacion_suscripcion(usuario_id):
