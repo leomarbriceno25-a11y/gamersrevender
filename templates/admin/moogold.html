@@ -12,6 +12,27 @@
 <section class="section">
     <div class="container">
         <div class="admin-card" style="margin-bottom:1rem;">
+            <h2 style="margin:0 0 1rem 0;"><i class="fas fa-calculator"></i> Márgenes globales (MooGold)</h2>
+            <form method="post" action="{{ url_for('admin_moogold_catalogo') }}" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(220px, 1fr)); gap:0.75rem; align-items:end;">
+                <div>
+                    <label style="display:block; margin-bottom:0.35rem; color:var(--text-secondary); font-size:0.85rem;">Margen de venta (%)</label>
+                    <input type="number" name="moogold_margin_percent" value="{{ margin_percent|default('6') }}" min="0" step="0.01" required style="width:100%; padding:0.55rem 0.75rem; border:1px solid var(--border); border-radius:8px; background:var(--bg-primary); color:var(--text-primary);">
+                </div>
+                <div>
+                    <label style="display:block; margin-bottom:0.35rem; color:var(--text-secondary); font-size:0.85rem;">Margen suscriptor (%)</label>
+                    <input type="number" name="moogold_margin_percent_subscriber" value="{{ margin_percent_subscriber|default(margin_percent|default('6')) }}" min="0" step="0.01" required style="width:100%; padding:0.55rem 0.75rem; border:1px solid var(--border); border-radius:8px; background:var(--bg-primary); color:var(--text-primary);">
+                </div>
+                <div>
+                    <button type="submit" class="btn btn-primary" style="width:100%;"><i class="fas fa-sync"></i> Guardar y actualizar precios</button>
+                </div>
+            </form>
+            <p style="margin-top:0.65rem; font-size:0.82rem; color:var(--text-secondary);">
+                Al guardar, se recalculan automáticamente los precios normales y de suscriptor de todos los productos vinculados a MooGold
+                (con <code>MooGold Product ID</code> y <code>MooGold Variation ID</code>).
+            </p>
+        </div>
+
+        <div class="admin-card" style="margin-bottom:1rem;">
             <div style="display:grid; grid-template-columns:2fr 1fr auto; gap:0.75rem; align-items:end;">
                 <div>
                     <label style="display:block; margin-bottom:0.35rem; color:var(--text-secondary); font-size:0.85rem;">Categoría MooGold</label>

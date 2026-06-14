@@ -4652,10 +4652,57 @@ def admin_gamepoint_catalogo():
     )
 
 
-@app.route('/admin/moogold', methods=['GET'])
+@app.route('/admin/moogold', methods=['GET', 'POST'])
 @admin_required
 def admin_moogold_catalogo():
-    return render_template('admin/moogold.html', categorias_moogold=_moogold_category_catalogo())
+    db = get_db()
+
+    if request.method == 'POST':
+        margen_txt = str(request.form.get('moogold_margin_percent', '') or '').strip().replace(',', '.')
+        margen_sub_txt = str(request.form.get('moogold_margin_percent_subscriber', '') or '').strip().replace(',', '.')
+
+        margen_porcentaje = _to_decimal(margen_txt, Decimal('0'))
+        margen_subscriber = _to_decimal(margen_sub_txt, Decimal('0'))
+
+        if margen_porcentaje is None or margen_porcentaje < 0:
+            db.close()
+            flash('El margen MooGold % es inválido. Debe ser un número mayor o igual a 0.', 'error')
+            return redirect(url_for('admin_moogold_catalogo'))
+
+        if margen_subscriber is None or margen_subscriber < 0:
+            db.close()
+            flash('El margen suscriptor MooGold % es inválido. Debe ser un número mayor o igual a 0.', 'error')
+            return redirect(url_for('admin_moogold_catalogo'))
+
+        _config_set(db, 'moogold_margin_percent', str(margen_porcentaje))
+        _config_set(db, 'moogold_margin_percent_subscriber', str(margen_subscriber))
+
+        resumen = _actualizar_precios_moogold_desde_margen(db, margen_porcentaje, target_column='precio')
+        resumen_sub = _actualizar_precios_moogold_desde_margen(db, margen_subscriber, target_column='precio_suscriptor')
+        db.commit()
+        db.close()
+
+        msg = (
+            f"Precios MooGold actualizados. "
+            f"Normal: {resumen['actualizados']}/{resumen['total']} · "
+            f"Suscriptor: {resumen_sub['actualizados']}/{resumen_sub['total']}"
+        )
+        if resumen['errores']:
+            msg += f" · Ejemplo: {resumen['errores'][0]}"
+        elif resumen_sub['errores']:
+            msg += f" · Ejemplo (suscriptor): {resumen_sub['errores'][0]}"
+        flash(msg, 'success' if resumen['actualizados'] > 0 else 'warning')
+        return redirect(url_for('admin_moogold_catalogo'))
+
+    margin_percent = _config_get(db, 'moogold_margin_percent', '6')
+    margin_percent_subscriber = _config_get(db, 'moogold_margin_percent_subscriber', margin_percent)
+    db.close()
+    return render_template(
+        'admin/moogold.html',
+        categorias_moogold=_moogold_category_catalogo(),
+        margin_percent=margin_percent,
+        margin_percent_subscriber=margin_percent_subscriber,
+    )
 
 
 @app.route('/admin/moogold/productos', methods=['GET'])
