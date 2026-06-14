@@ -15,7 +15,7 @@
                 <button type="submit" class="btn btn-secondary"><i class="fas fa-sync-alt"></i> Verificar GamePoint (últimas 48h)</button>
             </form>
         </div>
-        {% if pedidos %}
+        {% if pedidos or pagos_suscripcion %}
         <div style="margin-bottom:1rem;">
             <form method="GET" style="display:flex; gap:0.5rem; align-items:center; flex-wrap:wrap;">
                 <input type="text" name="q" value="{{ q or '' }}" class="form-input" placeholder="Buscar por #, usuario, producto, ID juego, referencia, código, estado..." style="max-width:500px;">
@@ -32,6 +32,33 @@
                 {% endif %}
             </form>
         </div>
+
+        {% if pagos_suscripcion %}
+        <div class="admin-card" style="margin-bottom:1rem;">
+            <h3 style="margin:0 0 0.7rem 0;"><i class="fas fa-crown"></i> Pagos de Suscripción</h3>
+            <div class="table-responsive">
+                <table class="table">
+                    <thead>
+                        <tr><th>#Tx</th><th>Usuario</th><th>Concepto</th><th>Total</th><th>Estado</th><th>Fecha</th></tr>
+                    </thead>
+                    <tbody>
+                        {% for s in pagos_suscripcion %}
+                        <tr>
+                            <td>S-{{ s.id }}</td>
+                            <td>{{ s.usuario_nombre }}</td>
+                            <td>{{ s.descripcion or 'Pago suscripción mensual' }}</td>
+                            <td>${{ '%.4f'|format(s.total) }}</td>
+                            <td><span class="badge badge-completado">Aprobado</span></td>
+                            <td>{{ s.fecha_pedido }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if pedidos %}
         <div class="table-responsive">
             <table class="table" id="tablaPedidos">
                 <thead>
@@ -60,9 +87,9 @@
                             {% set codigos = p.codigo_entregado.split('\n') %}
                             {% if codigos|length == 1 %}
                                 <code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;word-break:break-all;display:block;max-width:110px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ codigos[0] }}">{{ codigos[0][:16] }}…</code>
-                                <button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem;margin-top:0.2rem;" onclick="navigator.clipboard.writeText('{{ codigos[0]|e }}');this.innerHTML='✓ Copiado';setTimeout(()=>this.innerHTML='<i class=\'fas fa-copy\'></i> Copiar',1500)"><i class="fas fa-copy"></i> Copiar</button>
+                                <button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem;margin-top:0.2rem;" data-codigo="{{ codigos[0]|e }}" onclick="copiarCodigoDesdeBoton(this)"><i class="fas fa-copy"></i> Copiar</button>
                             {% else %}
-                                <button class="btn btn-sm btn-secondary" style="font-size:0.7rem;padding:0.2rem 0.5rem;" onclick="verCodigos({{ p.id }})"><i class="fas fa-list"></i> {{ codigos|length }} códigos</button>
+                                <button class="btn btn-sm btn-secondary" style="font-size:0.7rem;padding:0.2rem 0.5rem;" data-pedido-id="{{ p.id }}" onclick="verCodigosDesdeBoton(this)"><i class="fas fa-list"></i> {{ codigos|length }} códigos</button>
                                 <textarea id="codigos-{{ p.id }}" style="display:none;">{{ p.codigo_entregado }}</textarea>
                             {% endif %}
                             {% else %}-{% endif %}
@@ -136,7 +163,21 @@
             btn.innerHTML = '<i class="fas fa-check"></i> Copiados!';
             setTimeout(function(){ btn.innerHTML = '<i class="fas fa-copy"></i> Copiar todos'; }, 1500);
         }
+        function copiarCodigoDesdeBoton(btn) {
+            var codigo = String(btn.getAttribute('data-codigo') || '');
+            navigator.clipboard.writeText(codigo);
+            btn.innerHTML = '✓ Copiado';
+            setTimeout(function () {
+                btn.innerHTML = '<i class="fas fa-copy"></i> Copiar';
+            }, 1500);
+        }
+        function verCodigosDesdeBoton(btn) {
+            var pedidoId = parseInt(btn.getAttribute('data-pedido-id') || '0', 10) || 0;
+            if (!pedidoId) return;
+            verCodigos(pedidoId);
+        }
         </script>
+        {% endif %}
         {% else %}
         <div class="empty-state">
             <i class="fas fa-shopping-bag"></i>

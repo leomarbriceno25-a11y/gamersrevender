@@ -5498,6 +5498,27 @@ def admin_pedidos():
         tuple(params + [per_page, offset])
     ).fetchall()
 
+    pagos_suscripcion = []
+    if not estado or estado == 'completado':
+        sub_where = ["t.tipo = 'compra'", "LOWER(IFNULL(t.descripcion, '')) LIKE ?"]
+        sub_params = ['%suscripci%']
+        if q:
+            like_q = f"%{q}%"
+            sub_where.append(
+                "(CAST(t.id AS TEXT) LIKE ? OR u.nombre LIKE ? OR IFNULL(t.descripcion, '') LIKE ? OR CAST(t.monto AS TEXT) LIKE ? OR IFNULL(t.fecha, '') LIKE ?)"
+            )
+            sub_params.extend([like_q, like_q, like_q, like_q, like_q])
+
+        pagos_suscripcion = db.execute(
+            "SELECT t.id, t.usuario_id, t.monto as total, t.fecha as fecha_pedido, t.descripcion, "
+            "u.nombre as usuario_nombre "
+            "FROM transacciones t "
+            "JOIN usuarios u ON t.usuario_id = u.id "
+            "WHERE " + " AND ".join(sub_where) + " "
+            "ORDER BY t.fecha DESC LIMIT 100",
+            tuple(sub_params)
+        ).fetchall()
+
     # Obtener PINes usados por cada pedido
     pines_por_pedido = {}
     pedido_ids = [ped['id'] for ped in pedidos]
@@ -5519,6 +5540,7 @@ def admin_pedidos():
     return render_template(
         'admin/pedidos.html',
         pedidos=pedidos,
+        pagos_suscripcion=pagos_suscripcion,
         pines_por_pedido=pines_por_pedido,
         q=q,
         estado=estado,
