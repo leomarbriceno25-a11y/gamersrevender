@@ -25,6 +25,18 @@
                 </div>
             </div>
 
+            <div class="admin-card" style="margin-bottom:1.5rem; border-left:4px solid #f59e0b;">
+                <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem;">
+                    <i class="fas fa-crown" style="font-size:1.5rem; color:#f59e0b;"></i>
+                    <h2 style="margin:0; font-size:1.1rem;">Suscripción Mensual</h2>
+                </div>
+                <div class="form-group" style="margin-bottom:0;">
+                    <label style="font-size:0.85rem;"><i class="fas fa-tag"></i> Precio mensual (USD)</label>
+                    <input type="number" name="suscripcion_mensual_precio" value="{{ suscripcion_mensual_precio|default('0') }}" step="0.0001" min="0" placeholder="Ej: 5.0000" style="font-size:0.95rem; max-width:240px;">
+                    <small style="color:var(--text-secondary); font-size:0.8rem;">Este monto se cobra en /perfil al activar o renovar 30 días.</small>
+                </div>
+            </div>
+
             {% for m in metodos %}
             <div class="admin-card" style="margin-bottom:1.5rem; border-left:4px solid {{ m.color }};">
                 <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1rem;">

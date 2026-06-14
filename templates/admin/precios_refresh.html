@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+{% block title %}Reporte Refresh Precios - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('admin_panel') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Admin</a>
+        <h1><i class="fas fa-sync-alt"></i> Reporte de Refresh de Precios</h1>
+        <p>Detalle de cambios detectados en GamePoint y MooGold.</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="admin-card" style="margin-bottom:1rem;">
+            <div style="display:flex; gap:1rem; flex-wrap:wrap; align-items:center; justify-content:space-between;">
+                <div>
+                    <h2 style="margin:0 0 0.35rem 0; font-size:1.05rem;">Run #{{ run.id }}</h2>
+                    <div style="font-size:0.9rem; color:var(--text-secondary);">
+                        Fecha: {{ run.fecha }} · Origen: {{ run.origen }}
+                    </div>
+                </div>
+                <div style="font-size:1rem; font-weight:700; color:var(--text-primary);">
+                    Cambios: {{ run.total_cambios }}
+                </div>
+            </div>
+        </div>
+
+        <div class="stats-grid" style="margin-bottom:1rem;">
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>{{ detalles.gamepoint_normal.actualizados if detalles.gamepoint_normal else 0 }}</h3>
+                    <p>GamePoint normal</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>{{ detalles.gamepoint_suscriptor.actualizados if detalles.gamepoint_suscriptor else 0 }}</h3>
+                    <p>GamePoint suscriptor</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>{{ detalles.moogold_normal.actualizados if detalles.moogold_normal else 0 }}</h3>
+                    <p>MooGold normal</p>
+                </div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-info">
+                    <h3>{{ detalles.moogold_suscriptor.actualizados if detalles.moogold_suscriptor else 0 }}</h3>
+                    <p>MooGold suscriptor</p>
+                </div>
+            </div>
+        </div>
+
+        {% if cambios %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Proveedor</th>
+                        <th>Categoría</th>
+                        <th>Producto</th>
+                        <th>Campo</th>
+                        <th>Antes</th>
+                        <th>Ahora</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in cambios %}
+                    <tr>
+                        <td>{{ c.proveedor }}</td>
+                        <td>{{ c.categoria_nombre }}</td>
+                        <td>{{ c.producto_nombre }} <span style="color:var(--text-secondary); font-size:0.8rem;">#{{ c.producto_id }}</span></td>
+                        <td>
+                            {% if c.campo == 'precio_suscriptor' %}
+                            <span class="badge badge-pendiente">precio_suscriptor</span>
+                            {% else %}
+                            <span class="badge badge-completado">precio</span>
+                            {% endif %}
+                        </td>
+                        <td>${{ '%.4f'|format(c.precio_anterior|float) }}</td>
+                        <td>${{ '%.4f'|format(c.precio_nuevo|float) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-check-circle"></i>
+            <h2>Sin cambios de precio</h2>
+            <p>En esta ejecución no se detectaron variaciones.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

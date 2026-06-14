@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% block title %}Lista de Precios - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="page-header">
+    <div class="container">
+        <h1><i class="fas fa-list"></i> Lista de Precios</h1>
+        <p>Consulta precios de revendedor normal y suscriptor para todos los productos activos.</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        {% if productos %}
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Categoría</th>
+                        <th>Producto</th>
+                        <th>Precio normal</th>
+                        <th>Precio suscriptor</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in productos %}
+                    <tr>
+                        <td>{{ p.categoria_nombre }}</td>
+                        <td>{{ p.nombre }}</td>
+                        <td>${{ '%.4f'|format(p.precio_normal) }}</td>
+                        <td>
+                            ${{ '%.4f'|format(p.precio_suscriptor) }}
+                            {% if not p.tiene_precio_suscriptor %}
+                            <span style="color:var(--text-secondary); font-size:0.78rem;">(igual al normal)</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-box-open"></i>
+            <h2>Sin productos activos</h2>
+            <p>No hay productos disponibles para mostrar en la lista de precios.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}

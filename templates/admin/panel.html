@@ -107,6 +107,11 @@
                 <h3>Telegram</h3>
                 <p>Notificaciones al admin</p>
             </a>
+            <a href="{{ url_for('admin_reporte_refresh_precios') }}" class="admin-nav-card">
+                <i class="fas fa-sync-alt"></i>
+                <h3>Refresh Precios</h3>
+                <p>Reporte de cambios GamePoint/MooGold</p>
+            </a>
             <a href="{{ url_for('admin_popup_publicitario') }}" class="admin-nav-card">
                 <i class="fas fa-image"></i>
                 <h3>Popup Publicitario</h3>
@@ -117,6 +122,14 @@
                 <h3>Estadísticas</h3>
                 <p>Ventas, usuarios y métricas</p>
             </a>
+        </div>
+
+        <div style="margin-top:0.9rem;">
+            <form method="POST" action="{{ url_for('admin_ejecutar_refresh_precios') }}" style="display:inline-block;">
+                <button type="submit" class="btn btn-secondary">
+                    <i class="fas fa-sync-alt"></i> Ejecutar refresh de precios ahora
+                </button>
+            </form>
         </div>
     </div>
 </section>

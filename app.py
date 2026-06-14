@@ -18,6 +18,7 @@ import threading
 import json
 import time
 from decimal import Decimal, InvalidOperation
+from datetime import datetime, timedelta
 
 import requests
 
@@ -107,7 +108,38 @@ def _to_decimal(value, default=None):
         return default
 
 
-def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje):
+def _parse_local_datetime(value):
+    txt = str(value or '').strip()
+    if not txt:
+        return None
+    txt = txt.replace('T', ' ')
+    if '.' in txt:
+        txt = txt.split('.', 1)[0]
+    for fmt in ('%Y-%m-%d %H:%M:%S', '%Y-%m-%d %H:%M'):
+        try:
+            return datetime.strptime(txt, fmt)
+        except ValueError:
+            continue
+    return None
+
+
+def _suscripcion_activa_desde_row(user_row, now=None):
+    if not user_row:
+        return False
+    ref = now or datetime.now()
+    vence = _parse_local_datetime(user_row['suscripcion_hasta'] if 'suscripcion_hasta' in user_row.keys() else '')
+    return bool(vence and vence > ref)
+
+
+def _precio_producto_para_usuario(prod_row, user_row=None):
+    precio_base = float((prod_row['precio'] if 'precio' in prod_row.keys() else 0) or 0)
+    precio_sub = float((prod_row['precio_suscriptor'] if 'precio_suscriptor' in prod_row.keys() else 0) or 0)
+    if user_row and _suscripcion_activa_desde_row(user_row) and precio_sub > 0:
+        return precio_sub
+    return precio_base
+
+
+def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje, target_column='precio', detalle_cache=None):
     from gamepoint_api import detalle_producto
 
     productos = db.execute(
@@ -117,8 +149,12 @@ def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje
     if not productos:
         return {'total': 0, 'actualizados': 0, 'omitidos': 0, 'errores': []}
 
+    target_column = str(target_column or 'precio').strip().lower()
+    if target_column not in ('precio', 'precio_suscriptor'):
+        target_column = 'precio'
+
     factor_margen = Decimal('1') + (margen_porcentaje / Decimal('100'))
-    detalle_cache = {}
+    detalle_cache = detalle_cache if isinstance(detalle_cache, dict) else {}
     errores = []
     actualizados = 0
     omitidos = 0
@@ -154,7 +190,10 @@ def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje
             continue
 
         precio_usd = (precio_myr * tasa_myr_usd * factor_margen).quantize(Decimal('0.00000001'))
-        db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_usd), prod['id']))
+        if target_column == 'precio_suscriptor':
+            db.execute("UPDATE productos SET precio_suscriptor = ? WHERE id = ?", (float(precio_usd), prod['id']))
+        else:
+            db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_usd), prod['id']))
         actualizados += 1
 
     return {
@@ -165,7 +204,135 @@ def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje
     }
 
 
-def _actualizar_precio_moogold_producto_desde_margen(db, margen_porcentaje, mg_product_id, mg_variation_id, prod_id=0):
+def _snapshot_precios_proveedores(db):
+    rows = db.execute(
+        "SELECT p.id, p.nombre, p.precio, p.precio_suscriptor, p.gamepoint_product_id, p.moogold_product_id, "
+        "c.nombre as categoria_nombre "
+        "FROM productos p "
+        "LEFT JOIN categorias c ON c.id = p.categoria_id "
+        "WHERE (p.gamepoint_product_id > 0 OR p.moogold_product_id > 0)"
+    ).fetchall()
+    snap = {}
+    for r in rows:
+        if int(r['gamepoint_product_id'] or 0) > 0 and int(r['moogold_product_id'] or 0) > 0:
+            proveedor = 'GamePoint/MooGold'
+        elif int(r['gamepoint_product_id'] or 0) > 0:
+            proveedor = 'GamePoint'
+        elif int(r['moogold_product_id'] or 0) > 0:
+            proveedor = 'MooGold'
+        else:
+            proveedor = '-'
+        snap[int(r['id'])] = {
+            'producto_id': int(r['id']),
+            'producto_nombre': r['nombre'] or '',
+            'categoria_nombre': r['categoria_nombre'] or 'Sin categoría',
+            'proveedor': proveedor,
+            'precio': float(r['precio'] or 0),
+            'precio_suscriptor': float(r['precio_suscriptor'] or 0),
+        }
+    return snap
+
+
+def _ejecutar_refresh_precios_proveedores(db, origen='manual'):
+    tasa_txt = str(_config_get(db, 'gamepoint_myr_usd_rate', '0.252205') or '').strip().replace(',', '.')
+    gp_margin_txt = str(_config_get(db, 'gamepoint_margin_percent', '6') or '').strip().replace(',', '.')
+    gp_sub_margin_txt = str(_config_get(db, 'gamepoint_margin_percent_subscriber', gp_margin_txt or '6') or '').strip().replace(',', '.')
+    mg_margin_txt = str(_config_get(db, 'moogold_margin_percent', '6') or '').strip().replace(',', '.')
+    mg_sub_margin_txt = str(_config_get(db, 'moogold_margin_percent_subscriber', mg_margin_txt or '6') or '').strip().replace(',', '.')
+
+    tasa_myr_usd = _to_decimal(tasa_txt)
+    gp_margin = _to_decimal(gp_margin_txt, Decimal('0'))
+    gp_sub_margin = _to_decimal(gp_sub_margin_txt, Decimal('0'))
+    mg_margin = _to_decimal(mg_margin_txt, Decimal('0'))
+    mg_sub_margin = _to_decimal(mg_sub_margin_txt, Decimal('0'))
+
+    if tasa_myr_usd is None or tasa_myr_usd <= 0:
+        return {'ok': False, 'error': 'Tasa GamePoint inválida'}
+    if gp_margin is None or gp_margin < 0 or gp_sub_margin is None or gp_sub_margin < 0:
+        return {'ok': False, 'error': 'Margen GamePoint inválido'}
+    if mg_margin is None or mg_margin < 0 or mg_sub_margin is None or mg_sub_margin < 0:
+        return {'ok': False, 'error': 'Margen MooGold inválido'}
+
+    before = _snapshot_precios_proveedores(db)
+
+    gp_cache = {}
+    gp_normal = _actualizar_precios_gamepoint_desde_tasa(
+        db,
+        tasa_myr_usd,
+        gp_margin,
+        target_column='precio',
+        detalle_cache=gp_cache,
+    )
+    gp_sub = _actualizar_precios_gamepoint_desde_tasa(
+        db,
+        tasa_myr_usd,
+        gp_sub_margin,
+        target_column='precio_suscriptor',
+        detalle_cache=gp_cache,
+    )
+
+    mg_normal = _actualizar_precios_moogold_desde_margen(db, mg_margin, target_column='precio')
+    mg_sub = _actualizar_precios_moogold_desde_margen(db, mg_sub_margin, target_column='precio_suscriptor')
+
+    after = _snapshot_precios_proveedores(db)
+    cambios = []
+    for pid, cur in after.items():
+        prev = before.get(pid)
+        if not prev:
+            continue
+        for campo in ('precio', 'precio_suscriptor'):
+            anterior = float(prev.get(campo, 0) or 0)
+            nuevo = float(cur.get(campo, 0) or 0)
+            if abs(anterior - nuevo) > 0.00000001:
+                cambios.append({
+                    'proveedor': cur.get('proveedor', '-'),
+                    'producto_id': pid,
+                    'producto_nombre': cur.get('producto_nombre', ''),
+                    'categoria_nombre': cur.get('categoria_nombre', ''),
+                    'campo': campo,
+                    'precio_anterior': anterior,
+                    'precio_nuevo': nuevo,
+                })
+
+    resumen = {
+        'gamepoint_normal': gp_normal,
+        'gamepoint_suscriptor': gp_sub,
+        'moogold_normal': mg_normal,
+        'moogold_suscriptor': mg_sub,
+    }
+
+    cur = db.execute(
+        "INSERT INTO precios_refresh_runs (origen, total_cambios, detalles_json) VALUES (?,?,?)",
+        (str(origen or 'manual'), len(cambios), json.dumps(resumen, ensure_ascii=False))
+    )
+    run_id = int(cur.lastrowid or 0)
+
+    for c in cambios:
+        db.execute(
+            "INSERT INTO precios_refresh_cambios "
+            "(run_id, proveedor, producto_id, producto_nombre, categoria_nombre, campo, precio_anterior, precio_nuevo) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (
+                run_id,
+                c['proveedor'],
+                c['producto_id'],
+                c['producto_nombre'],
+                c['categoria_nombre'],
+                c['campo'],
+                c['precio_anterior'],
+                c['precio_nuevo'],
+            )
+        )
+
+    return {
+        'ok': True,
+        'run_id': run_id,
+        'total_cambios': len(cambios),
+        'resumen': resumen,
+    }
+
+
+def _actualizar_precio_moogold_producto_desde_margen(db, margen_porcentaje, mg_product_id, mg_variation_id, prod_id=0, target_column='precio'):
     from moogold_api import detalle_producto
 
     mg_product_id = int(mg_product_id or 0)
@@ -194,9 +361,16 @@ def _actualizar_precio_moogold_producto_desde_margen(db, margen_porcentaje, mg_p
     if costo_usd is None or costo_usd <= 0:
         return {'ok': False, 'error': f"Costo USD inválido en Variation ID {mg_variation_id}"}
 
+    target_column = str(target_column or 'precio').strip().lower()
+    if target_column not in ('precio', 'precio_suscriptor'):
+        target_column = 'precio'
+
     precio_venta = (costo_usd * factor_margen).quantize(Decimal('0.00000001'))
     if int(prod_id or 0) > 0:
-        db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_venta), int(prod_id)))
+        if target_column == 'precio_suscriptor':
+            db.execute("UPDATE productos SET precio_suscriptor = ? WHERE id = ?", (float(precio_venta), int(prod_id)))
+        else:
+            db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_venta), int(prod_id)))
 
     return {
         'ok': True,
@@ -207,7 +381,7 @@ def _actualizar_precio_moogold_producto_desde_margen(db, margen_porcentaje, mg_p
     }
 
 
-def _actualizar_precios_moogold_desde_margen(db, margen_porcentaje):
+def _actualizar_precios_moogold_desde_margen(db, margen_porcentaje, target_column='precio'):
     productos = db.execute(
         "SELECT id, nombre, moogold_product_id, moogold_variation_id "
         "FROM productos WHERE moogold_product_id > 0 AND moogold_variation_id > 0"
@@ -229,6 +403,7 @@ def _actualizar_precios_moogold_desde_margen(db, margen_porcentaje):
             mg_product_id,
             mg_variation_id,
             prod_id=prod['id'],
+            target_column=target_column,
         )
         if not result.get('ok'):
             omitidos += 1
@@ -2239,9 +2414,51 @@ def catalogo_juego(slug):
     if not cat:
         flash('Juego no encontrado', 'error')
         return redirect(url_for('catalogo'))
-    productos = db.execute("SELECT * FROM productos WHERE categoria_id = ? AND activo = 1 ORDER BY orden ASC, precio ASC", (cat['id'],)).fetchall()
+    productos_rows = db.execute("SELECT * FROM productos WHERE categoria_id = ? AND activo = 1 ORDER BY orden ASC, precio ASC", (cat['id'],)).fetchall()
+    user_row = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
     db.close()
+
+    productos = []
+    for prod in productos_rows:
+        d = dict(prod)
+        precio_normal = float(d.get('precio', 0) or 0)
+        precio_final = _precio_producto_para_usuario(prod, user_row)
+        d['precio_normal'] = precio_normal
+        d['precio'] = precio_final
+        d['precio_suscriptor_aplicado'] = precio_final != precio_normal
+        productos.append(d)
+
     return render_template('catalogo_juego.html', categoria=cat, productos=productos)
+
+
+@app.route('/lista-precios')
+@app.route('/listade-precios')
+@login_required
+def lista_precios():
+    db = get_db()
+    rows = db.execute(
+        "SELECT p.id, p.nombre, p.precio, p.precio_suscriptor, c.nombre as categoria_nombre "
+        "FROM productos p "
+        "JOIN categorias c ON p.categoria_id = c.id "
+        "WHERE p.activo = 1 AND c.activo = 1 "
+        "ORDER BY c.orden, c.nombre, p.orden, p.nombre"
+    ).fetchall()
+    db.close()
+
+    productos = []
+    for r in rows:
+        precio_normal = float(r['precio'] or 0)
+        precio_sub_raw = float(r['precio_suscriptor'] or 0)
+        productos.append({
+            'id': r['id'],
+            'nombre': r['nombre'],
+            'categoria_nombre': r['categoria_nombre'] or 'Sin categoría',
+            'precio_normal': precio_normal,
+            'precio_suscriptor': (precio_sub_raw if precio_sub_raw > 0 else precio_normal),
+            'tiene_precio_suscriptor': precio_sub_raw > 0,
+        })
+
+    return render_template('lista_precios.html', productos=productos)
 
 
 @app.route('/producto/<int:id>')
@@ -2250,12 +2467,20 @@ def producto(id):
     import json as _json
     db = get_db()
     prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.slug as categoria_slug, c.tipo as categoria_tipo, c.verificar_nombre, c.verificar_nombre_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (id,)).fetchone()
-    db.close()
     if not prod:
+        db.close()
         flash('Producto no encontrado', 'error')
         return redirect(url_for('catalogo'))
+    user_row = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+    db.close()
     # Convertir a dict y parsear gamepoint_fields JSON
     prod_dict = dict(prod)
+    precio_normal = float(prod_dict.get('precio', 0) or 0)
+    precio_final = _precio_producto_para_usuario(prod, user_row)
+    prod_dict['precio_normal'] = precio_normal
+    prod_dict['precio'] = precio_final
+    prod_dict['suscripcion_activa'] = _suscripcion_activa_desde_row(user_row)
+    prod_dict['precio_suscriptor_aplicado'] = precio_final != precio_normal
     if prod_dict.get('gamepoint_fields'):
         try:
             prod_dict['gamepoint_fields'] = _json.loads(prod_dict['gamepoint_fields'])
@@ -2311,10 +2536,15 @@ def comprar():
         db.close()
         return redirect(url_for('producto', id=producto_id))
 
-    total = prod['precio'] * cantidad
     user_id = session['user_id']
+    user_row = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (user_id,)).fetchone()
+    precio_unitario = _precio_producto_para_usuario(prod, user_row)
+    total = precio_unitario * cantidad
 
-    resultado = descontar_saldo(user_id, total, f"Compra: {prod['nombre']} x{cantidad}")
+    desc_compra = f"Compra: {prod['nombre']} x{cantidad}"
+    if precio_unitario != float((prod['precio'] if 'precio' in prod.keys() else 0) or 0):
+        desc_compra += " (tarifa suscriptor)"
+    resultado = descontar_saldo(user_id, total, desc_compra)
     if resultado is None:
         saldo = get_saldo(user_id)
         flash(f'Saldo insuficiente. Tu saldo es ${saldo:.4f} y el total es ${total:.4f}', 'error')
@@ -3133,22 +3363,117 @@ def perfil():
                            (generate_password_hash(nueva), session['user_id']))
                 db.commit()
                 flash('Contraseña cambiada correctamente', 'success')
+        elif accion == 'suscripcion':
+            precio_cfg = _config_get(db, 'suscripcion_mensual_precio', '0').replace(',', '.').strip()
+            try:
+                precio_mensual = float(precio_cfg)
+            except (TypeError, ValueError):
+                precio_mensual = 0.0
+            if precio_mensual <= 0:
+                flash('La suscripción mensual no está disponible en este momento.', 'error')
+            else:
+                db.close()
+                descuento = descontar_saldo(session['user_id'], precio_mensual, 'Pago suscripción mensual (30 días)')
+                if descuento is None:
+                    flash(f'Saldo insuficiente para la suscripción. Precio actual: ${precio_mensual:.4f}', 'error')
+                    return redirect(url_for('perfil'))
+
+                db2 = get_db()
+                user_sub = db2.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+                ahora = datetime.now()
+                actual_hasta = _parse_local_datetime(user_sub['suscripcion_hasta'] if user_sub and 'suscripcion_hasta' in user_sub.keys() else '')
+                base = actual_hasta if actual_hasta and actual_hasta > ahora else ahora
+                nuevo_hasta = base + timedelta(days=30)
+                db2.execute(
+                    "UPDATE usuarios SET suscripcion_hasta = ? WHERE id = ?",
+                    (nuevo_hasta.strftime('%Y-%m-%d %H:%M:%S'), session['user_id'])
+                )
+                db2.commit()
+                db2.close()
+                flash(f'Suscripción mensual activada hasta {nuevo_hasta.strftime("%Y-%m-%d %H:%M")}.', 'success')
+                return redirect(url_for('perfil'))
         db.close()
         return redirect(url_for('perfil'))
     saldo = get_saldo(session['user_id'])
+    suscripcion_activa = _suscripcion_activa_desde_row(user)
+    suscripcion_hasta = user['suscripcion_hasta'] if user and 'suscripcion_hasta' in user.keys() else ''
+    precio_cfg = _config_get(db, 'suscripcion_mensual_precio', '0').replace(',', '.').strip()
+    try:
+        suscripcion_mensual_precio = float(precio_cfg)
+    except (TypeError, ValueError):
+        suscripcion_mensual_precio = 0.0
     db.close()
-    return render_template('perfil.html', user=user, saldo=saldo)
+    return render_template(
+        'perfil.html',
+        user=user,
+        saldo=saldo,
+        suscripcion_activa=suscripcion_activa,
+        suscripcion_hasta=suscripcion_hasta,
+        suscripcion_mensual_precio=suscripcion_mensual_precio,
+    )
 
 
 # ===== CARTERA =====
-@app.route('/cartera')
+@app.route('/cartera', methods=['GET', 'POST'])
 @login_required
 def cartera():
     db = get_db()
+    user = db.execute("SELECT id, suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+
+    if request.method == 'POST':
+        accion = request.form.get('accion', '').strip()
+        if accion == 'suscripcion':
+            precio_cfg = _config_get(db, 'suscripcion_mensual_precio', '0').replace(',', '.').strip()
+            try:
+                precio_mensual = float(precio_cfg)
+            except (TypeError, ValueError):
+                precio_mensual = 0.0
+
+            if precio_mensual <= 0:
+                flash('La suscripción mensual no está disponible en este momento.', 'error')
+            else:
+                db.close()
+                descuento = descontar_saldo(session['user_id'], precio_mensual, 'Pago suscripción mensual (30 días)')
+                if descuento is None:
+                    flash(f'Saldo insuficiente para la suscripción. Precio actual: ${precio_mensual:.4f}', 'error')
+                    return redirect(url_for('cartera'))
+
+                db2 = get_db()
+                user_sub = db2.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+                ahora = datetime.now()
+                actual_hasta = _parse_local_datetime(user_sub['suscripcion_hasta'] if user_sub and 'suscripcion_hasta' in user_sub.keys() else '')
+                base = actual_hasta if actual_hasta and actual_hasta > ahora else ahora
+                nuevo_hasta = base + timedelta(days=30)
+                db2.execute(
+                    "UPDATE usuarios SET suscripcion_hasta = ? WHERE id = ?",
+                    (nuevo_hasta.strftime('%Y-%m-%d %H:%M:%S'), session['user_id'])
+                )
+                db2.commit()
+                db2.close()
+                flash(f'Suscripción mensual activada hasta {nuevo_hasta.strftime("%Y-%m-%d %H:%M")}.', 'success')
+                return redirect(url_for('cartera'))
+
+        db.close()
+        return redirect(url_for('cartera'))
+
     saldo = get_saldo(session['user_id'])
     transacciones = db.execute("SELECT t.*, u.nombre as admin_nombre FROM transacciones t LEFT JOIN usuarios u ON t.admin_id = u.id WHERE t.usuario_id = ? ORDER BY t.fecha DESC LIMIT 50", (session['user_id'],)).fetchall()
+    suscripcion_activa = _suscripcion_activa_desde_row(user)
+    suscripcion_hasta = user['suscripcion_hasta'] if user and 'suscripcion_hasta' in user.keys() else ''
+    precio_cfg = _config_get(db, 'suscripcion_mensual_precio', '0').replace(',', '.').strip()
+    try:
+        suscripcion_mensual_precio = float(precio_cfg)
+    except (TypeError, ValueError):
+        suscripcion_mensual_precio = 0.0
     db.close()
-    return render_template('cartera.html', saldo=saldo, transacciones=transacciones)
+    return render_template(
+        'cartera.html',
+        saldo=saldo,
+        transacciones=transacciones,
+        suscripcion_activa=suscripcion_activa,
+        suscripcion_hasta=suscripcion_hasta,
+        suscripcion_mensual_precio=suscripcion_mensual_precio,
+    )
 
 
 # ===== SOLICITAR RECARGA =====
@@ -3197,11 +3522,16 @@ def solicitar_recarga():
                 # Liberar escritura pendiente antes de abrir otra conexión en recargar_saldo
                 db.commit()
                 monto_base = float(sol['monto'])
-                bonus_row = db.execute(
-                    "SELECT porcentaje_bonus FROM bonus_recarga WHERE activo = 1 AND monto_minimo <= ? ORDER BY monto_minimo DESC LIMIT 1",
-                    (monto_base,)
-                ).fetchone()
-                bonus_pct = bonus_row['porcentaje_bonus'] if bonus_row else 0
+                user_sol = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (sol['usuario_id'],)).fetchone()
+                suscripcion_activa = _suscripcion_activa_desde_row(user_sol)
+                if suscripcion_activa:
+                    bonus_pct = 0
+                else:
+                    bonus_row = db.execute(
+                        "SELECT porcentaje_bonus FROM bonus_recarga WHERE activo = 1 AND monto_minimo <= ? ORDER BY monto_minimo DESC LIMIT 1",
+                        (monto_base,)
+                    ).fetchone()
+                    bonus_pct = bonus_row['porcentaje_bonus'] if bonus_row else 0
                 monto_bonus = round(monto_base * bonus_pct / 100, 4) if bonus_pct != 0 else 0
                 monto_total = monto_base + monto_bonus
 
@@ -3246,12 +3576,17 @@ def solicitar_recarga():
     db = get_db()
     solicitudes = db.execute("SELECT * FROM solicitudes_recarga WHERE usuario_id = ? ORDER BY fecha_solicitud DESC LIMIT 20", (session['user_id'],)).fetchall()
     saldo = get_saldo(session['user_id'])
+    user_sub = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+    suscripcion_activa = _suscripcion_activa_desde_row(user_sub)
     # Cargar config completa
     config_rows = db.execute("SELECT clave, valor FROM configuracion").fetchall()
     config = {r['clave']: r['valor'] for r in config_rows}
     recarga_minima = config.get('recarga_minima', '0')
     # Cargar bonuses activos
-    bonuses = db.execute("SELECT monto_minimo, porcentaje_bonus FROM bonus_recarga WHERE activo = 1 ORDER BY monto_minimo ASC").fetchall()
+    if suscripcion_activa:
+        bonuses = []
+    else:
+        bonuses = db.execute("SELECT monto_minimo, porcentaje_bonus FROM bonus_recarga WHERE activo = 1 ORDER BY monto_minimo ASC").fetchall()
     db.close()
     # Armar lista de métodos activos
     metodos = []
@@ -3269,7 +3604,7 @@ def solicitar_recarga():
         d = dict(s)
         monto_s = float(d.get('monto', 0) or 0)
         bonus_pct = 0
-        if d.get('estado') == 'aprobada':
+        if d.get('estado') == 'aprobada' and not suscripcion_activa:
             for tier in bonuses_list:
                 if monto_s >= float(tier.get('monto_minimo', 0) or 0):
                     bonus_pct = float(tier.get('porcentaje_bonus', 0) or 0)
@@ -3279,7 +3614,7 @@ def solicitar_recarga():
         d['monto_total'] = round(monto_s + bonus_monto, 4)
         solicitudes_view.append(d)
 
-    return render_template('solicitar_recarga.html', solicitudes=solicitudes_view, saldo=saldo, metodos=metodos, bonuses=bonuses_list, recarga_minima=recarga_minima)
+    return render_template('solicitar_recarga.html', solicitudes=solicitudes_view, saldo=saldo, metodos=metodos, bonuses=bonuses_list, recarga_minima=recarga_minima, suscripcion_activa=suscripcion_activa)
 
 
 # ===== ADMIN =====
@@ -3295,6 +3630,64 @@ def admin_panel():
     solicitudes_pendientes = db.execute("SELECT COUNT(*) as c FROM solicitudes_recarga WHERE estado = 'pendiente'").fetchone()['c']
     db.close()
     return render_template('admin/panel.html', total_users=total_users, total_pedidos=total_pedidos, total_ventas=total_ventas, total_pendientes=total_pendientes, ultimos_pedidos=ultimos_pedidos, solicitudes_pendientes=solicitudes_pendientes)
+
+
+@app.route('/admin/precios-refresh')
+@admin_required
+def admin_reporte_refresh_precios():
+    refresh_id = int(request.args.get('refresh_id', 0) or 0)
+    db = get_db()
+
+    if refresh_id > 0:
+        run = db.execute("SELECT * FROM precios_refresh_runs WHERE id = ?", (refresh_id,)).fetchone()
+    else:
+        run = db.execute("SELECT * FROM precios_refresh_runs ORDER BY id DESC LIMIT 1").fetchone()
+
+    if not run:
+        db.close()
+        flash('No hay ejecuciones de refresco de precios todavía.', 'warning')
+        return redirect(url_for('admin_panel'))
+
+    cambios = db.execute(
+        "SELECT * FROM precios_refresh_cambios WHERE run_id = ? "
+        "ORDER BY proveedor, categoria_nombre, producto_nombre, campo",
+        (run['id'],)
+    ).fetchall()
+    db.close()
+
+    detalles = {}
+    try:
+        detalles = json.loads(run['detalles_json'] or '{}')
+        if not isinstance(detalles, dict):
+            detalles = {}
+    except Exception:
+        detalles = {}
+
+    return render_template('admin/precios_refresh.html', run=run, cambios=cambios, detalles=detalles)
+
+
+@app.route('/admin/precios-refresh/ejecutar', methods=['POST'])
+@admin_required
+def admin_ejecutar_refresh_precios():
+    db = get_db()
+    try:
+        result = _ejecutar_refresh_precios_proveedores(db, origen='admin_manual')
+        if not result.get('ok'):
+            db.rollback()
+            db.close()
+            flash(f"No se pudo refrescar precios: {result.get('error', 'sin detalle')}", 'error')
+            return redirect(url_for('admin_panel'))
+
+        db.commit()
+        run_id = int(result.get('run_id') or 0)
+        db.close()
+        flash(f"Refresco completado. Cambios detectados: {int(result.get('total_cambios') or 0)}", 'success')
+        return redirect(url_for('admin_reporte_refresh_precios', refresh_id=run_id))
+    except Exception as e:
+        db.rollback()
+        db.close()
+        flash(f"Error al refrescar precios: {e}", 'error')
+        return redirect(url_for('admin_panel'))
 
 
 @app.route('/admin/estadisticas')
@@ -3435,11 +3828,16 @@ def admin_aprobar_solicitud(id):
 
     monto_base = sol['monto']
     # Calcular bonus si aplica
-    bonus_row = db.execute(
-        "SELECT porcentaje_bonus FROM bonus_recarga WHERE activo = 1 AND monto_minimo <= ? ORDER BY monto_minimo DESC LIMIT 1",
-        (monto_base,)
-    ).fetchone()
-    bonus_pct = bonus_row['porcentaje_bonus'] if bonus_row else 0
+    user_sol = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (sol['usuario_id'],)).fetchone()
+    suscripcion_activa = _suscripcion_activa_desde_row(user_sol)
+    if suscripcion_activa:
+        bonus_pct = 0
+    else:
+        bonus_row = db.execute(
+            "SELECT porcentaje_bonus FROM bonus_recarga WHERE activo = 1 AND monto_minimo <= ? ORDER BY monto_minimo DESC LIMIT 1",
+            (monto_base,)
+        ).fetchone()
+        bonus_pct = bonus_row['porcentaje_bonus'] if bonus_row else 0
     monto_bonus = round(monto_base * bonus_pct / 100, 4) if bonus_pct != 0 else 0
     monto_total = monto_base + monto_bonus
     # Aplicar la recarga al saldo del usuario
@@ -3513,6 +3911,16 @@ def admin_metodos_pago():
             db.execute("UPDATE configuracion SET valor = ? WHERE clave = 'recarga_minima'", (recarga_min,))
         else:
             db.execute("INSERT INTO configuracion (clave, valor) VALUES ('recarga_minima', ?)", (recarga_min,))
+
+        suscripcion_precio_raw = request.form.get('suscripcion_mensual_precio', '0').strip().replace(',', '.')
+        try:
+            suscripcion_precio_num = float(suscripcion_precio_raw)
+        except (ValueError, TypeError):
+            suscripcion_precio_num = 0.0
+        if suscripcion_precio_num < 0:
+            suscripcion_precio_num = 0.0
+        _config_set(db, 'suscripcion_mensual_precio', f"{suscripcion_precio_num:.4f}")
+
         db.commit()
         db.close()
         flash('Métodos de pago actualizados correctamente', 'success')
@@ -3521,6 +3929,7 @@ def admin_metodos_pago():
     config = {r['clave']: r['valor'] for r in config_rows}
     db.close()
     recarga_minima = config.get('recarga_minima', '0')
+    suscripcion_mensual_precio = config.get('suscripcion_mensual_precio', '0')
     metodos = []
     for key, icono, color in [('pago_movil', 'fa-mobile-alt', '#4CAF50'), ('binance', 'fa-coins', '#F0B90B'), ('zinli', 'fa-wallet', '#6C63FF'), ('zelle', 'fa-university', '#6D1ED4')]:
         metodos.append({
@@ -3532,7 +3941,7 @@ def admin_metodos_pago():
             'datos': config.get(f'metodo_{key}_datos', ''),
             'nota': config.get(f'metodo_{key}_nota', ''),
         })
-    return render_template('admin/metodos_pago.html', metodos=metodos, recarga_minima=recarga_minima)
+    return render_template('admin/metodos_pago.html', metodos=metodos, recarga_minima=recarga_minima, suscripcion_mensual_precio=suscripcion_mensual_precio)
 
 
 @app.route('/admin/popup-publicitario', methods=['GET', 'POST'])
@@ -3846,11 +4255,18 @@ def admin_productos():
             if mg_margin is not None and mg_margin >= 0:
                 _config_set(db, 'moogold_margin_percent', str(mg_margin))
 
+        mg_margin_sub_txt = str(request.form.get('moogold_margin_percent_subscriber', '') or '').strip().replace(',', '.')
+        if mg_margin_sub_txt:
+            mg_margin_sub = _to_decimal(mg_margin_sub_txt)
+            if mg_margin_sub is not None and mg_margin_sub >= 0:
+                _config_set(db, 'moogold_margin_percent_subscriber', str(mg_margin_sub))
+
         accion = request.form.get('accion')
         if accion == 'crear':
             nombre = request.form.get('nombre', '').strip()
             descripcion = request.form.get('descripcion', '').strip()
             precio = float(request.form.get('precio', 0))
+            precio_suscriptor = float(request.form.get('precio_suscriptor', 0) or 0)
             categoria_id = int(request.form.get('categoria_id', 0))
             icono = request.form.get('icono', 'fa-gem').strip()
             usa_api = 1 if request.form.get('usa_api') else 0
@@ -3885,9 +4301,11 @@ def admin_productos():
                 moogold_product_id = 0
                 moogold_variation_id = 0
                 moogold_fields = ''
+            if precio_suscriptor < 0:
+                precio_suscriptor = 0
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -3895,6 +4313,7 @@ def admin_productos():
             nombre = request.form.get('nombre', '').strip()
             descripcion = request.form.get('descripcion', '').strip()
             precio = float(request.form.get('precio', 0))
+            precio_suscriptor = float(request.form.get('precio_suscriptor', 0) or 0)
             categoria_id = int(request.form.get('categoria_id', 0))
             activo = 1 if request.form.get('activo') else 0
             usa_api = 1 if request.form.get('usa_api') else 0
@@ -3929,9 +4348,11 @@ def admin_productos():
                 moogold_product_id = 0
                 moogold_variation_id = 0
                 moogold_fields = ''
+            if precio_suscriptor < 0:
+                precio_suscriptor = 0
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, precio, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -3959,6 +4380,7 @@ def admin_productos():
         stock = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (gc['id'],)).fetchone()['c']
         productos_giftcard.append({'id': gc['id'], 'nombre': gc['nombre'], 'stock': stock})
     moogold_margin_percent = _config_get(db, 'moogold_margin_percent', '6')
+    moogold_margin_percent_subscriber = _config_get(db, 'moogold_margin_percent_subscriber', moogold_margin_percent)
     db.close()
     return render_template(
         'admin/productos.html',
@@ -3967,6 +4389,7 @@ def admin_productos():
         productos_giftcard=productos_giftcard,
         categorias_moogold=_moogold_category_catalogo(),
         moogold_margin_percent=moogold_margin_percent,
+        moogold_margin_percent_subscriber=moogold_margin_percent_subscriber,
     )
 
 
@@ -4055,9 +4478,11 @@ def admin_gamepoint_catalogo():
     if request.method == 'POST':
         tasa_txt = str(request.form.get('myr_usd_rate', '') or '').strip().replace(',', '.')
         margen_txt = str(request.form.get('margin_percent', '') or '').strip().replace(',', '.')
+        margen_sub_txt = str(request.form.get('margin_percent_subscriber', '') or '').strip().replace(',', '.')
 
         tasa_myr_usd = _to_decimal(tasa_txt)
         margen_porcentaje = _to_decimal(margen_txt, Decimal('0'))
+        margen_subscriber = _to_decimal(margen_sub_txt, Decimal('0'))
 
         if tasa_myr_usd is None or tasa_myr_usd <= 0:
             db.close()
@@ -4069,31 +4494,54 @@ def admin_gamepoint_catalogo():
             flash('El margen % es inválido. Debe ser un número mayor o igual a 0.', 'error')
             return redirect(url_for('admin_gamepoint_catalogo'))
 
+        if margen_subscriber is None or margen_subscriber < 0:
+            db.close()
+            flash('El margen suscriptor % es inválido. Debe ser un número mayor o igual a 0.', 'error')
+            return redirect(url_for('admin_gamepoint_catalogo'))
+
         _config_set(db, 'gamepoint_myr_usd_rate', str(tasa_myr_usd))
         _config_set(db, 'gamepoint_margin_percent', str(margen_porcentaje))
+        _config_set(db, 'gamepoint_margin_percent_subscriber', str(margen_subscriber))
 
-        resumen = _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje)
+        gp_detalle_cache = {}
+        resumen = _actualizar_precios_gamepoint_desde_tasa(
+            db,
+            tasa_myr_usd,
+            margen_porcentaje,
+            target_column='precio',
+            detalle_cache=gp_detalle_cache,
+        )
+        resumen_sub = _actualizar_precios_gamepoint_desde_tasa(
+            db,
+            tasa_myr_usd,
+            margen_subscriber,
+            target_column='precio_suscriptor',
+            detalle_cache=gp_detalle_cache,
+        )
         db.commit()
         db.close()
 
         msg = (
             f"Precios GamePoint actualizados. "
-            f"Total vinculados: {resumen['total']} · "
-            f"Actualizados: {resumen['actualizados']} · "
-            f"Omitidos: {resumen['omitidos']}"
+            f"Normal: {resumen['actualizados']}/{resumen['total']} · "
+            f"Suscriptor: {resumen_sub['actualizados']}/{resumen_sub['total']}"
         )
         if resumen['errores']:
             msg += f" · Ejemplo: {resumen['errores'][0]}"
+        elif resumen_sub['errores']:
+            msg += f" · Ejemplo (suscriptor): {resumen_sub['errores'][0]}"
         flash(msg, 'success' if resumen['actualizados'] > 0 else 'warning')
         return redirect(url_for('admin_gamepoint_catalogo'))
 
     myr_usd_rate = _config_get(db, 'gamepoint_myr_usd_rate', '0.252205')
     margin_percent = _config_get(db, 'gamepoint_margin_percent', '6')
+    margin_percent_subscriber = _config_get(db, 'gamepoint_margin_percent_subscriber', margin_percent)
     db.close()
     return render_template(
         'admin/gamepoint.html',
         myr_usd_rate=myr_usd_rate,
         margin_percent=margin_percent,
+        margin_percent_subscriber=margin_percent_subscriber,
     )
 
 
@@ -4134,15 +4582,21 @@ def admin_moogold_productos():
 def admin_moogold_actualizar_precios():
     db = get_db()
     try:
-        margen_txt = str(request.form.get('moogold_margin_percent', '') or '').strip().replace(',', '.')
+        target = str(request.form.get('target', 'precio') or 'precio').strip().lower()
+        if target not in ('precio', 'precio_suscriptor'):
+            target = 'precio'
+
+        margin_field = 'moogold_margin_percent_subscriber' if target == 'precio_suscriptor' else 'moogold_margin_percent'
+
+        margen_txt = str(request.form.get(margin_field, '') or '').strip().replace(',', '.')
         if not margen_txt:
-            margen_txt = _config_get(db, 'moogold_margin_percent', '6')
+            margen_txt = _config_get(db, margin_field, '6')
 
         margen_porcentaje = _to_decimal(margen_txt, Decimal('0'))
         if margen_porcentaje is None or margen_porcentaje < 0:
             return jsonify({'ok': False, 'error': 'Margen inválido. Debe ser mayor o igual a 0.'}), 400
 
-        _config_set(db, 'moogold_margin_percent', str(margen_porcentaje))
+        _config_set(db, margin_field, str(margen_porcentaje))
 
         prod_id = int(request.form.get('producto_id', 0) or 0)
         if prod_id > 0:
@@ -4157,6 +4611,7 @@ def admin_moogold_actualizar_precios():
                 mg_product_id,
                 mg_variation_id,
                 prod_id=prod_id,
+                target_column=target,
             )
             if not resultado.get('ok'):
                 return jsonify({'ok': False, 'error': resultado.get('error', 'No se pudo actualizar el precio')}), 400
@@ -4166,6 +4621,7 @@ def admin_moogold_actualizar_precios():
                 'ok': True,
                 'actualizado': 1,
                 'producto_id': prod_id,
+                'target': target,
                 'precio': resultado.get('precio'),
                 'costo_usd': resultado.get('costo_usd'),
                 'margin_percent': str(margen_porcentaje),
@@ -4174,9 +4630,9 @@ def admin_moogold_actualizar_precios():
         if str(request.form.get('apply_all', '') or '').strip() != '1':
             return jsonify({'ok': False, 'error': 'Para actualización masiva debes confirmar apply_all=1.'}), 400
 
-        resumen = _actualizar_precios_moogold_desde_margen(db, margen_porcentaje)
+        resumen = _actualizar_precios_moogold_desde_margen(db, margen_porcentaje, target_column=target)
         db.commit()
-        return jsonify({'ok': True, 'resumen': resumen, 'margin_percent': str(margen_porcentaje)})
+        return jsonify({'ok': True, 'resumen': resumen, 'target': target, 'margin_percent': str(margen_porcentaje)})
     except Exception as e:
         db.rollback()
         return jsonify({'ok': False, 'error': str(e)}), 500
@@ -4433,6 +4889,58 @@ def cron_restock_pines():
         return jsonify({'ok': False, 'error': 'No autorizado'}), 403
     transferidos = restock_pines()
     return jsonify({'ok': True, 'transferidos': transferidos})
+
+
+@app.route('/cron/refresh-precios', methods=['GET'])
+def cron_refresh_precios():
+    """Endpoint para cron job - refresca precios GamePoint/MooGold y reporta cambios."""
+    cron_key = request.args.get('key', '')
+    if cron_key != app.secret_key:
+        return jsonify({'ok': False, 'error': 'No autorizado'}), 403
+
+    db = get_db()
+    try:
+        result = _ejecutar_refresh_precios_proveedores(db, origen='cron_2h')
+        if not result.get('ok'):
+            db.rollback()
+            db.close()
+            return jsonify(result), 400
+
+        run_id = int(result.get('run_id') or 0)
+
+        base_url = str(request.args.get('base_url', '') or '').strip().rstrip('/')
+        if not base_url:
+            base_url = str(_config_get(db, 'admin_public_base_url', '') or '').strip().rstrip('/')
+        if not base_url:
+            base_url = request.url_root.rstrip('/')
+
+        link_path = url_for('admin_reporte_refresh_precios', refresh_id=run_id)
+        if base_url:
+            reporte_url = f"{base_url}{link_path}"
+        else:
+            reporte_url = link_path
+
+        db.commit()
+        db.close()
+
+        enviar_telegram(
+            "🔄 <b>Refresco automático de precios (2h)</b>\n\n"
+            f"Cambios detectados: <b>{int(result.get('total_cambios') or 0)}</b>\n"
+            f"Run ID: <code>{run_id}</code>\n"
+            f"📋 Ver cambios: {reporte_url}\n\n"
+            "🔐 El enlace abre un módulo de admin (requiere login)."
+        )
+
+        return jsonify({
+            'ok': True,
+            'run_id': run_id,
+            'total_cambios': int(result.get('total_cambios') or 0),
+            'reporte_url': reporte_url,
+        })
+    except Exception as e:
+        db.rollback()
+        db.close()
+        return jsonify({'ok': False, 'error': str(e)}), 500
 
 
 @app.route('/admin/categorias/orden', methods=['POST'])
@@ -4913,12 +5421,21 @@ def api_saldo():
 @api_key_required
 def api_productos():
     import json as _json
+    user = request.api_user
+    suscripcion_activa = _suscripcion_activa_desde_row(user)
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.moogold_category_id, p.moogold_variation_id, p.moogold_fields, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.precio_suscriptor, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.moogold_category_id, p.moogold_variation_id, p.moogold_fields, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
         d = dict(p)
+        precio_base = float(d.get('precio', 0) or 0)
+        precio_suscriptor = float(d.pop('precio_suscriptor', 0) or 0)
+        if suscripcion_activa and precio_suscriptor > 0:
+            d['precio_normal'] = precio_base
+            d['precio'] = precio_suscriptor
+        else:
+            d['precio'] = precio_base
         usa_api_hype = d.pop('usa_api', 0)
         usa_api_razer = d.pop('usa_razer', 0)
         razer_paquete = d.pop('razer_paquete', 0)
@@ -4972,7 +5489,7 @@ def api_productos():
         d['rechazo_automatico'] = bool(d.get('rechazo_automatico', 0))
         d['procesamiento_manual'] = bool(d.pop('recarga_manual', 0))
         result.append(d)
-    return jsonify({'ok': True, 'productos': result})
+    return jsonify({'ok': True, 'productos': result, 'suscripcion_activa': bool(suscripcion_activa)})
 
 
 @app.route('/api/v1/comprar', methods=['POST'])
@@ -5054,8 +5571,12 @@ def api_comprar():
         db.close()
         return jsonify({'ok': False, 'error': 'Se requiere id_juego (Player ID)'}), 400
 
-    total = prod['precio'] * cantidad
-    resultado = descontar_saldo(user['id'], total, f"API: {prod['nombre']} x{cantidad}")
+    precio_unitario = _precio_producto_para_usuario(prod, user)
+    total = precio_unitario * cantidad
+    desc_compra = f"API: {prod['nombre']} x{cantidad}"
+    if precio_unitario != float((prod['precio'] if 'precio' in prod.keys() else 0) or 0):
+        desc_compra += " (tarifa suscriptor)"
+    resultado = descontar_saldo(user['id'], total, desc_compra)
     if resultado is None:
         saldo = get_saldo(user['id'])
         db.close()

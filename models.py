@@ -97,6 +97,7 @@ def init_db():
             rol TEXT DEFAULT 'revendedor' CHECK(rol IN ('admin', 'revendedor')),
             activo INTEGER DEFAULT 1,
             api_key TEXT UNIQUE,
+            suscripcion_hasta TEXT DEFAULT '',
             fecha_registro TEXT DEFAULT (datetime('now','localtime')),
             ultimo_login TEXT
         );
@@ -118,6 +119,7 @@ def init_db():
             nombre TEXT NOT NULL,
             descripcion TEXT,
             precio REAL NOT NULL,
+            precio_suscriptor REAL DEFAULT 0,
             categoria_id INTEGER,
             icono TEXT DEFAULT 'fa-gem',
             activo INTEGER DEFAULT 1,
@@ -238,6 +240,10 @@ def init_db():
     except Exception:
         db.execute("ALTER TABLE usuarios ADD COLUMN webhook_url TEXT DEFAULT ''")
     try:
+        db.execute("SELECT suscripcion_hasta FROM usuarios LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE usuarios ADD COLUMN suscripcion_hasta TEXT DEFAULT ''")
+    try:
         db.execute("SELECT api_key_hash FROM usuarios LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE usuarios ADD COLUMN api_key_hash TEXT DEFAULT ''")
@@ -315,6 +321,10 @@ def init_db():
         db.execute("SELECT rechazo_automatico FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN rechazo_automatico INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT precio_suscriptor FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN precio_suscriptor REAL DEFAULT 0")
     # Bonus por monto de recarga
     try:
         db.execute("SELECT id FROM bonus_recarga LIMIT 1")
@@ -370,6 +380,8 @@ def init_db():
     db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('popup_publicitario_imagen', '')")
     db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('popup_publicitario_max_vistas', '1')")
     db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('popup_publicitario_version', '1')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('suscripcion_mensual_precio', '0')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('admin_public_base_url', '')")
 
     # Conteo de vistas de popup publicitario por usuario/version
     try:
@@ -529,6 +541,36 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_recargas_auditoria_pedido ON recargas_auditoria(pedido_id);
             CREATE INDEX IF NOT EXISTS idx_recargas_auditoria_proveedor ON recargas_auditoria(proveedor);
             CREATE INDEX IF NOT EXISTS idx_recargas_auditoria_fecha ON recargas_auditoria(fecha);
+        """)
+
+    # Historial de refresco de precios proveedores (GamePoint/MooGold)
+    try:
+        db.execute("SELECT id FROM precios_refresh_runs LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS precios_refresh_runs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                origen TEXT DEFAULT 'manual',
+                total_cambios INTEGER DEFAULT 0,
+                detalles_json TEXT DEFAULT '',
+                fecha TEXT DEFAULT (datetime('now','localtime'))
+            );
+            CREATE TABLE IF NOT EXISTS precios_refresh_cambios (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                run_id INTEGER NOT NULL,
+                proveedor TEXT DEFAULT '',
+                producto_id INTEGER NOT NULL,
+                producto_nombre TEXT DEFAULT '',
+                categoria_nombre TEXT DEFAULT '',
+                campo TEXT NOT NULL CHECK(campo IN ('precio', 'precio_suscriptor')),
+                precio_anterior REAL DEFAULT 0,
+                precio_nuevo REAL DEFAULT 0,
+                fecha TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (run_id) REFERENCES precios_refresh_runs(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_precios_refresh_runs_fecha ON precios_refresh_runs(fecha);
+            CREATE INDEX IF NOT EXISTS idx_precios_refresh_cambios_run ON precios_refresh_cambios(run_id);
+            CREATE INDEX IF NOT EXISTS idx_precios_refresh_cambios_producto ON precios_refresh_cambios(producto_id);
         """)
 
     # Verificación de nombre de jugador por categoría

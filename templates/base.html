@@ -31,6 +31,7 @@
             <div class="nav-links">
                 <a href="{{ url_for('dashboard') }}"><i class="fas fa-home"></i> Inicio</a>
                 <a href="{{ url_for('catalogo') }}"><i class="fas fa-store"></i> Catálogo</a>
+                <a href="{{ url_for('lista_precios') }}"><i class="fas fa-list"></i> Lista de precios</a>
                 <a href="{{ url_for('cartera') }}"><i class="fas fa-wallet"></i> ${{ '%.4f'|format(saldo) }}</a>
                 <a href="{{ url_for('mis_pedidos') }}"><i class="fas fa-shopping-bag"></i> Pedidos</a>
                 <a href="{{ url_for('mis_pines') }}"><i class="fas fa-key"></i> Mis Pines</a>
@@ -68,6 +69,7 @@
                     <h3><i class="fas fa-link"></i> Enlaces</h3>
                     <ul>
                         <li><a href="{{ url_for('catalogo') }}"><i class="fas fa-store"></i> Catálogo</a></li>
+                        <li><a href="{{ url_for('lista_precios') }}"><i class="fas fa-list"></i> Lista de precios</a></li>
                         <li><a href="{{ url_for('cartera') }}"><i class="fas fa-wallet"></i> Mi Cartera</a></li>
                         <li><a href="{{ url_for('mis_pedidos') }}"><i class="fas fa-shopping-bag"></i> Mis Pedidos</a></li>
                     </ul>

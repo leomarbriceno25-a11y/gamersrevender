@@ -29,6 +29,37 @@
                 <i class="fas fa-money-bill-wave"></i> Solicitar Recarga de Saldo
             </a>
         </div>
+
+        <div class="admin-card" style="margin-top:1rem; border-left:4px solid #f59e0b;">
+            <h2 style="margin:0 0 0.5rem 0; font-size:1.05rem;"><i class="fas fa-crown" style="color:#f59e0b;"></i> Plan Suscriptor</h2>
+            {% if suscripcion_activa %}
+            <p style="margin:0 0 0.75rem 0; color:#10b981; font-size:0.9rem;">
+                <i class="fas fa-check-circle"></i> Activo hasta <strong>{{ suscripcion_hasta }}</strong>
+            </p>
+            {% else %}
+            <p style="margin:0 0 0.75rem 0; color:var(--text-secondary); font-size:0.9rem;">
+                <i class="fas fa-info-circle"></i> No tienes una suscripción activa.
+            </p>
+            {% endif %}
+
+            <p style="margin:0 0 0.8rem 0; color:var(--text-secondary); font-size:0.86rem;">
+                Precio mensual: <strong style="color:var(--text-primary);">${{ '%.4f'|format(suscripcion_mensual_precio|default(0)) }}</strong>
+                · Duración: 30 días
+            </p>
+
+            {% if suscripcion_mensual_precio > 0 %}
+            <form method="POST" style="margin:0;">
+                <input type="hidden" name="accion" value="suscripcion">
+                <button type="submit" class="btn btn-secondary" style="width:100%; max-width:360px;">
+                    <i class="fas fa-crown"></i> {{ 'Renovar plan' if suscripcion_activa else 'Activar plan' }}
+                </button>
+            </form>
+            {% else %}
+            <div style="font-size:0.82rem; color:#ef4444;">
+                <i class="fas fa-exclamation-triangle"></i> El plan no está disponible actualmente.
+            </div>
+            {% endif %}
+        </div>
     </div>
 </section>
 

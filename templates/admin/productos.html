@@ -25,6 +25,11 @@
                         <input type="number" name="precio" id="form-precio" step="0.0001" min="0.0001" placeholder="0.0000" required>
                     </div>
                     <div class="form-group">
+                        <label><i class="fas fa-crown" style="color:#f59e0b;"></i> Precio suscriptor ($)</label>
+                        <input type="number" name="precio_suscriptor" id="form-precio-suscriptor" step="0.0001" min="0" placeholder="0.0000">
+                        <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Opcional. Si es 0, no aplica tarifa de suscriptor para este producto.</small>
+                    </div>
+                    <div class="form-group">
                         <label><i class="fas fa-folder"></i> Categoría</label>
                         <select name="categoria_id" id="form-categoria" class="form-select" required>
                             {% for c in categorias %}
@@ -215,6 +220,14 @@
                             </button>
                         </div>
                         <div class="form-group">
+                            <label><i class="fas fa-crown" style="color:#f59e0b;"></i> Margen suscriptor MooGold (%)</label>
+                            <input type="number" name="moogold_margin_percent_subscriber" id="form-mg-margin-subscriber" value="{{ moogold_margin_percent_subscriber|default(moogold_margin_percent|default('6')) }}" min="0" step="0.01" placeholder="Ej: 3">
+                            <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Calcula y actualiza <code>precio_suscriptor</code> para este producto desde el costo MooGold.</small>
+                            <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.45rem;" onclick="actualizarPrecioSuscriptorMooGold()">
+                                <i class="fas fa-crown"></i> Actualizar precio suscriptor con este margen
+                            </button>
+                        </div>
+                        <div class="form-group">
                             <label><i class="fas fa-layer-group" style="color:#06b6d4;"></i> Categoría MooGold</label>
                             <select id="form-mg-category-select" class="form-select" onchange="onCategoriaMGChange()">
                                 <option value="">Selecciona categoría...</option>
@@ -325,6 +338,7 @@
                         data-id="{{ p.id }}"
                         data-nombre="{{ p.nombre|default('')|e }}"
                         data-precio="{{ p.precio }}"
+                        data-precio-suscriptor="{{ p.precio_suscriptor|default(0) }}"
                         data-categoria-id="{{ p.categoria_id|default(0) }}"
                         data-icono="{{ p.icono|default('')|e }}"
                         data-descripcion="{{ p.descripcion|default('')|e }}"
@@ -783,6 +797,69 @@ function actualizarPreciosMooGold() {
         });
 }
 
+function actualizarPrecioSuscriptorMooGold() {
+    var margen = String(document.getElementById('form-mg-margin-subscriber').value || '').trim();
+    var mgProductId = String(document.getElementById('form-mg-product').value || '').trim();
+    var mgVariationId = String(document.getElementById('form-mg-variation').value || '').trim();
+    var variationSelect = document.getElementById('form-mg-variation-select');
+    var opt = variationSelect ? variationSelect.options[variationSelect.selectedIndex] : null;
+    var costo = opt ? parseFloat(opt.getAttribute('data-price') || '0') : 0;
+    var margenNum = parseFloat(margen || '0');
+
+    if (!isFinite(margenNum) || margenNum < 0) {
+        alert('Margen suscriptor inválido. Debe ser mayor o igual a 0.');
+        return;
+    }
+    if (!mgProductId || !mgVariationId) {
+        alert('Selecciona producto y variación MooGold primero.');
+        return;
+    }
+
+    if (isFinite(costo) && costo > 0) {
+        var ventaSub = costo * (1 + (margenNum / 100));
+        document.getElementById('form-precio-suscriptor').value = ventaSub.toFixed(4);
+        document.getElementById('mg-price-text').textContent = 'Costo $' + costo.toFixed(4) + ' + ' + margenNum.toFixed(2) + '% = Suscriptor $' + ventaSub.toFixed(4);
+        document.getElementById('mg-price-preview').style.display = 'block';
+    }
+
+    var accion = String(document.getElementById('form-accion').value || '').trim();
+    var prodId = parseInt(document.getElementById('form-producto-id').value || '0', 10) || 0;
+    if (accion !== 'editar' || prodId <= 0) {
+        alert('Precio suscriptor sugerido aplicado al formulario. Guarda el producto para persistir el cambio.');
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('target', 'precio_suscriptor');
+    formData.append('moogold_margin_percent_subscriber', margen);
+    formData.append('producto_id', String(prodId));
+    formData.append('moogold_product_id', mgProductId);
+    formData.append('moogold_variation_id', mgVariationId);
+    fetch('/admin/moogold/actualizar-precios', {
+        method: 'POST',
+        body: formData
+    })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.ok) {
+                alert('Error al actualizar precio suscriptor MooGold: ' + (data.error || 'sin detalle'));
+                return;
+            }
+            var precio = parseFloat(data.precio || '0');
+            if (isFinite(precio) && precio > 0) {
+                document.getElementById('form-precio-suscriptor').value = precio.toFixed(4);
+                var row = document.getElementById('row-' + prodId);
+                if (row) {
+                    row.setAttribute('data-precio-suscriptor', precio.toFixed(4));
+                }
+            }
+            alert('Precio suscriptor MooGold actualizado solo para este producto.');
+        })
+        .catch(function(e) {
+            alert('No se pudo actualizar precio suscriptor MooGold: ' + e.message);
+        });
+}
+
 function onProductoMGChange(selectedVariationId, selectedFieldsRaw) {
     var cat = String(document.getElementById('form-mg-category-select').value || '').trim();
     var productId = String(document.getElementById('form-mg-product-select').value || '').trim();
@@ -1036,6 +1113,7 @@ function editarProductoDesdeFila(id) {
         id,
         row.getAttribute('data-nombre') || '',
         parseFloat(row.getAttribute('data-precio')) || 0,
+        parseFloat(row.getAttribute('data-precio-suscriptor')) || 0,
         parseInt(row.getAttribute('data-categoria-id')) || 0,
         row.getAttribute('data-icono') || 'fa-gem',
         row.getAttribute('data-descripcion') || '',
@@ -1062,7 +1140,7 @@ function editarProductoDesdeFila(id) {
     );
 }
 
-function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, razerPaqueteExtra, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, pincentralDirecto, orden, gpProduct, gpPackage, rechazoAutomatico, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
+function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, razerPaqueteExtra, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, pincentralDirecto, orden, gpProduct, gpPackage, rechazoAutomatico, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
     var row = document.getElementById('row-' + id);
     var mgCategory = row ? (parseInt(row.getAttribute('data-mg-category')) || 0) : 0;
     var mgProduct = row ? (parseInt(row.getAttribute('data-mg-product')) || 0) : 0;
@@ -1072,6 +1150,7 @@ function editarProducto(id, nombre, precio, categoriaId, icono, descripcion, act
     document.getElementById('form-producto-id').value = id;
     document.getElementById('form-nombre').value = nombre;
     document.getElementById('form-precio').value = precio;
+    document.getElementById('form-precio-suscriptor').value = precioSuscriptor || 0;
     document.getElementById('form-categoria').value = categoriaId;
     document.getElementById('form-icono').value = icono;
     document.getElementById('form-descripcion').value = descripcion;
@@ -1124,6 +1203,7 @@ function resetForm() {
     document.getElementById('form-producto-id').value = '';
     document.getElementById('form-nombre').value = '';
     document.getElementById('form-precio').value = '';
+    document.getElementById('form-precio-suscriptor').value = '0';
     document.getElementById('form-icono').value = 'fa-gem';
     document.getElementById('form-descripcion').value = '';
     document.getElementById('form-activo').checked = true;
