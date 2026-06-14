@@ -222,6 +222,42 @@ def _procesar_autorenovacion_suscripcion(usuario_id):
         db.close()
 
 
+def _procesar_autorenovaciones_global(max_usuarios=1000):
+    db = get_db()
+    try:
+        rows = db.execute(
+            "SELECT id FROM usuarios WHERE autorenovar_suscripcion = 1 ORDER BY id ASC LIMIT ?",
+            (int(max_usuarios or 1000),)
+        ).fetchall()
+    finally:
+        db.close()
+
+    resumen = {
+        'evaluados': len(rows),
+        'renovadas': 0,
+        'saldo_insuficiente': 0,
+        'sin_cambios': 0,
+        'errores': 0,
+    }
+
+    for row in rows:
+        try:
+            result = _procesar_autorenovacion_suscripcion(int(row['id']))
+            accion = str(result.get('accion', '') or '').strip().lower()
+            if accion == 'renovada':
+                resumen['renovadas'] += 1
+            elif accion == 'saldo_insuficiente':
+                resumen['saldo_insuficiente'] += 1
+            elif accion in ('activa', 'desactivada', 'plan_no_disponible', 'sin_usuario'):
+                resumen['sin_cambios'] += 1
+            else:
+                resumen['sin_cambios'] += 1
+        except Exception:
+            resumen['errores'] += 1
+
+    return resumen
+
+
 def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje, target_column='precio', detalle_cache=None):
     from gamepoint_api import detalle_producto
 
@@ -3468,7 +3504,7 @@ def perfil():
                 base = actual_hasta if actual_hasta and actual_hasta > ahora else ahora
                 nuevo_hasta = base + timedelta(days=30)
                 db2.execute(
-                    "UPDATE usuarios SET suscripcion_hasta = ? WHERE id = ?",
+                    "UPDATE usuarios SET suscripcion_hasta = ?, autorenovar_suscripcion = 1 WHERE id = ?",
                     (nuevo_hasta.strftime('%Y-%m-%d %H:%M:%S'), session['user_id'])
                 )
                 db2.commit()
@@ -3527,7 +3563,7 @@ def cartera():
                 base = actual_hasta if actual_hasta and actual_hasta > ahora else ahora
                 nuevo_hasta = base + timedelta(days=30)
                 db2.execute(
-                    "UPDATE usuarios SET suscripcion_hasta = ? WHERE id = ?",
+                    "UPDATE usuarios SET suscripcion_hasta = ?, autorenovar_suscripcion = 1 WHERE id = ?",
                     (nuevo_hasta.strftime('%Y-%m-%d %H:%M:%S'), session['user_id'])
                 )
                 db2.commit()
@@ -5077,10 +5113,13 @@ def cron_refresh_precios():
         db.commit()
         db.close()
 
+        autorenovacion_global = _procesar_autorenovaciones_global(max_usuarios=2000)
+
         enviar_telegram(
             "🔄 <b>Refresco automático de precios (2h)</b>\n\n"
             f"Cambios detectados: <b>{int(result.get('total_cambios') or 0)}</b>\n"
             f"Run ID: <code>{run_id}</code>\n"
+            f"♻️ Autorenovaciones aplicadas: <b>{int(autorenovacion_global.get('renovadas') or 0)}</b>\n"
             f"📋 Ver cambios: {reporte_url}\n\n"
             "🔐 El enlace abre un módulo de admin (requiere login)."
         )
@@ -5090,6 +5129,7 @@ def cron_refresh_precios():
             'run_id': run_id,
             'total_cambios': int(result.get('total_cambios') or 0),
             'reporte_url': reporte_url,
+            'autorenovacion': autorenovacion_global,
         })
     except Exception as e:
         db.rollback()
