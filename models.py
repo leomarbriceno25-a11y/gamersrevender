@@ -98,6 +98,7 @@ def init_db():
             activo INTEGER DEFAULT 1,
             api_key TEXT UNIQUE,
             suscripcion_hasta TEXT DEFAULT '',
+            autorenovar_suscripcion INTEGER DEFAULT 1,
             fecha_registro TEXT DEFAULT (datetime('now','localtime')),
             ultimo_login TEXT
         );
@@ -243,6 +244,11 @@ def init_db():
         db.execute("SELECT suscripcion_hasta FROM usuarios LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE usuarios ADD COLUMN suscripcion_hasta TEXT DEFAULT ''")
+    try:
+        db.execute("SELECT autorenovar_suscripcion FROM usuarios LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE usuarios ADD COLUMN autorenovar_suscripcion INTEGER DEFAULT 1")
+    db.execute("UPDATE usuarios SET autorenovar_suscripcion = 1 WHERE autorenovar_suscripcion IS NULL")
     try:
         db.execute("SELECT api_key_hash FROM usuarios LIMIT 1")
     except Exception:

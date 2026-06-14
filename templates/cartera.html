@@ -47,6 +47,33 @@
                 · Duración: 30 días
             </p>
 
+            {% if autorenovacion_activa %}
+            <p style="margin:0 0 0.6rem 0; font-size:0.85rem; color:#10b981;">
+                <i class="fas fa-toggle-on"></i>
+                Autorenovación: <strong>Activada</strong>
+            </p>
+            {% else %}
+            <p style="margin:0 0 0.6rem 0; font-size:0.85rem; color:#f59e0b;">
+                <i class="fas fa-toggle-off"></i>
+                Autorenovación: <strong>Desactivada</strong>
+            </p>
+            {% endif %}
+
+            {% if autorenovacion_saldo_insuficiente %}
+            <div style="margin:0 0 0.75rem 0; font-size:0.82rem; color:#f59e0b;">
+                <i class="fas fa-exclamation-triangle"></i> No se pudo aplicar la autorenovación por saldo insuficiente.
+            </div>
+            {% endif %}
+
+            <form method="POST" style="margin:0 0 0.75rem 0;">
+                <input type="hidden" name="accion" value="toggle_autorenovacion">
+                <input type="hidden" name="estado" value="{{ '0' if autorenovacion_activa else '1' }}">
+                <button type="submit" class="btn btn-secondary" style="width:100%; max-width:360px;">
+                    <i class="fas {{ 'fa-toggle-off' if autorenovacion_activa else 'fa-toggle-on' }}"></i>
+                    {{ 'Desactivar autorenovación' if autorenovacion_activa else 'Activar autorenovación' }}
+                </button>
+            </form>
+
             {% if suscripcion_mensual_precio > 0 %}
             <form method="POST" style="margin:0;">
                 <input type="hidden" name="accion" value="suscripcion">

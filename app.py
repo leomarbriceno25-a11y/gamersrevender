@@ -139,6 +139,89 @@ def _precio_producto_para_usuario(prod_row, user_row=None):
     return precio_base
 
 
+def _bool_autorenovar_desde_row(user_row):
+    if not user_row:
+        return True
+    return int((user_row['autorenovar_suscripcion'] if 'autorenovar_suscripcion' in user_row.keys() else 1) or 0) == 1
+
+
+def _procesar_autorenovacion_suscripcion(usuario_id):
+    db = get_db()
+    db.execute("BEGIN IMMEDIATE")
+    try:
+        user = db.execute(
+            "SELECT suscripcion_hasta, autorenovar_suscripcion FROM usuarios WHERE id = ?",
+            (usuario_id,)
+        ).fetchone()
+        if not user:
+            db.rollback()
+            return {'accion': 'sin_usuario'}
+
+        ahora = datetime.now()
+        if _suscripcion_activa_desde_row(user, now=ahora):
+            db.rollback()
+            return {'accion': 'activa'}
+
+        if not _bool_autorenovar_desde_row(user):
+            db.rollback()
+            return {'accion': 'desactivada'}
+
+        precio_cfg = _config_get(db, 'suscripcion_mensual_precio', '0').replace(',', '.').strip()
+        try:
+            precio_mensual = float(precio_cfg)
+        except (TypeError, ValueError):
+            precio_mensual = 0.0
+        if precio_mensual <= 0:
+            db.rollback()
+            return {'accion': 'plan_no_disponible'}
+
+        cartera = db.execute("SELECT saldo FROM carteras WHERE usuario_id = ?", (usuario_id,)).fetchone()
+        saldo_actual = float((cartera['saldo'] if cartera else 0) or 0)
+        if saldo_actual < precio_mensual:
+            db.rollback()
+            return {
+                'accion': 'saldo_insuficiente',
+                'saldo': saldo_actual,
+                'precio': precio_mensual,
+            }
+
+        saldo_nuevo = saldo_actual - precio_mensual
+        db.execute(
+            "UPDATE carteras SET saldo = ?, ultima_actualizacion = datetime('now','localtime') WHERE usuario_id = ?",
+            (saldo_nuevo, usuario_id)
+        )
+        db.execute(
+            "INSERT INTO transacciones (usuario_id, tipo, monto, saldo_anterior, saldo_nuevo, descripcion) VALUES (?,?,?,?,?,?)",
+            (
+                usuario_id,
+                'compra',
+                precio_mensual,
+                saldo_actual,
+                saldo_nuevo,
+                'Auto-renovación suscripción mensual (30 días)',
+            )
+        )
+
+        nuevo_hasta = ahora + timedelta(days=30)
+        db.execute(
+            "UPDATE usuarios SET suscripcion_hasta = ? WHERE id = ?",
+            (nuevo_hasta.strftime('%Y-%m-%d %H:%M:%S'), usuario_id)
+        )
+        db.commit()
+
+        return {
+            'accion': 'renovada',
+            'precio': precio_mensual,
+            'nuevo_hasta': nuevo_hasta.strftime('%Y-%m-%d %H:%M:%S'),
+            'saldo_nuevo': saldo_nuevo,
+        }
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
 def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje, target_column='precio', detalle_cache=None):
     from gamepoint_api import detalle_producto
 
@@ -3417,10 +3500,9 @@ def perfil():
 @app.route('/cartera', methods=['GET', 'POST'])
 @login_required
 def cartera():
-    db = get_db()
-    user = db.execute("SELECT id, suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
-
     if request.method == 'POST':
+        db = get_db()
+        user = db.execute("SELECT id, suscripcion_hasta, autorenovar_suscripcion FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
         accion = request.form.get('accion', '').strip()
         if accion == 'suscripcion':
             precio_cfg = _config_get(db, 'suscripcion_mensual_precio', '0').replace(',', '.').strip()
@@ -3452,13 +3534,36 @@ def cartera():
                 db2.close()
                 flash(f'Suscripción mensual activada hasta {nuevo_hasta.strftime("%Y-%m-%d %H:%M")}.', 'success')
                 return redirect(url_for('cartera'))
+        elif accion == 'toggle_autorenovacion':
+            estado = request.form.get('estado', '').strip()
+            if estado not in ('0', '1'):
+                estado = '0' if _bool_autorenovar_desde_row(user) else '1'
+            db.execute(
+                "UPDATE usuarios SET autorenovar_suscripcion = ? WHERE id = ?",
+                (int(estado), session['user_id'])
+            )
+            db.commit()
+            if estado == '1':
+                flash('Autorenovación activada.', 'success')
+            else:
+                flash('Autorenovación desactivada.', 'warning')
 
         db.close()
         return redirect(url_for('cartera'))
 
+    auto_result = _procesar_autorenovacion_suscripcion(session['user_id'])
+    if auto_result.get('accion') == 'renovada':
+        flash(
+            f"Autorenovación aplicada: plan activo hasta {auto_result.get('nuevo_hasta', '')[:16]}.",
+            'success'
+        )
+
+    db = get_db()
+    user = db.execute("SELECT id, suscripcion_hasta, autorenovar_suscripcion FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
     saldo = get_saldo(session['user_id'])
     transacciones = db.execute("SELECT t.*, u.nombre as admin_nombre FROM transacciones t LEFT JOIN usuarios u ON t.admin_id = u.id WHERE t.usuario_id = ? ORDER BY t.fecha DESC LIMIT 50", (session['user_id'],)).fetchall()
     suscripcion_activa = _suscripcion_activa_desde_row(user)
+    autorenovacion_activa = _bool_autorenovar_desde_row(user)
     suscripcion_hasta = user['suscripcion_hasta'] if user and 'suscripcion_hasta' in user.keys() else ''
     precio_cfg = _config_get(db, 'suscripcion_mensual_precio', '0').replace(',', '.').strip()
     try:
@@ -3471,8 +3576,10 @@ def cartera():
         saldo=saldo,
         transacciones=transacciones,
         suscripcion_activa=suscripcion_activa,
+        autorenovacion_activa=autorenovacion_activa,
         suscripcion_hasta=suscripcion_hasta,
         suscripcion_mensual_precio=suscripcion_mensual_precio,
+        autorenovacion_saldo_insuficiente=(auto_result.get('accion') == 'saldo_insuficiente'),
     )
 
 
