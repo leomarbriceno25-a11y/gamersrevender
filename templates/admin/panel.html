@@ -143,7 +143,7 @@
                     <h3 style="margin:0 0 0.35rem 0; font-size:1.05rem;"><i class="fas fa-stopwatch"></i> Refresh automático de precios (15 min)</h3>
                     {% if ultimo_refresh_cron %}
                     <p style="margin:0; color:var(--text-secondary); font-size:0.9rem;">
-                        Última ejecución cron: <strong>{{ ultimo_refresh_cron_fecha }}</strong> · Cambios: <strong>{{ ultimo_refresh_cron.total_cambios }}</strong>
+                        Última ejecución cron: <strong>{{ ultimo_refresh_cron_fecha }}</strong> · Cambios: <strong>{{ ultimo_refresh_cron['total_cambios'] }}</strong>
                     </p>
                     {% else %}
                     <p style="margin:0; color:var(--text-secondary); font-size:0.9rem;">
@@ -154,7 +154,7 @@
                 <div style="text-align:right; min-width:220px;">
                     {% if ultimo_refresh_cron %}
                     <div style="font-size:0.8rem; color:var(--text-secondary);">Próximo refresh en:</div>
-                    <div id="refresh-countdown" data-remaining="{{ refresh_countdown_seconds if refresh_countdown_seconds is not none else ' }}" style="font-size:1.45rem; font-weight:800; color:#10b981; letter-spacing:0.5px;">--:--</div>
+                    <div id="refresh-countdown" data-remaining="{{ refresh_countdown_seconds if refresh_countdown_seconds is not none else '' }}" style="font-size:1.45rem; font-weight:800; color:#10b981; letter-spacing:0.5px;">--:--</div>
                     {% if refresh_atrasado %}
                     <div id="refresh-status" style="font-size:0.8rem; margin-top:0.2rem; color:#ef4444;">Atrasado: debió ejecutarse hace unos minutos.</div>
                     {% else %}
@@ -181,12 +181,12 @@
                 <tbody>
                     {% for p in ultimos_pedidos %}
                     <tr>
-                        <td>{{ p.id }}</td>
-                        <td>{{ p.usuario_nombre }}</td>
-                        <td>{{ p.producto_nombre }}</td>
-                        <td>${{ '%.4f'|format(p.total) }}</td>
-                        <td><span class="badge badge-{{ p.estado }}">{{ p.estado|capitalize }}</span></td>
-                        <td>{{ p.fecha_pedido }}</td>
+                        <td>{{ p["id"] }}</td>
+                        <td>{{ p["usuario_nombre"] }}</td>
+                        <td>{{ p["producto_nombre"] }}</td>
+                        <td>${{ p["total"] }}</td>
+                        <td><span class="badge badge-{{ p["estado"] }}">{{ p["estado"]|capitalize }}</span></td>
+                        <td>{{ p["fecha_pedido"] }}</td>
                     </tr>
                     {% endfor %}
                 </tbody>
