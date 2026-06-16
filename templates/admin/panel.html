@@ -42,8 +42,13 @@
         </div>
 
         <div class="admin-nav-grid">
-            <a href="{{ url_for('admin_solicitudes') }}" class="admin-nav-card" style="position:relative;{{ ' border:2px solid #f59e0b;' if solicitudes_pendientes > 0 else '' }}">
-                <i class="fas fa-money-bill-wave" style="{{ 'color:#f59e0b;' if solicitudes_pendientes > 0 else '' }}"></i>
+            {% if solicitudes_pendientes > 0 %}
+            <a href="{{ url_for('admin_solicitudes') }}" class="admin-nav-card" style="position:relative; border:2px solid #f59e0b;">
+                <i class="fas fa-money-bill-wave" style="color:#f59e0b;"></i>
+            {% else %}
+            <a href="{{ url_for('admin_solicitudes') }}" class="admin-nav-card" style="position:relative;">
+                <i class="fas fa-money-bill-wave"></i>
+            {% endif %}
                 <h3>Solicitudes{% if solicitudes_pendientes > 0 %} <span style="background:#f59e0b; color:#000; padding:2px 8px; border-radius:12px; font-size:0.75rem; font-weight:700;">{{ solicitudes_pendientes }}</span>{% endif %}</h3>
                 <p>Aprobar/rechazar recargas</p>
             </a>
@@ -131,6 +136,36 @@
                 </button>
             </form>
         </div>
+
+        <div class="admin-card" style="margin-top:1rem; border-left:4px solid #10b981;">
+            <div style="display:flex; justify-content:space-between; gap:1rem; flex-wrap:wrap; align-items:center;">
+                <div>
+                    <h3 style="margin:0 0 0.35rem 0; font-size:1.05rem;"><i class="fas fa-stopwatch"></i> Refresh automático de precios (15 min)</h3>
+                    {% if ultimo_refresh_cron %}
+                    <p style="margin:0; color:var(--text-secondary); font-size:0.9rem;">
+                        Última ejecución cron: <strong>{{ ultimo_refresh_cron_fecha }}</strong> · Cambios: <strong>{{ ultimo_refresh_cron.total_cambios }}</strong>
+                    </p>
+                    {% else %}
+                    <p style="margin:0; color:var(--text-secondary); font-size:0.9rem;">
+                        Aún no hay ejecuciones cron registradas. Verifica que el cron del servidor esté activo.
+                    </p>
+                    {% endif %}
+                </div>
+                <div style="text-align:right; min-width:220px;">
+                    {% if ultimo_refresh_cron %}
+                    <div style="font-size:0.8rem; color:var(--text-secondary);">Próximo refresh en:</div>
+                    <div id="refresh-countdown" data-remaining="{{ refresh_countdown_seconds if refresh_countdown_seconds is not none else ' }}" style="font-size:1.45rem; font-weight:800; color:#10b981; letter-spacing:0.5px;">--:--</div>
+                    {% if refresh_atrasado %}
+                    <div id="refresh-status" style="font-size:0.8rem; margin-top:0.2rem; color:#ef4444;">Atrasado: debió ejecutarse hace unos minutos.</div>
+                    {% else %}
+                    <div id="refresh-status" style="font-size:0.8rem; margin-top:0.2rem; color:var(--text-secondary);">Cron activo</div>
+                    {% endif %}
+                    {% else %}
+                    <div style="font-size:0.95rem; font-weight:700; color:#f59e0b;">Sin datos de cron</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
     </div>
 </section>
 
@@ -159,5 +194,48 @@
         </div>
     </div>
 </section>
+{% endif %}
+{% if ultimo_refresh_cron %}
+<script>
+(function () {
+    var el = document.getElementById('refresh-countdown');
+    var statusEl = document.getElementById('refresh-status');
+    if (!el) return;
+
+    var raw = (el.getAttribute('data-remaining') || '').trim();
+    var remaining = parseInt(raw, 10);
+
+    if (Number.isNaN(remaining)) {
+        el.textContent = '--:--';
+        if (statusEl) {
+            statusEl.textContent = 'No se pudo calcular el contador';
+            statusEl.style.color = '#f59e0b';
+        }
+        return;
+    }
+
+    function formatTimer(totalSeconds) {
+        var m = Math.floor(totalSeconds / 60);
+        var s = totalSeconds % 60;
+        return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+    }
+
+    function tick() {
+        if (remaining <= 0) {
+            el.textContent = '00:00';
+            if (statusEl) {
+                statusEl.textContent = 'Ejecutando en breve...';
+                statusEl.style.color = '#f59e0b';
+            }
+            return;
+        }
+        el.textContent = formatTimer(remaining);
+        remaining -= 1;
+        setTimeout(tick, 1000);
+    }
+
+    tick();
+})();
+</script>
 {% endif %}
 {% endblock %}

@@ -3571,28 +3571,17 @@ def cartera():
                 flash(f'Suscripción mensual activada hasta {nuevo_hasta.strftime("%Y-%m-%d %H:%M")}.', 'success')
                 return redirect(url_for('cartera'))
         elif accion == 'toggle_autorenovacion':
-            estado = request.form.get('estado', '').strip()
-            if estado not in ('0', '1'):
-                estado = '0' if _bool_autorenovar_desde_row(user) else '1'
             db.execute(
                 "UPDATE usuarios SET autorenovar_suscripcion = ? WHERE id = ?",
-                (int(estado), session['user_id'])
+                (0, session['user_id'])
             )
             db.commit()
-            if estado == '1':
-                flash('Autorenovación activada.', 'success')
-            else:
-                flash('Autorenovación desactivada.', 'warning')
+            flash('Autorenovación desactivada.', 'warning')
 
         db.close()
         return redirect(url_for('cartera'))
 
-    auto_result = _procesar_autorenovacion_suscripcion(session['user_id'])
-    if auto_result.get('accion') == 'renovada':
-        flash(
-            f"Autorenovación aplicada: plan activo hasta {auto_result.get('nuevo_hasta', '')[:16]}.",
-            'success'
-        )
+    auto_result = {'accion': 'deshabilitada'}
 
     db = get_db()
     user = db.execute("SELECT id, suscripcion_hasta, autorenovar_suscripcion FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
@@ -3615,7 +3604,7 @@ def cartera():
         autorenovacion_activa=autorenovacion_activa,
         suscripcion_hasta=suscripcion_hasta,
         suscripcion_mensual_precio=suscripcion_mensual_precio,
-        autorenovacion_saldo_insuficiente=(auto_result.get('accion') == 'saldo_insuficiente'),
+        autorenovacion_saldo_insuficiente=False,
     )
 
 
@@ -3771,8 +3760,40 @@ def admin_panel():
     total_pendientes = db.execute("SELECT COUNT(*) as c FROM pedidos WHERE estado = 'pendiente'").fetchone()['c']
     ultimos_pedidos = db.execute("SELECT p.*, u.nombre as usuario_nombre, pr.nombre as producto_nombre FROM pedidos p JOIN usuarios u ON p.usuario_id = u.id JOIN productos pr ON p.producto_id = pr.id ORDER BY p.fecha_pedido DESC LIMIT 10").fetchall()
     solicitudes_pendientes = db.execute("SELECT COUNT(*) as c FROM solicitudes_recarga WHERE estado = 'pendiente'").fetchone()['c']
+
+    ultimo_refresh_cron = db.execute(
+        "SELECT id, fecha, total_cambios FROM precios_refresh_runs "
+        "WHERE origen = 'cron_15m' ORDER BY id DESC LIMIT 1"
+    ).fetchone()
+
+    refresh_countdown_seconds = None
+    refresh_atrasado = False
+    ultimo_refresh_cron_fecha = None
+    if ultimo_refresh_cron:
+        ultimo_refresh_cron_fecha = str(ultimo_refresh_cron['fecha'] or '').strip()
+        try:
+            fecha_ultimo = datetime.strptime(ultimo_refresh_cron_fecha, '%Y-%m-%d %H:%M:%S')
+            fecha_proximo = fecha_ultimo + timedelta(minutes=15)
+            delta_segundos = int((fecha_proximo - datetime.now()).total_seconds())
+            refresh_atrasado = delta_segundos < 0
+            refresh_countdown_seconds = max(delta_segundos, 0)
+        except Exception:
+            refresh_countdown_seconds = None
+
     db.close()
-    return render_template('admin/panel.html', total_users=total_users, total_pedidos=total_pedidos, total_ventas=total_ventas, total_pendientes=total_pendientes, ultimos_pedidos=ultimos_pedidos, solicitudes_pendientes=solicitudes_pendientes)
+    return render_template(
+        'admin/panel.html',
+        total_users=total_users,
+        total_pedidos=total_pedidos,
+        total_ventas=total_ventas,
+        total_pendientes=total_pendientes,
+        ultimos_pedidos=ultimos_pedidos,
+        solicitudes_pendientes=solicitudes_pendientes,
+        ultimo_refresh_cron=ultimo_refresh_cron,
+        ultimo_refresh_cron_fecha=ultimo_refresh_cron_fecha,
+        refresh_countdown_seconds=refresh_countdown_seconds,
+        refresh_atrasado=refresh_atrasado,
+    )
 
 
 @app.route('/admin/precios-refresh')
@@ -4264,8 +4285,7 @@ def admin_telegram():
                     "🧪 <b>Mensaje de prueba de precios</b>\n\n"
                     "Refresco: <b>15 min</b>\n"
                     "Proveedor: <b>GamePoint/MooGold</b>\n"
-                    "Cambios detectados: <b>3</b>\n"
-                    "Run ID: <code>test-manual</code>",
+                    "Cambios detectados: <b>3</b>",
                     token_key='telegram_precios_bot_token',
                     chat_id_key='telegram_precios_chat_id',
                     activo_key='telegram_precios_activo',
@@ -5149,17 +5169,14 @@ def cron_refresh_precios():
         db.commit()
         db.close()
 
-        autorenovacion_global = _procesar_autorenovaciones_global(max_usuarios=2000)
+        autorenovacion_global = {'renovadas': 0, 'saldo_insuficiente': 0, 'errores': 0, 'procesadas': 0}
 
         total_cambios = int(result.get('total_cambios') or 0)
         if total_cambios > 0:
             enviar_telegram_con_keys(
                 "🔄 <b>Refresco automático de precios (15min)</b>\n\n"
                 f"Cambios detectados: <b>{total_cambios}</b>\n"
-                f"Run ID: <code>{run_id}</code>\n"
-                f"♻️ Autorenovaciones aplicadas: <b>{int(autorenovacion_global.get('renovadas') or 0)}</b>\n"
-                f"📋 Ver cambios: {reporte_url}\n\n"
-                "🔐 El enlace abre un módulo de admin (requiere login).",
+                f"♻️ Autorenovaciones aplicadas: <b>{int(autorenovacion_global.get('renovadas') or 0)}</b>",
                 token_key='telegram_precios_bot_token',
                 chat_id_key='telegram_precios_chat_id',
                 activo_key='telegram_precios_activo',
