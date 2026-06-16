@@ -36,6 +36,44 @@
                     <input type="text" name="telegram_chat_id" value="{{ config.get('telegram_chat_id', '') }}" placeholder="Ej: 123456789 o -100123456789" style="font-size:0.95rem; font-family:monospace;">
                     <small style="color:var(--text-secondary); font-size:0.8rem;">Tu ID personal o el del grupo. Usa <a href="https://t.me/userinfobot" target="_blank" style="color:#0088cc;">@userinfobot</a> para obtenerlo</small>
                 </div>
+
+                <div style="display:flex; justify-content:flex-end;">
+                    <button type="submit" name="accion" value="probar_general" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-paper-plane"></i> Probar bot general
+                    </button>
+                </div>
+            </div>
+
+            <div class="admin-card" style="margin-bottom:1.5rem; border-left:4px solid #10b981;">
+                <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:1.5rem;">
+                    <div style="display:flex; align-items:center; gap:0.75rem;">
+                        <i class="fas fa-chart-line" style="font-size:1.5rem; color:#10b981;"></i>
+                        <h2 style="margin:0; font-size:1.1rem;">Bot para cambios de precios (GamePoint/MooGold)</h2>
+                    </div>
+                    <label style="display:flex; align-items:center; gap:0.5rem; cursor:pointer;">
+                        <span style="font-size:0.85rem; color:var(--text-secondary);">Activo</span>
+                        <input type="checkbox" name="telegram_precios_activo" value="1" {{ 'checked' if config.get('telegram_precios_activo') == '1' }}
+                               style="width:22px; height:22px; accent-color:#10b981;">
+                    </label>
+                </div>
+
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label style="font-size:0.85rem;"><i class="fas fa-key"></i> Bot Token (precios)</label>
+                    <input type="text" name="telegram_precios_bot_token" value="{{ config.get('telegram_precios_bot_token', '') }}" placeholder="123456789:ABCdefGHIjklMNOpqrsTUVwxyz" style="font-size:0.95rem; font-family:monospace;">
+                    <small style="color:var(--text-secondary); font-size:0.8rem;">Puedes usar un bot distinto solo para alertas de cambios de precios.</small>
+                </div>
+
+                <div class="form-group" style="margin-bottom:1rem;">
+                    <label style="font-size:0.85rem;"><i class="fas fa-hashtag"></i> Chat ID (precios)</label>
+                    <input type="text" name="telegram_precios_chat_id" value="{{ config.get('telegram_precios_chat_id', '') }}" placeholder="Ej: 123456789 o -100123456789" style="font-size:0.95rem; font-family:monospace;">
+                    <small style="color:var(--text-secondary); font-size:0.8rem;">Este chat recibirá solo reportes de refresh automático de precios.</small>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end;">
+                    <button type="submit" name="accion" value="probar_precios" class="btn btn-secondary btn-sm">
+                        <i class="fas fa-paper-plane"></i> Probar bot de precios
+                    </button>
+                </div>
             </div>
 
             <div class="admin-card" style="margin-bottom:1.5rem; background:rgba(0,136,204,0.05); border:1px solid rgba(0,136,204,0.2);">
@@ -47,11 +85,14 @@
                     <div style="display:flex; align-items:center; gap:0.5rem; font-size:0.85rem; color:var(--text-secondary);">
                         <i class="fas fa-check-circle" style="color:#10b981;"></i> Stock bajo de códigos en almacén
                     </div>
+                    <div style="display:flex; align-items:center; gap:0.5rem; font-size:0.85rem; color:var(--text-secondary);">
+                        <i class="fas fa-check-circle" style="color:#10b981;"></i> Cambios de precios GamePoint/MooGold (cada 15 min) al bot de precios
+                    </div>
                 </div>
             </div>
 
             <div class="form-actions" style="text-align:center;">
-                <button type="submit" class="btn btn-primary" style="padding:0.9rem 3rem; font-size:1rem; background:#0088cc;">
+                <button type="submit" name="accion" value="guardar" class="btn btn-primary" style="padding:0.9rem 3rem; font-size:1rem; background:#0088cc;">
                     <i class="fas fa-save"></i> Guardar Configuración
                 </button>
             </div>

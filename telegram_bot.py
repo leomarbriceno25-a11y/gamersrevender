@@ -17,6 +17,63 @@ def get_telegram_config():
         return None, None
 
 
+def get_telegram_config_by_keys(token_key, chat_id_key, activo_key='telegram_activo', fallback_to_default=True):
+    """Obtener token/chat_id para una configuración específica de Telegram."""
+    try:
+        db = get_db()
+        rows = db.execute(
+            "SELECT clave, valor FROM configuracion WHERE clave IN (?,?,?,?,?,?)",
+            (
+                str(token_key),
+                str(chat_id_key),
+                str(activo_key),
+                'telegram_bot_token',
+                'telegram_chat_id',
+                'telegram_activo',
+            )
+        ).fetchall()
+        db.close()
+        config = {r['clave']: r['valor'] for r in rows}
+
+        token = str(config.get(token_key, '') or '').strip()
+        chat_id = str(config.get(chat_id_key, '') or '').strip()
+        activo = str(config.get(activo_key, '') or '').strip()
+
+        if activo != '1' or not token or not chat_id:
+            if fallback_to_default:
+                return get_telegram_config()
+            return None, None
+        return token, chat_id
+    except Exception:
+        if fallback_to_default:
+            return get_telegram_config()
+        return None, None
+
+
+def enviar_telegram_con_keys(mensaje, token_key, chat_id_key, activo_key='telegram_activo', fallback_to_default=True):
+    """Enviar mensaje Telegram usando claves de configuración específicas."""
+    def _send():
+        try:
+            token, chat_id = get_telegram_config_by_keys(
+                token_key=token_key,
+                chat_id_key=chat_id_key,
+                activo_key=activo_key,
+                fallback_to_default=fallback_to_default,
+            )
+            if not token or not chat_id:
+                return
+            url = f"https://api.telegram.org/bot{token}/sendMessage"
+            requests.post(url, json={
+                'chat_id': chat_id,
+                'text': mensaje,
+                'parse_mode': 'HTML'
+            }, timeout=10)
+        except Exception as e:
+            print(f"[TELEGRAM] Error enviando notificación por keys: {e}")
+
+    threading.Thread(target=_send, daemon=True).start()
+
+
 def enviar_telegram(mensaje):
     """Enviar mensaje por Telegram Bot API (async en thread aparte para no bloquear)"""
     def _send():

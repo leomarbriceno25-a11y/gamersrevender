@@ -11,7 +11,7 @@ from models import (
 )
 import config
 import os
-from telegram_bot import notificar_recarga, notificar_stock_bajo, enviar_telegram
+from telegram_bot import notificar_recarga, notificar_stock_bajo, enviar_telegram, enviar_telegram_con_keys
 import uuid
 import sqlite3
 import threading
@@ -4226,22 +4226,58 @@ def admin_bonus_recarga():
 def admin_telegram():
     db = get_db()
     if request.method == 'POST':
+        accion = str(request.form.get('accion', 'guardar') or 'guardar').strip().lower()
         token = request.form.get('telegram_bot_token', '').strip()
         chat_id = request.form.get('telegram_chat_id', '').strip()
         activo = '1' if request.form.get('telegram_activo') else '0'
-        for clave, valor in [('telegram_bot_token', token), ('telegram_chat_id', chat_id), ('telegram_activo', activo)]:
+        token_precios = request.form.get('telegram_precios_bot_token', '').strip()
+        chat_id_precios = request.form.get('telegram_precios_chat_id', '').strip()
+        activo_precios = '1' if request.form.get('telegram_precios_activo') else '0'
+        for clave, valor in [
+            ('telegram_bot_token', token),
+            ('telegram_chat_id', chat_id),
+            ('telegram_activo', activo),
+            ('telegram_precios_bot_token', token_precios),
+            ('telegram_precios_chat_id', chat_id_precios),
+            ('telegram_precios_activo', activo_precios),
+        ]:
             existing = db.execute("SELECT id FROM configuracion WHERE clave = ?", (clave,)).fetchone()
             if existing:
                 db.execute("UPDATE configuracion SET valor = ? WHERE clave = ?", (valor, clave))
             else:
                 db.execute("INSERT INTO configuracion (clave, valor) VALUES (?,?)", (clave, valor))
         db.commit()
-        # Test si se activa
-        if activo == '1' and token and chat_id:
-            from telegram_bot import enviar_telegram
-            enviar_telegram("✅ <b>Notificaciones activadas</b>\n\nRecibirás alertas de recargas y stock bajo.")
+
+        if accion == 'probar_general':
+            if activo == '1' and token and chat_id:
+                enviar_telegram(
+                    "🧪 <b>Mensaje de prueba</b>\n\n"
+                    "Canal: <b>Notificaciones generales</b>\n"
+                    "Evento ejemplo: nueva recarga o stock bajo."
+                )
+                flash('Se envió el mensaje de prueba al bot general.', 'success')
+            else:
+                flash('Para probar el bot general debes activarlo y completar Token + Chat ID.', 'warning')
+        elif accion == 'probar_precios':
+            if activo_precios == '1' and token_precios and chat_id_precios:
+                enviar_telegram_con_keys(
+                    "🧪 <b>Mensaje de prueba de precios</b>\n\n"
+                    "Refresco: <b>15 min</b>\n"
+                    "Proveedor: <b>GamePoint/MooGold</b>\n"
+                    "Cambios detectados: <b>3</b>\n"
+                    "Run ID: <code>test-manual</code>",
+                    token_key='telegram_precios_bot_token',
+                    chat_id_key='telegram_precios_chat_id',
+                    activo_key='telegram_precios_activo',
+                    fallback_to_default=False,
+                )
+                flash('Se envió el mensaje de prueba al bot de precios.', 'success')
+            else:
+                flash('Para probar el bot de precios debes activarlo y completar Token + Chat ID.', 'warning')
+        else:
+            flash('Configuración de Telegram guardada', 'success')
+
         db.close()
-        flash('Configuración de Telegram guardada', 'success')
         return redirect(url_for('admin_telegram'))
     config_rows = db.execute("SELECT clave, valor FROM configuracion WHERE clave LIKE 'telegram_%'").fetchall()
     config = {r['clave']: r['valor'] for r in config_rows}
@@ -5090,7 +5126,7 @@ def cron_refresh_precios():
 
     db = get_db()
     try:
-        result = _ejecutar_refresh_precios_proveedores(db, origen='cron_2h')
+        result = _ejecutar_refresh_precios_proveedores(db, origen='cron_15m')
         if not result.get('ok'):
             db.rollback()
             db.close()
@@ -5115,19 +5151,25 @@ def cron_refresh_precios():
 
         autorenovacion_global = _procesar_autorenovaciones_global(max_usuarios=2000)
 
-        enviar_telegram(
-            "🔄 <b>Refresco automático de precios (2h)</b>\n\n"
-            f"Cambios detectados: <b>{int(result.get('total_cambios') or 0)}</b>\n"
-            f"Run ID: <code>{run_id}</code>\n"
-            f"♻️ Autorenovaciones aplicadas: <b>{int(autorenovacion_global.get('renovadas') or 0)}</b>\n"
-            f"📋 Ver cambios: {reporte_url}\n\n"
-            "🔐 El enlace abre un módulo de admin (requiere login)."
-        )
+        total_cambios = int(result.get('total_cambios') or 0)
+        if total_cambios > 0:
+            enviar_telegram_con_keys(
+                "🔄 <b>Refresco automático de precios (15min)</b>\n\n"
+                f"Cambios detectados: <b>{total_cambios}</b>\n"
+                f"Run ID: <code>{run_id}</code>\n"
+                f"♻️ Autorenovaciones aplicadas: <b>{int(autorenovacion_global.get('renovadas') or 0)}</b>\n"
+                f"📋 Ver cambios: {reporte_url}\n\n"
+                "🔐 El enlace abre un módulo de admin (requiere login).",
+                token_key='telegram_precios_bot_token',
+                chat_id_key='telegram_precios_chat_id',
+                activo_key='telegram_precios_activo',
+                fallback_to_default=False,
+            )
 
         return jsonify({
             'ok': True,
             'run_id': run_id,
-            'total_cambios': int(result.get('total_cambios') or 0),
+            'total_cambios': total_cambios,
             'reporte_url': reporte_url,
             'autorenovacion': autorenovacion_global,
         })
