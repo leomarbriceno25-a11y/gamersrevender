@@ -3504,7 +3504,7 @@ def perfil():
                 base = actual_hasta if actual_hasta and actual_hasta > ahora else ahora
                 nuevo_hasta = base + timedelta(days=30)
                 db2.execute(
-                    "UPDATE usuarios SET suscripcion_hasta = ?, autorenovar_suscripcion = 1 WHERE id = ?",
+                    "UPDATE usuarios SET suscripcion_hasta = ? WHERE id = ?",
                     (nuevo_hasta.strftime('%Y-%m-%d %H:%M:%S'), session['user_id'])
                 )
                 db2.commit()
@@ -3563,7 +3563,7 @@ def cartera():
                 base = actual_hasta if actual_hasta and actual_hasta > ahora else ahora
                 nuevo_hasta = base + timedelta(days=30)
                 db2.execute(
-                    "UPDATE usuarios SET suscripcion_hasta = ?, autorenovar_suscripcion = 1 WHERE id = ?",
+                    "UPDATE usuarios SET suscripcion_hasta = ? WHERE id = ?",
                     (nuevo_hasta.strftime('%Y-%m-%d %H:%M:%S'), session['user_id'])
                 )
                 db2.commit()
