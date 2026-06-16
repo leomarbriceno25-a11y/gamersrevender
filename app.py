@@ -3830,28 +3830,36 @@ def admin_reporte_refresh_precios():
     return render_template('admin/precios_refresh.html', run=run, cambios=cambios, detalles=detalles)
 
 
+def _iniciar_refresh_precios_async(origen='admin_manual_async'):
+    """Ejecuta refresh de precios en segundo plano para evitar timeouts HTTP."""
+
+    def _worker():
+        db = get_db()
+        try:
+            result = _ejecutar_refresh_precios_proveedores(db, origen=origen)
+            if result.get('ok'):
+                db.commit()
+            else:
+                db.rollback()
+                print(f"[REFRESH_PRECIOS] Falló refresh async: {result.get('error', 'sin detalle')}")
+        except Exception as e:
+            db.rollback()
+            print(f"[REFRESH_PRECIOS] Error en refresh async: {e}")
+        finally:
+            db.close()
+
+    threading.Thread(target=_worker, daemon=True).start()
+
+
 @app.route('/admin/precios-refresh/ejecutar', methods=['POST'])
 @admin_required
 def admin_ejecutar_refresh_precios():
-    db = get_db()
     try:
-        result = _ejecutar_refresh_precios_proveedores(db, origen='admin_manual')
-        if not result.get('ok'):
-            db.rollback()
-            db.close()
-            flash(f"No se pudo refrescar precios: {result.get('error', 'sin detalle')}", 'error')
-            return redirect(url_for('admin_panel'))
-
-        db.commit()
-        run_id = int(result.get('run_id') or 0)
-        db.close()
-        flash(f"Refresco completado. Cambios detectados: {int(result.get('total_cambios') or 0)}", 'success')
-        return redirect(url_for('admin_reporte_refresh_precios', refresh_id=run_id))
+        _iniciar_refresh_precios_async(origen='admin_manual')
+        flash('Refresh de precios iniciado en segundo plano. Revisa el reporte en 1-2 minutos.', 'success')
     except Exception as e:
-        db.rollback()
-        db.close()
-        flash(f"Error al refrescar precios: {e}", 'error')
-        return redirect(url_for('admin_panel'))
+        flash(f"Error al iniciar refresh de precios: {e}", 'error')
+    return redirect(url_for('admin_panel'))
 
 
 @app.route('/admin/estadisticas')
