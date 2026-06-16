@@ -5388,10 +5388,16 @@ def admin_almacen():
 
     # Productos de categoría Gift Card + productos con APIs que consumen/entregan pines
     productos_api = db.execute(
-        "SELECT p.* FROM productos p JOIN categorias c ON p.categoria_id = c.id "
+        "SELECT p.*, c.nombre as categoria_nombre FROM productos p JOIN categorias c ON p.categoria_id = c.id "
         "WHERE p.activo = 1 AND (c.tipo = 'giftcards' OR p.usa_api = 1 OR p.usa_pincentral = 1) "
-        "ORDER BY p.nombre"
+        "ORDER BY c.nombre, p.nombre"
     ).fetchall()
+    productos_por_juego = {}
+    for p in productos_api:
+        juego = str(p['categoria_nombre'] or 'Sin categoría').strip() or 'Sin categoría'
+        if juego not in productos_por_juego:
+            productos_por_juego[juego] = []
+        productos_por_juego[juego].append(p)
     # Stock por producto
     stock = {}
     for p in productos_api:
@@ -5450,6 +5456,7 @@ def admin_almacen():
     return render_template(
         'admin/almacen.html',
         productos_api=productos_api,
+        productos_por_juego=productos_por_juego,
         stock=stock,
         pines=pines_seg,
         filtro=filtro,
