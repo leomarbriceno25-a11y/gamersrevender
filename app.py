@@ -3768,6 +3768,7 @@ def admin_panel():
 
     refresh_countdown_seconds = None
     refresh_atrasado = False
+    refresh_countdown_estimado = False
     ultimo_refresh_cron_fecha = None
     if ultimo_refresh_cron:
         ultimo_refresh_cron_fecha = str(ultimo_refresh_cron['fecha'] or '').strip()
@@ -3779,6 +3780,16 @@ def admin_panel():
             refresh_countdown_seconds = max(delta_segundos, 0)
         except Exception:
             refresh_countdown_seconds = None
+
+    if refresh_countdown_seconds is None:
+        ahora = datetime.now()
+        base_minuto = ahora.replace(second=0, microsecond=0)
+        minutos_faltantes = 15 - (base_minuto.minute % 15)
+        proximo_estimado = base_minuto + timedelta(minutes=minutos_faltantes)
+        if proximo_estimado <= ahora:
+            proximo_estimado = proximo_estimado + timedelta(minutes=15)
+        refresh_countdown_seconds = max(int((proximo_estimado - ahora).total_seconds()), 0)
+        refresh_countdown_estimado = True
 
     db.close()
     return render_template(
@@ -3793,6 +3804,7 @@ def admin_panel():
         ultimo_refresh_cron_fecha=ultimo_refresh_cron_fecha,
         refresh_countdown_seconds=refresh_countdown_seconds,
         refresh_atrasado=refresh_atrasado,
+        refresh_countdown_estimado=refresh_countdown_estimado,
     )
 
 

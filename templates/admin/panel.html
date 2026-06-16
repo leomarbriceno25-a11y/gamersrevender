@@ -152,10 +152,12 @@
                     {% endif %}
                 </div>
                 <div style="text-align:right; min-width:220px;">
-                    {% if ultimo_refresh_cron %}
+                    {% if refresh_countdown_seconds is not none %}
                     <div style="font-size:0.8rem; color:var(--text-secondary);">Próximo refresh en:</div>
                     <div id="refresh-countdown" data-remaining="{{ refresh_countdown_seconds if refresh_countdown_seconds is not none else '' }}" style="font-size:1.45rem; font-weight:800; color:#10b981; letter-spacing:0.5px;">--:--</div>
-                    {% if refresh_atrasado %}
+                    {% if refresh_countdown_estimado %}
+                    <div id="refresh-status" style="font-size:0.8rem; margin-top:0.2rem; color:#f59e0b;">Estimado (aún sin ejecución cron registrada)</div>
+                    {% elif refresh_atrasado %}
                     <div id="refresh-status" style="font-size:0.8rem; margin-top:0.2rem; color:#ef4444;">Atrasado: debió ejecutarse hace unos minutos.</div>
                     {% else %}
                     <div id="refresh-status" style="font-size:0.8rem; margin-top:0.2rem; color:var(--text-secondary);">Cron activo</div>
@@ -195,7 +197,7 @@
     </div>
 </section>
 {% endif %}
-{% if ultimo_refresh_cron %}
+{% if refresh_countdown_seconds is not none %}
 <script>
 (function () {
     var el = document.getElementById('refresh-countdown');
