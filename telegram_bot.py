@@ -50,46 +50,71 @@ def get_telegram_config_by_keys(token_key, chat_id_key, activo_key='telegram_act
         return None, None
 
 
-def enviar_telegram_con_keys(mensaje, token_key, chat_id_key, activo_key='telegram_activo', fallback_to_default=True):
+def _enviar_telegram_http(token, chat_id, mensaje, contexto='general'):
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        response = requests.post(url, json={
+            'chat_id': chat_id,
+            'text': mensaje,
+            'parse_mode': 'HTML'
+        }, timeout=10)
+
+        payload = {}
+        try:
+            payload = response.json()
+        except Exception:
+            payload = {}
+
+        status_code = int(response.status_code or 0)
+        ok_http = 200 <= status_code < 300
+        ok_api = bool(payload.get('ok')) if isinstance(payload, dict) and 'ok' in payload else ok_http
+        if not ok_http or not ok_api:
+            detalle = ''
+            if isinstance(payload, dict):
+                detalle = str(payload.get('description') or payload.get('error') or '').strip()
+            if not detalle:
+                detalle = (response.text or '').strip()[:250]
+            print(f"[TELEGRAM] Falló envío ({contexto}) status={status_code} detalle={detalle or 'sin detalle'}")
+            return {'ok': False, 'status_code': status_code, 'error': detalle or 'Error de Telegram API'}
+
+        return {'ok': True, 'status_code': status_code, 'error': ''}
+    except Exception as e:
+        err = str(e)
+        print(f"[TELEGRAM] Error enviando notificación ({contexto}): {err}")
+        return {'ok': False, 'status_code': 0, 'error': err}
+
+
+def enviar_telegram_con_keys(mensaje, token_key, chat_id_key, activo_key='telegram_activo', fallback_to_default=True, async_send=True):
     """Enviar mensaje Telegram usando claves de configuración específicas."""
     def _send():
-        try:
-            token, chat_id = get_telegram_config_by_keys(
-                token_key=token_key,
-                chat_id_key=chat_id_key,
-                activo_key=activo_key,
-                fallback_to_default=fallback_to_default,
-            )
-            if not token or not chat_id:
-                return
-            url = f"https://api.telegram.org/bot{token}/sendMessage"
-            requests.post(url, json={
-                'chat_id': chat_id,
-                'text': mensaje,
-                'parse_mode': 'HTML'
-            }, timeout=10)
-        except Exception as e:
-            print(f"[TELEGRAM] Error enviando notificación por keys: {e}")
+        token, chat_id = get_telegram_config_by_keys(
+            token_key=token_key,
+            chat_id_key=chat_id_key,
+            activo_key=activo_key,
+            fallback_to_default=fallback_to_default,
+        )
+        if not token or not chat_id:
+            return {'ok': False, 'status_code': 0, 'error': 'Config Telegram inactiva o incompleta'}
+        return _enviar_telegram_http(token, chat_id, mensaje, contexto=f"{token_key}/{chat_id_key}")
 
-    threading.Thread(target=_send, daemon=True).start()
+    if async_send:
+        threading.Thread(target=_send, daemon=True).start()
+        return {'ok': True, 'queued': True, 'error': ''}
+    return _send()
 
 
-def enviar_telegram(mensaje):
+def enviar_telegram(mensaje, async_send=True):
     """Enviar mensaje por Telegram Bot API (async en thread aparte para no bloquear)"""
     def _send():
-        try:
-            token, chat_id = get_telegram_config()
-            if not token or not chat_id:
-                return
-            url = f"https://api.telegram.org/bot{token}/sendMessage"
-            requests.post(url, json={
-                'chat_id': chat_id,
-                'text': mensaje,
-                'parse_mode': 'HTML'
-            }, timeout=10)
-        except Exception as e:
-            print(f"[TELEGRAM] Error enviando notificación: {e}")
-    threading.Thread(target=_send, daemon=True).start()
+        token, chat_id = get_telegram_config()
+        if not token or not chat_id:
+            return {'ok': False, 'status_code': 0, 'error': 'Config Telegram inactiva o incompleta'}
+        return _enviar_telegram_http(token, chat_id, mensaje, contexto='general')
+
+    if async_send:
+        threading.Thread(target=_send, daemon=True).start()
+        return {'ok': True, 'queued': True, 'error': ''}
+    return _send()
 
 
 def notificar_recarga(usuario_nombre, monto, metodo_pago, referencia=''):

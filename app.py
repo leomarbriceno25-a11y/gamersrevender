@@ -4291,17 +4291,21 @@ def admin_telegram():
 
         if accion == 'probar_general':
             if activo == '1' and token and chat_id:
-                enviar_telegram(
+                tg_test = enviar_telegram(
                     "🧪 <b>Mensaje de prueba</b>\n\n"
                     "Canal: <b>Notificaciones generales</b>\n"
-                    "Evento ejemplo: nueva recarga o stock bajo."
+                    "Evento ejemplo: nueva recarga o stock bajo.",
+                    async_send=False,
                 )
-                flash('Se envió el mensaje de prueba al bot general.', 'success')
+                if tg_test.get('ok'):
+                    flash('Se envió el mensaje de prueba al bot general.', 'success')
+                else:
+                    flash(f"No se pudo enviar el mensaje de prueba al bot general: {tg_test.get('error', 'sin detalle')}", 'error')
             else:
                 flash('Para probar el bot general debes activarlo y completar Token + Chat ID.', 'warning')
         elif accion == 'probar_precios':
             if activo_precios == '1' and token_precios and chat_id_precios:
-                enviar_telegram_con_keys(
+                tg_test = enviar_telegram_con_keys(
                     "🧪 <b>Mensaje de prueba de precios</b>\n\n"
                     "Refresco: <b>15 min</b>\n"
                     "Proveedor: <b>GamePoint/MooGold</b>\n"
@@ -4310,8 +4314,12 @@ def admin_telegram():
                     chat_id_key='telegram_precios_chat_id',
                     activo_key='telegram_precios_activo',
                     fallback_to_default=False,
+                    async_send=False,
                 )
-                flash('Se envió el mensaje de prueba al bot de precios.', 'success')
+                if tg_test.get('ok'):
+                    flash('Se envió el mensaje de prueba al bot de precios.', 'success')
+                else:
+                    flash(f"No se pudo enviar el mensaje de prueba al bot de precios: {tg_test.get('error', 'sin detalle')}", 'error')
             else:
                 flash('Para probar el bot de precios debes activarlo y completar Token + Chat ID.', 'warning')
         else:
@@ -5192,8 +5200,10 @@ def cron_refresh_precios():
         autorenovacion_global = {'renovadas': 0, 'saldo_insuficiente': 0, 'errores': 0, 'procesadas': 0}
 
         total_cambios = int(result.get('total_cambios') or 0)
+        telegram_notificado = False
+        telegram_error = ''
         if total_cambios > 0:
-            enviar_telegram_con_keys(
+            telegram_result = enviar_telegram_con_keys(
                 "🔄 <b>Refresco automático de precios (15min)</b>\n\n"
                 f"Cambios detectados: <b>{total_cambios}</b>\n"
                 f"♻️ Autorenovaciones aplicadas: <b>{int(autorenovacion_global.get('renovadas') or 0)}</b>",
@@ -5201,7 +5211,12 @@ def cron_refresh_precios():
                 chat_id_key='telegram_precios_chat_id',
                 activo_key='telegram_precios_activo',
                 fallback_to_default=False,
+                async_send=False,
             )
+            telegram_notificado = bool(telegram_result.get('ok'))
+            telegram_error = str(telegram_result.get('error') or '').strip()
+            if not telegram_notificado:
+                print(f"[REFRESH_PRECIOS] No se pudo enviar Telegram de precios: {telegram_error or 'sin detalle'}")
 
         return jsonify({
             'ok': True,
@@ -5209,6 +5224,8 @@ def cron_refresh_precios():
             'total_cambios': total_cambios,
             'reporte_url': reporte_url,
             'autorenovacion': autorenovacion_global,
+            'telegram_notificado': telegram_notificado,
+            'telegram_error': telegram_error,
         })
     except Exception as e:
         db.rollback()
