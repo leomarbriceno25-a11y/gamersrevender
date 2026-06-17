@@ -485,6 +485,64 @@ def _build_refresh_prices_telegram_message(db, run_id, total_cambios):
     )
 
 
+def _registrar_refresh_run_desde_snapshots(db, before, after, origen='manual', proveedor_filtro=''):
+    filtro = str(proveedor_filtro or '').strip().lower()
+    cambios = []
+
+    for pid, cur in (after or {}).items():
+        prev = (before or {}).get(pid)
+        if not prev:
+            continue
+
+        proveedor = str(cur.get('proveedor', '') or '').strip().lower()
+        if filtro and proveedor != filtro:
+            continue
+
+        for campo in ('precio', 'precio_suscriptor'):
+            anterior = float(prev.get(campo, 0) or 0)
+            nuevo = float(cur.get(campo, 0) or 0)
+            if abs(anterior - nuevo) <= 0.00000001:
+                continue
+            cambios.append({
+                'proveedor': cur.get('proveedor', '-'),
+                'producto_id': int(pid or 0),
+                'producto_nombre': cur.get('producto_nombre', ''),
+                'categoria_nombre': cur.get('categoria_nombre', ''),
+                'campo': campo,
+                'precio_anterior': anterior,
+                'precio_nuevo': nuevo,
+            })
+
+    resumen = {
+        'origen': str(origen or 'manual'),
+        'proveedor_filtro': filtro or '-',
+    }
+    cur = db.execute(
+        "INSERT INTO precios_refresh_runs (origen, total_cambios, detalles_json) VALUES (?,?,?)",
+        (str(origen or 'manual'), len(cambios), json.dumps(resumen, ensure_ascii=False))
+    )
+    run_id = int(cur.lastrowid or 0)
+
+    for c in cambios:
+        db.execute(
+            "INSERT INTO precios_refresh_cambios "
+            "(run_id, proveedor, producto_id, producto_nombre, categoria_nombre, campo, precio_anterior, precio_nuevo) "
+            "VALUES (?,?,?,?,?,?,?,?)",
+            (
+                run_id,
+                c['proveedor'],
+                c['producto_id'],
+                c['producto_nombre'],
+                c['categoria_nombre'],
+                c['campo'],
+                c['precio_anterior'],
+                c['precio_nuevo'],
+            )
+        )
+
+    return {'run_id': run_id, 'total_cambios': len(cambios)}
+
+
 def _actualizar_precio_moogold_producto_desde_margen(db, margen_porcentaje, mg_product_id, mg_variation_id, prod_id=0, target_column='precio'):
     from moogold_api import detalle_producto
 
@@ -4764,6 +4822,8 @@ def admin_gamepoint_catalogo():
         _config_set(db, 'gamepoint_margin_percent', str(margen_porcentaje))
         _config_set(db, 'gamepoint_margin_percent_subscriber', str(margen_subscriber))
 
+        before = _snapshot_precios_proveedores(db)
+
         gp_detalle_cache = {}
         resumen = _actualizar_precios_gamepoint_desde_tasa(
             db,
@@ -4779,14 +4839,47 @@ def admin_gamepoint_catalogo():
             target_column='precio_suscriptor',
             detalle_cache=gp_detalle_cache,
         )
+
+        after = _snapshot_precios_proveedores(db)
+        registro = _registrar_refresh_run_desde_snapshots(
+            db,
+            before,
+            after,
+            origen='admin_gamepoint',
+            proveedor_filtro='gamepoint',
+        )
+        total_cambios = int(registro.get('total_cambios') or 0)
+        msg_tg = ''
+        if total_cambios > 0:
+            msg_tg = _build_refresh_prices_telegram_message(db, registro.get('run_id'), total_cambios)
+
         db.commit()
         db.close()
+
+        telegram_notificado = False
+        telegram_error = ''
+        if total_cambios > 0:
+            telegram_result = enviar_telegram_con_keys(
+                msg_tg,
+                token_key='telegram_precios_bot_token',
+                chat_id_key='telegram_precios_chat_id',
+                activo_key='telegram_precios_activo',
+                fallback_to_default=False,
+                async_send=False,
+            )
+            telegram_notificado = bool(telegram_result.get('ok'))
+            telegram_error = str(telegram_result.get('error') or '').strip()
 
         msg = (
             f"Precios GamePoint actualizados. "
             f"Normal: {resumen['actualizados']}/{resumen['total']} · "
             f"Suscriptor: {resumen_sub['actualizados']}/{resumen_sub['total']}"
         )
+        if total_cambios > 0:
+            if telegram_notificado:
+                msg += " · Telegram: enviado"
+            else:
+                msg += f" · Telegram: error ({telegram_error or 'sin detalle'})"
         if resumen['errores']:
             msg += f" · Ejemplo: {resumen['errores'][0]}"
         elif resumen_sub['errores']:
@@ -4831,16 +4924,51 @@ def admin_moogold_catalogo():
         _config_set(db, 'moogold_margin_percent', str(margen_porcentaje))
         _config_set(db, 'moogold_margin_percent_subscriber', str(margen_subscriber))
 
+        before = _snapshot_precios_proveedores(db)
+
         resumen = _actualizar_precios_moogold_desde_margen(db, margen_porcentaje, target_column='precio')
         resumen_sub = _actualizar_precios_moogold_desde_margen(db, margen_subscriber, target_column='precio_suscriptor')
+
+        after = _snapshot_precios_proveedores(db)
+        registro = _registrar_refresh_run_desde_snapshots(
+            db,
+            before,
+            after,
+            origen='admin_moogold',
+            proveedor_filtro='moogold',
+        )
+        total_cambios = int(registro.get('total_cambios') or 0)
+        msg_tg = ''
+        if total_cambios > 0:
+            msg_tg = _build_refresh_prices_telegram_message(db, registro.get('run_id'), total_cambios)
+
         db.commit()
         db.close()
+
+        telegram_notificado = False
+        telegram_error = ''
+        if total_cambios > 0:
+            telegram_result = enviar_telegram_con_keys(
+                msg_tg,
+                token_key='telegram_precios_bot_token',
+                chat_id_key='telegram_precios_chat_id',
+                activo_key='telegram_precios_activo',
+                fallback_to_default=False,
+                async_send=False,
+            )
+            telegram_notificado = bool(telegram_result.get('ok'))
+            telegram_error = str(telegram_result.get('error') or '').strip()
 
         msg = (
             f"Precios MooGold actualizados. "
             f"Normal: {resumen['actualizados']}/{resumen['total']} · "
             f"Suscriptor: {resumen_sub['actualizados']}/{resumen_sub['total']}"
         )
+        if total_cambios > 0:
+            if telegram_notificado:
+                msg += " · Telegram: enviado"
+            else:
+                msg += f" · Telegram: error ({telegram_error or 'sin detalle'})"
         if resumen['errores']:
             msg += f" · Ejemplo: {resumen['errores'][0]}"
         elif resumen_sub['errores']:
