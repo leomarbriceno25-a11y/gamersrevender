@@ -451,6 +451,40 @@ def _ejecutar_refresh_precios_proveedores(db, origen='manual'):
     }
 
 
+def _build_refresh_prices_telegram_message(db, run_id, total_cambios):
+    run = db.execute(
+        "SELECT id, fecha FROM precios_refresh_runs WHERE id = ? LIMIT 1",
+        (int(run_id or 0),),
+    ).fetchone()
+    fecha_txt = str((run['fecha'] if run else '') or '').strip() or datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    cambios = db.execute(
+        "SELECT categoria_nombre FROM precios_refresh_cambios WHERE run_id = ? ORDER BY id ASC",
+        (int(run_id or 0),),
+    ).fetchall()
+
+    juegos = []
+    vistos = set()
+    for row in cambios:
+        nombre = str((row['categoria_nombre'] if row else '') or '').strip()
+        if not nombre:
+            continue
+        key = nombre.lower()
+        if key in vistos:
+            continue
+        vistos.add(key)
+        juegos.append(nombre)
+
+    juegos_txt = '\n'.join(f"- {j}" for j in juegos) if juegos else '- Sin categoría definida'
+    return (
+        "<b>Cambio de precios</b>\n\n"
+        f"Fecha: <b>{fecha_txt}</b>\n"
+        f"Cambios detectados: <b>{int(total_cambios or 0)}</b>\n\n"
+        "Juegos que tuvieron cambio de precios:\n"
+        f"{juegos_txt}"
+    )
+
+
 def _actualizar_precio_moogold_producto_desde_margen(db, margen_porcentaje, mg_product_id, mg_variation_id, prod_id=0, target_column='precio'):
     from moogold_api import detalle_producto
 
@@ -5194,19 +5228,21 @@ def cron_refresh_precios():
         else:
             reporte_url = link_path
 
+        total_cambios = int(result.get('total_cambios') or 0)
+        telegram_msg = ''
+        if total_cambios > 0:
+            telegram_msg = _build_refresh_prices_telegram_message(db, run_id, total_cambios)
+
         db.commit()
         db.close()
 
         autorenovacion_global = {'renovadas': 0, 'saldo_insuficiente': 0, 'errores': 0, 'procesadas': 0}
 
-        total_cambios = int(result.get('total_cambios') or 0)
         telegram_notificado = False
         telegram_error = ''
         if total_cambios > 0:
             telegram_result = enviar_telegram_con_keys(
-                "🔄 <b>Refresco automático de precios (15min)</b>\n\n"
-                f"Cambios detectados: <b>{total_cambios}</b>\n"
-                f"♻️ Autorenovaciones aplicadas: <b>{int(autorenovacion_global.get('renovadas') or 0)}</b>",
+                telegram_msg,
                 token_key='telegram_precios_bot_token',
                 chat_id_key='telegram_precios_chat_id',
                 activo_key='telegram_precios_activo',
