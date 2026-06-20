@@ -2737,12 +2737,14 @@ def comprar():
     if moogold_field_names and not id_juego:
         id_juego = str(mg_inputs.get('mg_field_0', '') or mg_inputs.get(moogold_field_names[0], '') or '').strip()
     usa_moogold = moogold_category_id > 0 and moogold_variation_id > 0
+    bloodstrike_package_id = str((prod['bloodstrike_package_id'] if 'bloodstrike_package_id' in prod.keys() else '') or '').strip()
+    usa_bloodstrike = bool(bloodstrike_package_id)
     usa_pincentral = int((prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0) or 0)
     pincentral_entrega_directa = int((prod['pincentral_entrega_directa'] if 'pincentral_entrega_directa' in prod.keys() else 0) or 0)
     if prod['categoria_tipo'] == 'giftcards' and usa_pincentral and pincentral_entrega_directa:
         cantidad = 1
     requiere_id_moogold = usa_moogold and bool(moogold_field_names)
-    if (prod['usa_api'] or usa_razer or usa_deltaforce or requiere_id_moogold) and not id_juego:
+    if (prod['usa_api'] or usa_razer or usa_deltaforce or requiere_id_moogold or usa_bloodstrike) and not id_juego:
         flash('Debes ingresar el ID del jugador para esta recarga.', 'error')
         db.close()
         return redirect(url_for('producto', id=producto_id))
@@ -2857,6 +2859,36 @@ def comprar():
             db_err.close()
             recargar_saldo(user_id, total, f"Reembolso: Excepción PinCentral directo pedido #{pedido_id}")
             flash(f'Error inesperado en entrega directa PinCentral: {e}. Se reembolsó tu saldo.', 'error')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
+
+    # Si el producto usa Blood Strike API
+    if usa_bloodstrike:
+        db.close()
+        try:
+            from bloodstrike_api import recargar as recargar_bloodstrike
+            resultado_api = recargar_bloodstrike(id_juego, bloodstrike_package_id)
+            db2 = get_db()
+            if resultado_api.get('ok'):
+                ref = f"BS{pedido_id}"
+                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (id_juego, ref, pedido_id))
+                db2.commit()
+                db2.close()
+                flash(f'Pedido #{pedido_id} completado. Recarga Blood Strike aplicada al ID {id_juego}.', 'success')
+                return redirect(url_for('pedido_detalle', id=pedido_id))
+            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (f"BS{pedido_id}", pedido_id))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id, total, f"Reembolso: Error Blood Strike pedido #{pedido_id}")
+            error_msg = resultado_api.get('error', 'Error del proveedor Blood Strike')
+            flash(f'Error en recarga Blood Strike: {error_msg}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
+        except Exception as e:
+            db2 = get_db()
+            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (f"BS{pedido_id}", pedido_id))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id, total, f"Reembolso: Excepción Blood Strike pedido #{pedido_id}")
+            flash(f'Error inesperado en Blood Strike: {e}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa GamePoint API (recarga directa o gift card)
@@ -4601,6 +4633,7 @@ def admin_productos():
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
+            bloodstrike_package_id = request.form.get('bloodstrike_package_id', '').strip()
             usa_moogold = 1 if request.form.get('usa_moogold') else 0
             moogold_category_id = int(request.form.get('moogold_category_id', 0) or 0)
             moogold_product_id = int(request.form.get('moogold_product_id', 0) or 0)
@@ -4623,8 +4656,8 @@ def admin_productos():
             if precio_suscriptor < 0:
                 precio_suscriptor = 0
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -4648,6 +4681,7 @@ def admin_productos():
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
+            bloodstrike_package_id = request.form.get('bloodstrike_package_id', '').strip()
             usa_moogold = 1 if request.form.get('usa_moogold') else 0
             moogold_category_id = int(request.form.get('moogold_category_id', 0) or 0)
             moogold_product_id = int(request.form.get('moogold_product_id', 0) or 0)
@@ -4670,8 +4704,8 @@ def admin_productos():
             if precio_suscriptor < 0:
                 precio_suscriptor = 0
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, bloodstrike_package_id=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -6039,6 +6073,8 @@ def api_comprar():
     if moogold_field_names and not input2 and len(moogold_field_names) > 1:
         input2 = str(mg_inputs.get('mg_field_1', '') or mg_inputs.get(moogold_field_names[1], '') or '').strip()
     usa_moogold = moogold_category_id > 0 and moogold_variation_id > 0
+    bloodstrike_package_id = str((prod['bloodstrike_package_id'] if 'bloodstrike_package_id' in prod.keys() else '') or '').strip()
+    usa_bloodstrike = bool(bloodstrike_package_id)
     usa_pincentral = int((prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0) or 0)
     pincentral_entrega_directa = int((prod['pincentral_entrega_directa'] if 'pincentral_entrega_directa' in prod.keys() else 0) or 0)
     if prod['categoria_tipo'] == 'giftcards' and usa_pincentral and pincentral_entrega_directa:
@@ -6049,6 +6085,7 @@ def api_comprar():
         or usa_deltaforce
         or (prod['gamepoint_product_id'] and gp_fields_raw)
         or (usa_moogold and bool(moogold_field_names))
+        or usa_bloodstrike
     )
     if requiere_id and not id_juego:
         db.close()
@@ -6184,6 +6221,58 @@ def api_comprar():
                 'pedido_id': pedido_id,
                 'reembolsado': True,
                 'saldo_restante': get_saldo(user_id_api)
+            }), 500
+
+    # Blood Strike API
+    if usa_bloodstrike:
+        db.close()
+        try:
+            from bloodstrike_api import recargar as recargar_bloodstrike
+            resultado_api = recargar_bloodstrike(id_juego, bloodstrike_package_id)
+            db2 = get_db()
+            ref = f"BS{pedido_id}"
+            if resultado_api.get('ok'):
+                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (id_juego, ref, pedido_id))
+                db2.commit()
+                db2.close()
+                return jsonify({
+                    'ok': True,
+                    'pedido_id': pedido_id,
+                    'estado': 'completado',
+                    'merchant_ref': merchant_ref,
+                    'referencia': ref,
+                    'total': total,
+                    'saldo_restante': get_saldo(user_id_api),
+                    'nombre_jugador': id_juego,
+                    'mensaje': resultado_api.get('message', 'Recarga Blood Strike completada'),
+                    'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
+                })
+            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id_api, total, f"Reembolso API: Error Blood Strike pedido #{pedido_id}")
+            return jsonify({
+                'ok': False,
+                'error': resultado_api.get('error', 'Error del proveedor Blood Strike'),
+                'pedido_id': pedido_id,
+                'merchant_ref': merchant_ref,
+                'reembolsado': True,
+                'saldo_restante': get_saldo(user_id_api),
+                'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
+            }), 400
+        except Exception as e:
+            db2 = get_db()
+            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (f"BS{pedido_id}", pedido_id))
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id_api, total, f"Reembolso API: Excepción Blood Strike pedido #{pedido_id}")
+            return jsonify({
+                'ok': False,
+                'error': str(e),
+                'pedido_id': pedido_id,
+                'merchant_ref': merchant_ref,
+                'reembolsado': True,
+                'saldo_restante': get_saldo(user_id_api),
             }), 500
 
     # GamePoint API (recarga directa o gift card)

@@ -167,6 +167,30 @@
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
+                        <input type="checkbox" id="form-usa-bloodstrike" onchange="toggleBloodStrike()"> <i class="fas fa-tint" style="color:#ef4444;"></i> Usa Blood Strike API
+                    </label>
+                </div>
+                <div class="form-group" id="bloodstrike-group" style="display:none;">
+                    <label><i class="fas fa-box" style="color:#ef4444;"></i> Paquete Blood Strike</label>
+                    <select name="bloodstrike_package_id" id="form-bs-package" class="form-select">
+                        <option value="">-- Seleccionar paquete --</option>
+                        <option value="gold50">gold50 - 50 Golds</option>
+                        <option value="gold100">gold100 - 100 Golds</option>
+                        <option value="gold300">gold300 - 300 Golds</option>
+                        <option value="gold500">gold500 - 500 Golds</option>
+                        <option value="gold1000">gold1000 - 1000 Golds</option>
+                        <option value="gold2000">gold2000 - 2000 Golds</option>
+                        <option value="gold5000">gold5000 - 5000 Golds</option>
+                        <option value="strike_pass_elite">strike_pass_elite - Strike Pass Elite</option>
+                        <option value="strike_pass_premium">strike_pass_premium - Strike Pass Premium</option>
+                        <option value="enzo">enzo - Cofre Upgrade Enzo</option>
+                        <option value="levelup_pass">levelup_pass - Level-Up Pass</option>
+                        <option value="maestro_voucher">maestro_voucher - Maestro Voucher x10</option>
+                        <option value="deal_049">deal_049 - Cofre Ultra Skin</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
                         <input type="checkbox" id="form-usa-gamepoint" onchange="toggleGamepoint()"> <i class="fas fa-globe" style="color:#3b82f6;"></i> Usa GamePoint Club API (recarga directa sin PINes)
                     </label>
                 </div>
@@ -348,6 +372,7 @@
                         data-monto-api="{{ p.monto_api|default(0) }}"
                         data-gp-product="{{ p.gamepoint_product_id }}"
                         data-gp-package="{{ p.gamepoint_package_id }}"
+                        data-bs-package="{{ p.bloodstrike_package_id|default('')|e }}"
                         data-mg-category="{{ p.moogold_category_id|default(0) }}"
                         data-mg-product="{{ p.moogold_product_id|default(0) }}"
                         data-mg-variation="{{ p.moogold_variation_id|default(0) }}"
@@ -378,7 +403,9 @@
                         <td>{{ p.categoria_nombre or '-' }}</td>
                         <td><input type="number" class="edit-precio" value="{{ p.precio }}" step="0.0001" min="0" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:0.3rem 0.5rem; color:var(--text-primary); width:90px; font-size:0.85rem;"></td>
                         <td>
-                            {% if p.gamepoint_product_id %}
+                            {% if p.bloodstrike_package_id|default('') %}
+                            <span class="badge badge-completado"><i class="fas fa-tint"></i> Blood</span>
+                            {% elif p.gamepoint_product_id %}
                             <span class="badge badge-completado"><i class="fas fa-globe"></i> GP</span>
                             {% elif p.moogold_product_id|default(0) > 0 %}
                             <span class="badge badge-completado"><i class="fas fa-coins"></i> MooGold</span>
@@ -965,6 +992,14 @@ function togglePinCentral() {
     }
 }
 
+function toggleBloodStrike() {
+    var show = document.getElementById('form-usa-bloodstrike').checked;
+    document.getElementById('bloodstrike-group').style.display = show ? 'block' : 'none';
+    if (!show) {
+        document.getElementById('form-bs-package').value = '';
+    }
+}
+
 function toggleGamepoint() {
     var show = document.getElementById('form-usa-gamepoint').checked;
     document.getElementById('gamepoint-group').style.display = show ? 'block' : 'none';
@@ -1131,6 +1166,7 @@ function editarProductoDesdeFila(id) {
         parseInt(row.getAttribute('data-orden')) || 0,
         parseInt(row.getAttribute('data-gp-product')) || 0,
         parseInt(row.getAttribute('data-gp-package')) || 0,
+        row.getAttribute('data-bs-package') || '',
         parseInt(row.getAttribute('data-rechazo-auto')) || 0,
         parseInt(row.getAttribute('data-recarga-manual')) || 0,
         parseInt(row.getAttribute('data-pin-origen-id')) || 0,
@@ -1140,7 +1176,7 @@ function editarProductoDesdeFila(id) {
     );
 }
 
-function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, razerPaqueteExtra, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, pincentralDirecto, orden, gpProduct, gpPackage, rechazoAutomatico, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
+function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, razerPaqueteExtra, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, pincentralDirecto, orden, gpProduct, gpPackage, bsPackage, rechazoAutomatico, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
     var row = document.getElementById('row-' + id);
     var mgCategory = row ? (parseInt(row.getAttribute('data-mg-category')) || 0) : 0;
     var mgProduct = row ? (parseInt(row.getAttribute('data-mg-product')) || 0) : 0;
@@ -1166,6 +1202,8 @@ function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono
     document.getElementById('form-usa-pincentral').checked = usaPincentral == 1;
     document.getElementById('form-pincentral-code').value = pincentralCode || '';
     document.getElementById('form-pincentral-directo').checked = pincentralDirecto == 1;
+    document.getElementById('form-usa-bloodstrike').checked = !!bsPackage;
+    document.getElementById('form-bs-package').value = bsPackage || '';
     document.getElementById('form-usa-gamepoint').checked = (gpProduct > 0);
     document.getElementById('form-gp-product').value = gpProduct || 0;
     document.getElementById('form-gp-package').value = gpPackage || 0;
@@ -1186,6 +1224,7 @@ function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono
     toggleRazer();
     toggleDeltaforce();
     togglePinCentral();
+    toggleBloodStrike();
     toggleGamepoint();
     toggleMoogold();
     if (gpProduct > 0) { cargarCamposGP(); }
@@ -1218,6 +1257,8 @@ function resetForm() {
     document.getElementById('form-usa-pincentral').checked = false;
     document.getElementById('form-pincentral-code').value = '';
     document.getElementById('form-pincentral-directo').checked = false;
+    document.getElementById('form-usa-bloodstrike').checked = false;
+    document.getElementById('form-bs-package').value = '';
     document.getElementById('form-usa-gamepoint').checked = false;
     document.getElementById('form-recarga-manual').checked = false;
     document.getElementById('form-gp-product').value = '0';
@@ -1249,6 +1290,7 @@ function resetForm() {
     toggleRazer();
     toggleDeltaforce();
     togglePinCentral();
+    toggleBloodStrike();
     toggleGamepoint();
     toggleMoogold();
     document.getElementById('form-titulo').innerHTML = '<i class="fas fa-plus-circle"></i> Nuevo Producto';

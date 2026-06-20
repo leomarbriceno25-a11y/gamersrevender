@@ -141,6 +141,7 @@ def init_db():
             moogold_product_id INTEGER DEFAULT 0,
             moogold_variation_id INTEGER DEFAULT 0,
             moogold_fields TEXT DEFAULT '',
+            bloodstrike_package_id TEXT DEFAULT '',
             rechazo_automatico INTEGER DEFAULT 0,
             orden INTEGER DEFAULT 0,
             fecha_creacion TEXT DEFAULT (datetime('now','localtime')),
@@ -323,6 +324,10 @@ def init_db():
         db.execute("SELECT moogold_fields FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN moogold_fields TEXT DEFAULT ''")
+    try:
+        db.execute("SELECT bloodstrike_package_id FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN bloodstrike_package_id TEXT DEFAULT ''")
     try:
         db.execute("SELECT rechazo_automatico FROM productos LIMIT 1")
     except Exception:
