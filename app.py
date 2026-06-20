@@ -17,6 +17,7 @@ import sqlite3
 import threading
 import json
 import time
+import re
 from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta
 
@@ -837,41 +838,75 @@ def _moogold_extract_ref(data):
 
 
 def _moogold_clean_code(value):
+    if isinstance(value, (list, tuple, dict)):
+        return ''
     return str(value or '').replace('\r', '').replace('\n', '').strip()
+
+
+def _moogold_format_code_text(value):
+    txt = _moogold_clean_code(value)
+    if not txt:
+        return ''
+    m = re.search(r'(?i)serial\s*:\s*(.+?)\s+pin\s*:\s*(.+)$', txt)
+    if m:
+        return f"Serial: {m.group(1).strip()}\nPIN: {m.group(2).strip()}"
+    return txt
 
 
 def _moogold_extract_code(data):
     if not isinstance(data, dict):
         return ''
 
+    def format_serial_pin(row):
+        if not isinstance(row, dict):
+            return ''
+        serial = ''
+        pin = ''
+        for key in ('serial', 'serial_number', 'serial_no', 'card_serial', 'sn'):
+            serial = _moogold_clean_code(row.get(key))
+            if serial:
+                break
+        for key in ('pin', 'pin_code', 'voucher_code', 'voucher', 'code', 'gift_code', 'giftcode'):
+            raw_pin = row.get(key)
+            if isinstance(raw_pin, list):
+                pin = '\n'.join([_moogold_format_code_text(x) for x in raw_pin if _moogold_format_code_text(x)])
+            else:
+                pin = _moogold_format_code_text(raw_pin)
+            if pin:
+                break
+        if serial and pin:
+            return f"Serial: {serial}\nPIN: {pin}"
+        return pin or serial
+
+    direct_pair = format_serial_pin(data)
+    if direct_pair:
+        return direct_pair
+
     for key in ('voucher_code', 'voucher', 'code', 'pin', 'gift_code', 'giftcode'):
         val = data.get(key)
         if isinstance(val, list):
+            codigos = []
             for x in val:
-                txt = _moogold_clean_code(x)
+                txt = format_serial_pin(x) if isinstance(x, dict) else _moogold_format_code_text(x)
                 if txt:
-                    return txt
+                    codigos.append(txt)
+            if codigos:
+                return '\n'.join(codigos)
         else:
-            txt = _moogold_clean_code(val)
+            txt = _moogold_format_code_text(val)
             if txt:
                 return txt
 
-    items = data.get('item')
-    if isinstance(items, list):
-        for row in items:
-            if not isinstance(row, dict):
-                continue
-            for key in ('voucher_code', 'voucher', 'code', 'pin', 'gift_code', 'giftcode'):
-                val = row.get(key)
-                if isinstance(val, list):
-                    for x in val:
-                        txt = _moogold_clean_code(x)
-                        if txt:
-                            return txt
-                else:
-                    txt = _moogold_clean_code(val)
-                    if txt:
-                        return txt
+    for list_key in ('item', 'items', 'codes', 'vouchers', 'cards'):
+        items = data.get(list_key)
+        if isinstance(items, list):
+            codigos = []
+            for row in items:
+                txt = format_serial_pin(row) if isinstance(row, dict) else _moogold_format_code_text(row)
+                if txt:
+                    codigos.append(txt)
+            if codigos:
+                return '\n'.join(codigos)
     return ''
 
 
