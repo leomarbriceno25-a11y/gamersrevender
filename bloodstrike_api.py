@@ -6,7 +6,7 @@ import requests
 
 BASE_URL = os.environ.get('BLOODSTRIKE_API_BASE_URL', 'http://2.24.197.52').rstrip('/')
 API_KEY = os.environ.get('BLOODSTRIKE_API_KEY', 'bs-secret-key-2026')
-TIMEOUT_SECONDS = int(os.environ.get('BLOODSTRIKE_API_TIMEOUT_SECONDS', '90'))
+TIMEOUT_SECONDS = int(os.environ.get('BLOODSTRIKE_API_TIMEOUT_SECONDS', '600'))
 
 
 PACKAGES = [
