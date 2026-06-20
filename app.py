@@ -2416,6 +2416,62 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
         })
 
 
+def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, package_id):
+    from bloodstrike_api import recargar as recargar_bloodstrike
+
+    ref = f"BS{pedido_id}"
+    db_init = get_db()
+    db_init.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+    db_init.commit()
+    db_init.close()
+
+    try:
+        resultado_api = recargar_bloodstrike(id_juego, package_id)
+        db2 = get_db()
+        if resultado_api.get('ok'):
+            db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (id_juego, ref, pedido_id))
+            db2.commit()
+            db2.close()
+            enviar_webhook(user_id, {
+                'evento': 'pedido_actualizado',
+                'pedido_id': pedido_id,
+                'estado': 'completado',
+                'referencia': ref,
+                'mensaje': resultado_api.get('message', 'Recarga Blood Strike completada'),
+                'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
+            })
+            return
+        db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+        db2.commit()
+        db2.close()
+        recargar_saldo(user_id, total, f"Reembolso: Error Blood Strike pedido #{pedido_id}")
+        enviar_webhook(user_id, {
+            'evento': 'pedido_actualizado',
+            'pedido_id': pedido_id,
+            'estado': 'cancelado',
+            'referencia': ref,
+            'razon': resultado_api.get('error', 'Error del proveedor Blood Strike'),
+            'reembolsado': True,
+            'mensaje': 'Blood Strike rechazó la recarga',
+            'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
+        })
+    except Exception as e:
+        db2 = get_db()
+        db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+        db2.commit()
+        db2.close()
+        recargar_saldo(user_id, total, f"Reembolso: Excepción Blood Strike pedido #{pedido_id}")
+        enviar_webhook(user_id, {
+            'evento': 'pedido_actualizado',
+            'pedido_id': pedido_id,
+            'estado': 'cancelado',
+            'referencia': ref,
+            'razon': str(e),
+            'reembolsado': True,
+            'mensaje': 'Blood Strike rechazado por excepción',
+        })
+
+
 # ===== DECORADORES =====
 def login_required(f):
     @wraps(f)
@@ -2863,33 +2919,16 @@ def comprar():
 
     # Si el producto usa Blood Strike API
     if usa_bloodstrike:
+        db.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (f"BS{pedido_id}", pedido_id))
+        db.commit()
         db.close()
-        try:
-            from bloodstrike_api import recargar as recargar_bloodstrike
-            resultado_api = recargar_bloodstrike(id_juego, bloodstrike_package_id)
-            db2 = get_db()
-            if resultado_api.get('ok'):
-                ref = f"BS{pedido_id}"
-                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (id_juego, ref, pedido_id))
-                db2.commit()
-                db2.close()
-                flash(f'Pedido #{pedido_id} completado. Recarga Blood Strike aplicada al ID {id_juego}.', 'success')
-                return redirect(url_for('pedido_detalle', id=pedido_id))
-            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (f"BS{pedido_id}", pedido_id))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id, total, f"Reembolso: Error Blood Strike pedido #{pedido_id}")
-            error_msg = resultado_api.get('error', 'Error del proveedor Blood Strike')
-            flash(f'Error en recarga Blood Strike: {error_msg}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
-            return redirect(url_for('pedido_detalle', id=pedido_id))
-        except Exception as e:
-            db2 = get_db()
-            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (f"BS{pedido_id}", pedido_id))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id, total, f"Reembolso: Excepción Blood Strike pedido #{pedido_id}")
-            flash(f'Error inesperado en Blood Strike: {e}. Se reembolsó ${total:.4f} a tu cartera.', 'error')
-            return redirect(url_for('pedido_detalle', id=pedido_id))
+        threading.Thread(
+            target=procesar_pedido_bloodstrike_background,
+            args=(pedido_id, user_id, total, id_juego, bloodstrike_package_id),
+            daemon=True,
+        ).start()
+        flash(f'Pedido #{pedido_id} recibido. La recarga Blood Strike seguirá procesándose en segundo plano.', 'warning')
+        return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa GamePoint API (recarga directa o gift card)
     if prod['gamepoint_product_id'] and prod['gamepoint_package_id']:
@@ -6225,55 +6264,24 @@ def api_comprar():
 
     # Blood Strike API
     if usa_bloodstrike:
+        db.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (f"BS{pedido_id}", pedido_id))
+        db.commit()
         db.close()
-        try:
-            from bloodstrike_api import recargar as recargar_bloodstrike
-            resultado_api = recargar_bloodstrike(id_juego, bloodstrike_package_id)
-            db2 = get_db()
-            ref = f"BS{pedido_id}"
-            if resultado_api.get('ok'):
-                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (id_juego, ref, pedido_id))
-                db2.commit()
-                db2.close()
-                return jsonify({
-                    'ok': True,
-                    'pedido_id': pedido_id,
-                    'estado': 'completado',
-                    'merchant_ref': merchant_ref,
-                    'referencia': ref,
-                    'total': total,
-                    'saldo_restante': get_saldo(user_id_api),
-                    'nombre_jugador': id_juego,
-                    'mensaje': resultado_api.get('message', 'Recarga Blood Strike completada'),
-                    'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
-                })
-            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id_api, total, f"Reembolso API: Error Blood Strike pedido #{pedido_id}")
-            return jsonify({
-                'ok': False,
-                'error': resultado_api.get('error', 'Error del proveedor Blood Strike'),
-                'pedido_id': pedido_id,
-                'merchant_ref': merchant_ref,
-                'reembolsado': True,
-                'saldo_restante': get_saldo(user_id_api),
-                'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
-            }), 400
-        except Exception as e:
-            db2 = get_db()
-            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (f"BS{pedido_id}", pedido_id))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id_api, total, f"Reembolso API: Excepción Blood Strike pedido #{pedido_id}")
-            return jsonify({
-                'ok': False,
-                'error': str(e),
-                'pedido_id': pedido_id,
-                'merchant_ref': merchant_ref,
-                'reembolsado': True,
-                'saldo_restante': get_saldo(user_id_api),
-            }), 500
+        threading.Thread(
+            target=procesar_pedido_bloodstrike_background,
+            args=(pedido_id, user_id_api, total, id_juego, bloodstrike_package_id),
+            daemon=True,
+        ).start()
+        return jsonify({
+            'ok': True,
+            'pedido_id': pedido_id,
+            'estado': 'procesando',
+            'merchant_ref': merchant_ref,
+            'referencia': f"BS{pedido_id}",
+            'total': total,
+            'saldo_restante': get_saldo(user_id_api),
+            'mensaje': 'Pedido Blood Strike recibido y procesándose en segundo plano',
+        }), 202
 
     # GamePoint API (recarga directa o gift card)
     if prod['gamepoint_product_id'] and prod['gamepoint_package_id']:
