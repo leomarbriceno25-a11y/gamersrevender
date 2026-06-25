@@ -2452,16 +2452,17 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
 
 
 def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, package_id):
-    from bloodstrike_api import recargar as recargar_bloodstrike
+    from bloodstrike_api import FREEFIRE_PACKAGES, recargar as recargar_bloodstrike
 
-    ref = f"BS{pedido_id}"
+    game_id = 'freefire' if str(package_id or '').strip() in {p['id'] for p in FREEFIRE_PACKAGES} else 'bloodstrike'
+    ref = f"BS{pedido_id}" if game_id == 'bloodstrike' else f"FF{pedido_id}"
     db_init = get_db()
     db_init.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
     db_init.commit()
     db_init.close()
 
     try:
-        resultado_api = recargar_bloodstrike(id_juego, package_id)
+        resultado_api = recargar_bloodstrike(id_juego, package_id, game_id=game_id)
         db2 = get_db()
         if resultado_api.get('ok'):
             db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (id_juego, ref, pedido_id))
@@ -2472,22 +2473,22 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
                 'pedido_id': pedido_id,
                 'estado': 'completado',
                 'referencia': ref,
-                'mensaje': resultado_api.get('message', 'Recarga Blood Strike completada'),
+                'mensaje': resultado_api.get('message', 'Recarga completada'),
                 'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
             })
             return
         db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
         db2.commit()
         db2.close()
-        recargar_saldo(user_id, total, f"Reembolso: Error Blood Strike pedido #{pedido_id}")
+        recargar_saldo(user_id, total, f"Reembolso: Error API recarga pedido #{pedido_id}")
         enviar_webhook(user_id, {
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
             'estado': 'cancelado',
             'referencia': ref,
-            'razon': resultado_api.get('error', 'Error del proveedor Blood Strike'),
+            'razon': resultado_api.get('error', 'Error del proveedor de recarga'),
             'reembolsado': True,
-            'mensaje': 'Blood Strike rechazó la recarga',
+            'mensaje': 'Proveedor rechazó la recarga',
             'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
         })
     except Exception as e:
@@ -2495,7 +2496,7 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
         db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
         db2.commit()
         db2.close()
-        recargar_saldo(user_id, total, f"Reembolso: Excepción Blood Strike pedido #{pedido_id}")
+        recargar_saldo(user_id, total, f"Reembolso: Excepción API recarga pedido #{pedido_id}")
         enviar_webhook(user_id, {
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
@@ -2503,7 +2504,7 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
             'referencia': ref,
             'razon': str(e),
             'reembolsado': True,
-            'mensaje': 'Blood Strike rechazado por excepción',
+            'mensaje': 'Proveedor rechazado por excepción',
         })
 
 

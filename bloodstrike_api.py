@@ -25,6 +25,15 @@ PACKAGES = [
     {'id': 'deal_049', 'name': 'Cofre Ultra Skin', 'price': 'BDT 50.00'},
 ]
 
+FREEFIRE_PACKAGES = [
+    {'id': 'diamonds100', 'name': '100 Diamonds', 'price': ''},
+    {'id': 'diamonds310', 'name': '310 Diamonds', 'price': ''},
+    {'id': 'diamonds520', 'name': '520 Diamonds', 'price': ''},
+    {'id': 'diamonds1060', 'name': '1060 Diamonds', 'price': ''},
+    {'id': 'diamonds2180', 'name': '2180 Diamonds', 'price': ''},
+    {'id': 'diamonds5600', 'name': '5600 Diamonds', 'price': ''},
+]
+
 
 def listar_paquetes():
     try:
@@ -41,16 +50,19 @@ def listar_paquetes():
         return {'ok': True, 'packages': PACKAGES}
 
 
-def recargar(player_id, package_id, visible=False):
+def recargar(player_id, package_id, visible=False, game_id='bloodstrike'):
     player_id = str(player_id or '').strip()
     package_id = str(package_id or '').strip()
+    game_id = str(game_id or 'bloodstrike').strip().lower()
     if not player_id:
         return {'ok': False, 'error': 'playerId requerido'}
     if not package_id:
         return {'ok': False, 'error': 'packageId requerido'}
+    if game_id not in ('bloodstrike', 'freefire'):
+        return {'ok': False, 'error': 'gameId inválido'}
 
     payload = {
-        'gameId': 'bloodstrike',
+        'gameId': game_id,
         'playerId': player_id,
         'packageId': package_id,
         'visible': bool(visible),
