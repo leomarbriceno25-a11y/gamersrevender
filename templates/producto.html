@@ -80,7 +80,7 @@
                         <div id="resultado-verificacion" style="display:none; margin-top:0.5rem; padding:0.75rem; border-radius:8px;"></div>
                     </div>
                     {% endif %}
-                    {% elif producto.categoria_tipo != 'giftcards' %}
+                    {% elif producto.categoria_tipo != 'giftcards' or producto.bloodstrike_package_id %}
                     <div class="form-group">
                         <label><i class="fas fa-gamepad"></i> ID del Juego *</label>
                         <input type="text" name="id_juego" id="input-id-juego" placeholder="Ingresa tu ID del juego" required>
@@ -101,7 +101,7 @@
                     {% endif %}
                     {% endif %}
 
-                    {% if producto.categoria_tipo == 'giftcards' %}
+                    {% if producto.categoria_tipo == 'giftcards' and not producto.bloodstrike_package_id %}
                     <div class="form-group">
                         <label><i class="fas fa-layer-group"></i> Cantidad (máx. 50)</label>
                         {% if producto.usa_pincentral and producto.pincentral_entrega_directa %}
@@ -183,7 +183,7 @@ var precioUnitario = {{ producto.precio|tojson }};
 var saldoActual = {{ saldo|tojson }};
 var productoId = {{ producto.id|tojson }};
 var requiereVerificacion = {{ (producto.verificar_nombre|default(0)|int == 1)|tojson }};
-var forzarUnaUnidad = {{ (producto.categoria_tipo == 'giftcards' and producto.usa_pincentral and producto.pincentral_entrega_directa)|tojson }};
+var forzarUnaUnidad = {{ (producto.categoria_tipo == 'giftcards' and producto.usa_pincentral and producto.pincentral_entrega_directa and not producto.bloodstrike_package_id)|tojson }};
 var nombreVerificado = false;
 
 function showToast(msg, type) {

@@ -6016,7 +6016,7 @@ def api_productos():
     user = request.api_user
     suscripcion_activa = _suscripcion_activa_desde_row(user)
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.precio_suscriptor, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.moogold_category_id, p.moogold_variation_id, p.moogold_fields, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.precio_suscriptor, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.moogold_category_id, p.moogold_variation_id, p.moogold_fields, p.bloodstrike_package_id, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
@@ -6038,6 +6038,8 @@ def api_productos():
         moogold_category_id = int(d.pop('moogold_category_id', 0) or 0)
         moogold_variation_id = int(d.pop('moogold_variation_id', 0) or 0)
         moogold_fields_raw = d.pop('moogold_fields', '') or ''
+        bloodstrike_package_id = str(d.pop('bloodstrike_package_id', '') or '').strip()
+        usa_bloodstrike = bool(bloodstrike_package_id)
         usa_moogold = moogold_category_id > 0 and moogold_variation_id > 0
         # Parsear campos requeridos para que el revendedor sepa qué enviar
         fields_raw = d.pop('gamepoint_fields', '') or ''
@@ -6063,6 +6065,9 @@ def api_productos():
             ]
         elif usa_api_hype:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador en Free Fire', 'tipo': 'string', 'opciones': []}]
+        elif usa_bloodstrike:
+            juego_api = 'Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike'
+            d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador en {juego_api}', 'tipo': 'string', 'opciones': []}]
         elif usa_api_razer:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador para API Razer (paquete {razer_paquete})', 'tipo': 'string', 'opciones': []}]
         elif usa_api_deltaforce:
@@ -6077,6 +6082,9 @@ def api_productos():
         d['usa_deltaforce'] = bool(usa_api_deltaforce)
         d['deltaforce_paquete'] = int(deltaforce_paquete or 0)
         d['usa_pincentral'] = bool(usa_api_pincentral)
+        d['usa_bloodstrike'] = bool(usa_bloodstrike)
+        d['bloodstrike_package_id'] = bloodstrike_package_id
+        d['proveedor_api'] = 'freefire' if bloodstrike_package_id.startswith('diamonds') else ('bloodstrike' if usa_bloodstrike else '')
         d['pincentral_product_code'] = pincentral_product_code
         d['rechazo_automatico'] = bool(d.get('rechazo_automatico', 0))
         d['procesamiento_manual'] = bool(d.pop('recarga_manual', 0))
