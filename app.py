@@ -4858,8 +4858,8 @@ def admin_productos_editar_masivo():
     for p in productos:
         try:
             db.execute(
-                "UPDATE productos SET nombre=?, precio=?, activo=?, recarga_manual=?, gamepoint_product_id=?, gamepoint_package_id=?, moogold_product_id=?, moogold_variation_id=? WHERE id=?",
-                (p['nombre'], float(p['precio']), int(p['activo']), int(p.get('recarga_manual', 0)),
+                "UPDATE productos SET nombre=?, precio=?, precio_suscriptor=?, activo=?, recarga_manual=?, gamepoint_product_id=?, gamepoint_package_id=?, moogold_product_id=?, moogold_variation_id=? WHERE id=?",
+                (p['nombre'], float(p['precio']), float(p.get('precio_suscriptor', 0) or 0), int(p['activo']), int(p.get('recarga_manual', 0)),
                  int(p.get('gamepoint_product_id', 0)), int(p.get('gamepoint_package_id', 0)),
                  int(p.get('moogold_product_id', 0)), int(p.get('moogold_variation_id', 0)), int(p['id']))
             )

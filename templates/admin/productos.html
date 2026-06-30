@@ -360,7 +360,7 @@
                 <thead>
                     <tr>
                         <th style="width:40px;"><input type="checkbox" id="sel-todos-prod" onclick="toggleTodosProd(this)" title="Seleccionar todos"></th>
-                        <th>Orden</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>API</th><th>Activo</th><th>Manual</th><th>Acciones</th>
+                        <th>Orden</th><th>Nombre</th><th>Categoría</th><th>Precio</th><th>Precio Revendedor</th><th>API</th><th>Activo</th><th>Manual</th><th>Acciones</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -370,7 +370,7 @@
                     {% if cat_nombre != ns.cat_actual %}
                     {% set ns.cat_actual = cat_nombre %}
                     <tr class="grupo-categoria-row">
-                        <td colspan="9" style="background:rgba(124,58,237,0.12); color:#c4b5fd; font-weight:700; letter-spacing:0.02em; border-top:1px solid rgba(124,58,237,0.35); border-bottom:1px solid rgba(124,58,237,0.25);">
+                        <td colspan="10" style="background:rgba(124,58,237,0.12); color:#c4b5fd; font-weight:700; letter-spacing:0.02em; border-top:1px solid rgba(124,58,237,0.35); border-bottom:1px solid rgba(124,58,237,0.25);">
                             <i class="fas fa-gamepad" style="margin-right:0.4rem;"></i>{{ cat_nombre }}
                         </td>
                     </tr>
@@ -420,6 +420,7 @@
                         <td><input type="text" class="edit-nombre" value="{{ p.nombre }}" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:0.3rem 0.5rem; color:var(--text-primary); width:100%; font-size:0.85rem;"></td>
                         <td>{{ p.categoria_nombre or '-' }}</td>
                         <td><input type="number" class="edit-precio" value="{{ p.precio }}" step="0.0001" min="0" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:0.3rem 0.5rem; color:var(--text-primary); width:90px; font-size:0.85rem;"></td>
+                        <td><input type="number" class="edit-precio-suscriptor" value="{{ p.precio_suscriptor|default(0) }}" step="0.0001" min="0" style="background:var(--bg-secondary); border:1px solid var(--border); border-radius:6px; padding:0.3rem 0.5rem; color:var(--text-primary); width:110px; font-size:0.85rem;"></td>
                         <td>
                             {% if p.bloodstrike_package_id|default('') %}
                             <span class="badge badge-completado"><i class="fas fa-tint"></i> Blood</span>
@@ -1077,6 +1078,7 @@ function guardarTodo() {
             id: parseInt(id),
             nombre: row.querySelector('.edit-nombre').value.trim(),
             precio: parseFloat(row.querySelector('.edit-precio').value) || 0,
+            precio_suscriptor: parseFloat(row.querySelector('.edit-precio-suscriptor').value) || 0,
             activo: row.querySelector('.edit-activo').checked ? 1 : 0,
             recarga_manual: row.querySelector('.edit-manual').checked ? 1 : 0,
             gamepoint_product_id: parseInt(row.getAttribute('data-gp-product')) || 0,
