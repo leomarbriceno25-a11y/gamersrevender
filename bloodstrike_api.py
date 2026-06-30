@@ -34,6 +34,15 @@ FREEFIRE_PACKAGES = [
     {'id': 'diamonds5600', 'name': '5600 Diamonds', 'price': ''},
 ]
 
+FREEFIRE_PROMO_PACKAGES = [
+    {'id': 'pinxtore_diamonds100', 'package_id': 'diamonds100', 'name': '100+20 Diamonds', 'price': ''},
+    {'id': 'pinxtore_diamonds310', 'package_id': 'diamonds310', 'name': '310+62 Diamonds', 'price': ''},
+    {'id': 'pinxtore_diamonds520', 'package_id': 'diamonds520', 'name': '520+104 Diamonds', 'price': ''},
+    {'id': 'pinxtore_diamonds1060', 'package_id': 'diamonds1060', 'name': '1060+212 Diamonds', 'price': ''},
+    {'id': 'pinxtore_diamonds2180', 'package_id': 'diamonds2180', 'name': '2180+436 Diamonds', 'price': ''},
+    {'id': 'pinxtore_diamonds5600', 'package_id': 'diamonds5600', 'name': '5600+1120 Diamonds', 'price': ''},
+]
+
 
 def listar_paquetes():
     try:
@@ -54,11 +63,14 @@ def recargar(player_id, package_id, visible=False, game_id='bloodstrike'):
     player_id = str(player_id or '').strip()
     package_id = str(package_id or '').strip()
     game_id = str(game_id or 'bloodstrike').strip().lower()
+    if package_id.startswith('pinxtore_'):
+        game_id = 'freefire_pinxtore'
+        package_id = package_id.replace('pinxtore_', '', 1)
     if not player_id:
         return {'ok': False, 'error': 'playerId requerido'}
     if not package_id:
         return {'ok': False, 'error': 'packageId requerido'}
-    if game_id not in ('bloodstrike', 'freefire'):
+    if game_id not in ('bloodstrike', 'freefire', 'freefire_pinxtore'):
         return {'ok': False, 'error': 'gameId inválido'}
 
     payload = {

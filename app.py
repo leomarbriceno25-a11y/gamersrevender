@@ -2452,9 +2452,15 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
 
 
 def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, package_id):
-    from bloodstrike_api import FREEFIRE_PACKAGES, recargar as recargar_bloodstrike
+    from bloodstrike_api import FREEFIRE_PACKAGES, FREEFIRE_PROMO_PACKAGES, recargar as recargar_bloodstrike
 
-    game_id = 'freefire' if str(package_id or '').strip() in {p['id'] for p in FREEFIRE_PACKAGES} else 'bloodstrike'
+    package_key = str(package_id or '').strip()
+    if package_key in {p['id'] for p in FREEFIRE_PROMO_PACKAGES}:
+        game_id = 'freefire_pinxtore'
+    elif package_key in {p['id'] for p in FREEFIRE_PACKAGES}:
+        game_id = 'freefire'
+    else:
+        game_id = 'bloodstrike'
     ref = f"BS{pedido_id}" if game_id == 'bloodstrike' else f"FF{pedido_id}"
     db_init = get_db()
     db_init.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
@@ -6066,7 +6072,7 @@ def api_productos():
         elif usa_api_hype:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador en Free Fire', 'tipo': 'string', 'opciones': []}]
         elif usa_bloodstrike:
-            juego_api = 'Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike'
+            juego_api = 'Free Fire Promo Bonus' if bloodstrike_package_id.startswith('pinxtore_') else ('Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike')
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador en {juego_api}', 'tipo': 'string', 'opciones': []}]
         elif usa_api_razer:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador para API Razer (paquete {razer_paquete})', 'tipo': 'string', 'opciones': []}]
@@ -6084,7 +6090,7 @@ def api_productos():
         d['usa_pincentral'] = bool(usa_api_pincentral)
         d['usa_bloodstrike'] = bool(usa_bloodstrike)
         d['bloodstrike_package_id'] = bloodstrike_package_id
-        d['proveedor_api'] = 'freefire' if bloodstrike_package_id.startswith('diamonds') else ('bloodstrike' if usa_bloodstrike else '')
+        d['proveedor_api'] = 'freefire_pinxtore' if bloodstrike_package_id.startswith('pinxtore_') else ('freefire' if bloodstrike_package_id.startswith('diamonds') else ('bloodstrike' if usa_bloodstrike else ''))
         d['pincentral_product_code'] = pincentral_product_code
         d['rechazo_automatico'] = bool(d.get('rechazo_automatico', 0))
         d['procesamiento_manual'] = bool(d.pop('recarga_manual', 0))
