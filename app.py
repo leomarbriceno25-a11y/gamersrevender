@@ -2961,7 +2961,9 @@ def comprar():
 
     # Si el producto usa Blood Strike API
     if usa_bloodstrike:
-        db.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (f"BS{pedido_id}", pedido_id))
+        proveedor_recarga = 'Free Fire Promo Bonus' if bloodstrike_package_id.startswith('pinxtore_') else ('Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike')
+        referencia_recarga = f"BS{pedido_id}" if proveedor_recarga == 'Blood Strike' else f"FF{pedido_id}"
+        db.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (referencia_recarga, pedido_id))
         db.commit()
         db.close()
         threading.Thread(
@@ -2969,7 +2971,7 @@ def comprar():
             args=(pedido_id, user_id, total, id_juego, bloodstrike_package_id),
             daemon=True,
         ).start()
-        flash(f'Pedido #{pedido_id} recibido. La recarga Blood Strike seguirá procesándose en segundo plano.', 'warning')
+        flash(f'Pedido #{pedido_id} recibido. La recarga {proveedor_recarga} seguirá procesándose en segundo plano.', 'warning')
         return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa GamePoint API (recarga directa o gift card)
@@ -6314,7 +6316,9 @@ def api_comprar():
 
     # Blood Strike API
     if usa_bloodstrike:
-        db.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (f"BS{pedido_id}", pedido_id))
+        proveedor_recarga = 'Free Fire Promo Bonus' if bloodstrike_package_id.startswith('pinxtore_') else ('Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike')
+        referencia_recarga = f"BS{pedido_id}" if proveedor_recarga == 'Blood Strike' else f"FF{pedido_id}"
+        db.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (referencia_recarga, pedido_id))
         db.commit()
         db.close()
         threading.Thread(
@@ -6327,10 +6331,10 @@ def api_comprar():
             'pedido_id': pedido_id,
             'estado': 'procesando',
             'merchant_ref': merchant_ref,
-            'referencia': f"BS{pedido_id}",
+            'referencia': referencia_recarga,
             'total': total,
             'saldo_restante': get_saldo(user_id_api),
-            'mensaje': 'Pedido Blood Strike recibido y procesándose en segundo plano',
+            'mensaje': f'Pedido {proveedor_recarga} recibido y procesándose en segundo plano',
         }), 202
 
     # GamePoint API (recarga directa o gift card)
