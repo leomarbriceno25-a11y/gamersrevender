@@ -19,6 +19,8 @@ PACKAGES = [
     {'id': 'gold5000', 'name': '5000 Golds', 'price': 'BDT 5,000.00'},
     {'id': 'strike_pass_elite', 'name': 'Strike Pass Elite', 'price': 'BDT 400.00'},
     {'id': 'strike_pass_premium', 'name': 'Strike Pass Premium', 'price': 'BDT 900.00'},
+    {'id': 'lucky_bag_opm', 'name': 'OPM Bolsa de Suerte', 'price': 'BDT 100.00'},
+    {'id': 'valor_voucher_opm', 'name': 'OPM Cupón de Valor x10', 'price': 'BDT 100.00'},
     {'id': 'enzo', 'name': 'Cofre Upgrade Enzo', 'price': 'BDT 200.00'},
     {'id': 'levelup_pass', 'name': 'Level-Up Pass', 'price': 'BDT 200.00'},
     {'id': 'maestro_voucher', 'name': 'Maestro Voucher x10', 'price': 'BDT 200.00'},
