@@ -6,7 +6,8 @@ import requests
 
 BASE_URL = os.environ.get('BLOODSTRIKE_API_BASE_URL', 'http://2.24.197.52').rstrip('/')
 API_KEY = os.environ.get('BLOODSTRIKE_API_KEY', 'bs-secret-key-2026')
-TIMEOUT_SECONDS = int(os.environ.get('BLOODSTRIKE_API_TIMEOUT_SECONDS', '600'))
+TIMEOUT_SECONDS = int(os.environ.get('BLOODSTRIKE_API_TIMEOUT_SECONDS', '0'))
+REQUEST_TIMEOUT = None if TIMEOUT_SECONDS <= 0 else TIMEOUT_SECONDS
 
 
 PACKAGES = [
@@ -89,7 +90,7 @@ def recargar(player_id, package_id, visible=False, game_id='bloodstrike'):
             f'{BASE_URL}/api/recharge',
             json=payload,
             headers={'x-api-key': API_KEY, 'Content-Type': 'application/json'},
-            timeout=TIMEOUT_SECONDS,
+            timeout=REQUEST_TIMEOUT,
         )
         elapsed = round(time.time() - started, 3)
         try:
