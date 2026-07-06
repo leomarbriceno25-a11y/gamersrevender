@@ -2452,7 +2452,7 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
 
 
 def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, package_id):
-    from bloodstrike_api import FREEFIRE_PACKAGES, FREEFIRE_PROMO_PACKAGES, recargar as recargar_bloodstrike
+    from bloodstrike_api import FREEFIRE_PACKAGES, FREEFIRE_PROMO_PACKAGES, consultar_estado as consultar_estado_bloodstrike, recargar as recargar_bloodstrike
 
     package_key = str(package_id or '').strip()
     if package_key in {p['id'] for p in FREEFIRE_PROMO_PACKAGES}:
@@ -2484,6 +2484,46 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
             })
             return
         if resultado_api.get('pending'):
+            provider_id = resultado_api.get('provider_id')
+            if provider_id:
+                ref = provider_id
+                db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+                db2.commit()
+                db2.close()
+                while True:
+                    time.sleep(15)
+                    estado_api = consultar_estado_bloodstrike(provider_id)
+                    if estado_api.get('ok') and estado_api.get('final'):
+                        db_ok = get_db()
+                        db_ok.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (id_juego, ref, pedido_id))
+                        db_ok.commit()
+                        db_ok.close()
+                        enviar_webhook(user_id, {
+                            'evento': 'pedido_actualizado',
+                            'pedido_id': pedido_id,
+                            'estado': 'completado',
+                            'referencia': ref,
+                            'mensaje': 'Recarga completada por proveedor',
+                            'tiempo_respuesta': estado_api.get('elapsed_seconds'),
+                        })
+                        return
+                    if estado_api.get('final'):
+                        db_fail = get_db()
+                        db_fail.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+                        db_fail.commit()
+                        db_fail.close()
+                        recargar_saldo(user_id, total, f"Reembolso: Recarga rechazada pedido #{pedido_id}")
+                        enviar_webhook(user_id, {
+                            'evento': 'pedido_actualizado',
+                            'pedido_id': pedido_id,
+                            'estado': 'cancelado',
+                            'referencia': ref,
+                            'razon': estado_api.get('error', 'Recarga rechazada por proveedor'),
+                            'reembolsado': True,
+                            'mensaje': 'Proveedor rechazó la recarga',
+                            'tiempo_respuesta': estado_api.get('elapsed_seconds'),
+                        })
+                        return
             db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
             db2.commit()
             db2.close()

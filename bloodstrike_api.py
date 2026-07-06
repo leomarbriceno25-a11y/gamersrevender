@@ -111,6 +111,7 @@ def recargar(player_id, package_id, visible=False, game_id='bloodstrike'):
                 return {
                     'ok': False,
                     'pending': True,
+                    'provider_id': data.get('id') or nested.get('id'),
                     'status_code': r.status_code,
                     'elapsed_seconds': elapsed,
                     'message': message or nested_message or 'Recarga en proceso',
@@ -118,6 +119,7 @@ def recargar(player_id, package_id, visible=False, game_id='bloodstrike'):
                 }
             return {
                 'ok': True,
+                'provider_id': data.get('id') or nested.get('id'),
                 'status_code': r.status_code,
                 'elapsed_seconds': elapsed,
                 'message': message or nested_message or 'Recarga completada',
@@ -140,3 +142,31 @@ def recargar(player_id, package_id, visible=False, game_id='bloodstrike'):
             'error': str(e),
             'data': payload,
         }
+
+
+def consultar_estado(provider_id):
+    provider_id = str(provider_id or '').strip()
+    if not provider_id:
+        return {'ok': False, 'error': 'id requerido'}
+    started = time.time()
+    try:
+        r = requests.get(
+            f'{BASE_URL}/api/recharge/status/{provider_id}',
+            headers={'x-api-key': API_KEY},
+            timeout=REQUEST_TIMEOUT,
+        )
+        elapsed = round(time.time() - started, 3)
+        try:
+            data = r.json()
+        except Exception:
+            data = {'raw': r.text}
+        status = str(data.get('status') if isinstance(data, dict) else '').strip().lower()
+        if r.status_code == 200 and status in ('success', 'completed', 'approved', 'aprobado', 'completado'):
+            return {'ok': True, 'final': True, 'status': status, 'elapsed_seconds': elapsed, 'data': data}
+        if r.status_code == 200 and status in ('failed', 'rejected', 'cancelled', 'canceled', 'rechazado', 'cancelado', 'error'):
+            return {'ok': False, 'final': True, 'status': status, 'elapsed_seconds': elapsed, 'error': data.get('message') or status, 'data': data}
+        if r.status_code == 200 and status in ('pending', 'processing', 'procesando', 'pendiente', 'queued', 'cola'):
+            return {'ok': False, 'pending': True, 'status': status, 'elapsed_seconds': elapsed, 'data': data}
+        return {'ok': False, 'pending': True, 'status': status or f'HTTP {r.status_code}', 'elapsed_seconds': elapsed, 'data': data}
+    except Exception as e:
+        return {'ok': False, 'pending': True, 'error': str(e), 'elapsed_seconds': round(time.time() - started, 3)}
