@@ -107,7 +107,7 @@ def recargar(player_id, package_id, visible=False, game_id='bloodstrike'):
                 str(nested.get('status') or ''),
                 nested_message,
             ]).lower()
-            if any(word in status_text for word in ('proces', 'process', 'pending', 'pendiente', 'recibido', 'received')):
+            if any(word in status_text for word in ('proces', 'process', 'pending', 'pendiente', 'recibido', 'received', 'iniciad', 'started', 'segundo plano', 'background')):
                 return {
                     'ok': False,
                     'pending': True,
