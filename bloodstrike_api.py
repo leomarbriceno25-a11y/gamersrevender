@@ -98,11 +98,29 @@ def recargar(player_id, package_id, visible=False, game_id='bloodstrike'):
         except Exception:
             data = {'raw': r.text}
         if r.status_code == 200 and isinstance(data, dict) and data.get('success'):
+            message = str(data.get('message') or '')
+            nested = data.get('data') if isinstance(data.get('data'), dict) else {}
+            nested_message = str(nested.get('message') or '')
+            status_text = ' '.join([
+                str(data.get('status') or ''),
+                message,
+                str(nested.get('status') or ''),
+                nested_message,
+            ]).lower()
+            if any(word in status_text for word in ('proces', 'process', 'pending', 'pendiente', 'recibido', 'received')):
+                return {
+                    'ok': False,
+                    'pending': True,
+                    'status_code': r.status_code,
+                    'elapsed_seconds': elapsed,
+                    'message': message or nested_message or 'Recarga en proceso',
+                    'data': data,
+                }
             return {
                 'ok': True,
                 'status_code': r.status_code,
                 'elapsed_seconds': elapsed,
-                'message': data.get('message') or 'Recarga completada',
+                'message': message or nested_message or 'Recarga completada',
                 'data': data,
             }
         error = ''

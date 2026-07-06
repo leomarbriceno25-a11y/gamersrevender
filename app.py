@@ -2483,6 +2483,19 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
                 'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
             })
             return
+        if resultado_api.get('pending'):
+            db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+            db2.commit()
+            db2.close()
+            enviar_webhook(user_id, {
+                'evento': 'pedido_actualizado',
+                'pedido_id': pedido_id,
+                'estado': 'procesando',
+                'referencia': ref,
+                'mensaje': resultado_api.get('message', 'Recarga en proceso'),
+                'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
+            })
+            return
         db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
         db2.commit()
         db2.close()
