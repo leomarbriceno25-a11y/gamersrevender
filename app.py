@@ -4651,6 +4651,22 @@ def admin_editar_usuario(id):
     return redirect(url_for('admin_usuarios'))
 
 
+@app.route('/admin/usuario/<int:id>/quitar-suscripcion', methods=['POST'])
+@admin_required
+def admin_quitar_suscripcion(id):
+    db = get_db()
+    user = db.execute("SELECT id, nombre, rol FROM usuarios WHERE id = ?", (id,)).fetchone()
+    if not user or user['rol'] == 'admin':
+        db.close()
+        flash('No se puede modificar esta suscripción.', 'error')
+        return redirect(url_for('admin_usuarios'))
+    db.execute("UPDATE usuarios SET suscripcion_hasta = '', autorenovar_suscripcion = 0 WHERE id = ?", (id,))
+    db.commit()
+    db.close()
+    flash(f'Suscripción removida a {user["nombre"]}.', 'success')
+    return redirect(url_for('admin_usuarios'))
+
+
 @app.route('/admin/usuario/<int:id>/descontar', methods=['POST'])
 @admin_required
 def admin_descontar_saldo(id):
