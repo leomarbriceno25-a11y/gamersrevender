@@ -544,6 +544,37 @@ def _registrar_refresh_run_desde_snapshots(db, before, after, origen='manual', p
     return {'run_id': run_id, 'total_cambios': len(cambios)}
 
 
+def _moogold_stock_variacion(mg_product_id, mg_variation_id, cache=None):
+    from moogold_api import detalle_producto
+
+    mg_product_id = int(mg_product_id or 0)
+    mg_variation_id = str(int(mg_variation_id or 0)) if str(mg_variation_id or '0').strip().isdigit() else ''
+    if mg_product_id <= 0 or not mg_variation_id:
+        return {'ok': False, 'status': '', 'disponible': True, 'error': 'Product/Variation MooGold inválidos'}
+
+    cache = cache if isinstance(cache, dict) else {}
+    if mg_product_id in cache:
+        detalle = cache[mg_product_id]
+    else:
+        detalle = detalle_producto(mg_product_id)
+        cache[mg_product_id] = detalle
+
+    if not detalle.get('ok'):
+        return {'ok': False, 'status': '', 'disponible': True, 'error': detalle.get('error', 'No se pudo consultar MooGold')}
+
+    data = detalle.get('data') if isinstance(detalle.get('data'), dict) else {}
+    variaciones = data.get('Variation') if isinstance(data.get('Variation'), list) else []
+    for var in variaciones:
+        if str((var or {}).get('variation_id', '')).strip() == mg_variation_id:
+            status = str((var or {}).get('stock_status') or '').strip().lower()
+            if status == 'outofstock':
+                return {'ok': True, 'status': status, 'disponible': False, 'variation': var}
+            if status == 'instock':
+                return {'ok': True, 'status': status, 'disponible': True, 'variation': var}
+            return {'ok': True, 'status': status, 'disponible': True, 'variation': var}
+    return {'ok': False, 'status': '', 'disponible': True, 'error': 'Variation ID no encontrado en MooGold'}
+
+
 def _actualizar_precio_moogold_producto_desde_margen(db, margen_porcentaje, mg_product_id, mg_variation_id, prod_id=0, target_column='precio'):
     from moogold_api import detalle_producto
 
@@ -2780,6 +2811,7 @@ def catalogo_juego(slug):
     user_row = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
 
     productos = []
+    moogold_stock_cache = {}
     for prod in productos_rows:
         d = dict(prod)
         precio_normal = float(d.get('precio', 0) or 0)
@@ -2790,9 +2822,15 @@ def catalogo_juego(slug):
         if cat['tipo'] == 'giftcards':
             stock = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (prod['id'],)).fetchone()['c']
             d['stock_disponible'] = stock
+            mg_product_id = int((d.get('moogold_product_id') or 0))
+            mg_variation_id = int((d.get('moogold_variation_id') or 0))
+            if mg_product_id > 0 and mg_variation_id > 0:
+                mg_stock = _moogold_stock_variacion(mg_product_id, mg_variation_id, moogold_stock_cache)
+                d['moogold_stock_status'] = mg_stock.get('status', '')
+                d['moogold_disponible'] = bool(mg_stock.get('disponible', True))
             d['stock_ilimitado'] = bool(
                 (int((d.get('usa_pincentral') or 0)) and int((d.get('pincentral_entrega_directa') or 0)))
-                or int((d.get('moogold_product_id') or 0)) > 0
+                or mg_product_id > 0
                 or int((d.get('gamepoint_product_id') or 0)) > 0
                 or bool(str(d.get('bloodstrike_package_id') or '').strip())
             )
@@ -2851,9 +2889,15 @@ def producto(id):
     prod_dict = dict(prod)
     if prod_dict.get('categoria_tipo') == 'giftcards':
         prod_dict['stock_disponible'] = stock_disponible
+        mg_product_id = int((prod_dict.get('moogold_product_id') or 0))
+        mg_variation_id = int((prod_dict.get('moogold_variation_id') or 0))
+        if mg_product_id > 0 and mg_variation_id > 0:
+            mg_stock = _moogold_stock_variacion(mg_product_id, mg_variation_id)
+            prod_dict['moogold_stock_status'] = mg_stock.get('status', '')
+            prod_dict['moogold_disponible'] = bool(mg_stock.get('disponible', True))
         prod_dict['stock_ilimitado'] = bool(
             (int((prod_dict.get('usa_pincentral') or 0)) and int((prod_dict.get('pincentral_entrega_directa') or 0)))
-            or int((prod_dict.get('moogold_product_id') or 0)) > 0
+            or mg_product_id > 0
             or int((prod_dict.get('gamepoint_product_id') or 0)) > 0
             or bool(str(prod_dict.get('bloodstrike_package_id') or '').strip())
         )
@@ -2920,9 +2964,18 @@ def comprar():
         db.close()
         return redirect(url_for('producto', id=producto_id))
 
+    moogold_product_id = int((prod['moogold_product_id'] if 'moogold_product_id' in prod.keys() else 0) or 0)
+    moogold_variation_id = int((prod['moogold_variation_id'] if 'moogold_variation_id' in prod.keys() else 0) or 0)
+    if prod['categoria_tipo'] == 'giftcards' and moogold_product_id > 0 and moogold_variation_id > 0:
+        mg_stock = _moogold_stock_variacion(moogold_product_id, moogold_variation_id)
+        if not mg_stock.get('disponible', True):
+            flash('Producto agotado en MooGold. Intenta más tarde.', 'error')
+            db.close()
+            return redirect(url_for('producto', id=producto_id))
+
     usa_stock_externo = bool(
         (usa_pincentral and pincentral_entrega_directa)
-        or int((prod['moogold_product_id'] if 'moogold_product_id' in prod.keys() else 0) or 0) > 0
+        or moogold_product_id > 0
         or int((prod['gamepoint_product_id'] if 'gamepoint_product_id' in prod.keys() else 0) or 0) > 0
         or usa_bloodstrike
     )
