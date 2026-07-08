@@ -2790,7 +2790,12 @@ def catalogo_juego(slug):
         if cat['tipo'] == 'giftcards':
             stock = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (prod['id'],)).fetchone()['c']
             d['stock_disponible'] = stock
-            d['stock_ilimitado'] = bool(int((d.get('usa_pincentral') or 0)) and int((d.get('pincentral_entrega_directa') or 0)))
+            d['stock_ilimitado'] = bool(
+                (int((d.get('usa_pincentral') or 0)) and int((d.get('pincentral_entrega_directa') or 0)))
+                or int((d.get('moogold_product_id') or 0)) > 0
+                or int((d.get('gamepoint_product_id') or 0)) > 0
+                or bool(str(d.get('bloodstrike_package_id') or '').strip())
+            )
         productos.append(d)
 
     db.close()
@@ -2846,7 +2851,12 @@ def producto(id):
     prod_dict = dict(prod)
     if prod_dict.get('categoria_tipo') == 'giftcards':
         prod_dict['stock_disponible'] = stock_disponible
-        prod_dict['stock_ilimitado'] = bool(int((prod_dict.get('usa_pincentral') or 0)) and int((prod_dict.get('pincentral_entrega_directa') or 0)))
+        prod_dict['stock_ilimitado'] = bool(
+            (int((prod_dict.get('usa_pincentral') or 0)) and int((prod_dict.get('pincentral_entrega_directa') or 0)))
+            or int((prod_dict.get('moogold_product_id') or 0)) > 0
+            or int((prod_dict.get('gamepoint_product_id') or 0)) > 0
+            or bool(str(prod_dict.get('bloodstrike_package_id') or '').strip())
+        )
     precio_normal = float(prod_dict.get('precio', 0) or 0)
     precio_final = _precio_producto_para_usuario(prod, user_row)
     prod_dict['precio_normal'] = precio_normal
@@ -2910,7 +2920,13 @@ def comprar():
         db.close()
         return redirect(url_for('producto', id=producto_id))
 
-    if prod['categoria_tipo'] == 'giftcards' and not (usa_pincentral and pincentral_entrega_directa):
+    usa_stock_externo = bool(
+        (usa_pincentral and pincentral_entrega_directa)
+        or int((prod['moogold_product_id'] if 'moogold_product_id' in prod.keys() else 0) or 0) > 0
+        or int((prod['gamepoint_product_id'] if 'gamepoint_product_id' in prod.keys() else 0) or 0) > 0
+        or usa_bloodstrike
+    )
+    if prod['categoria_tipo'] == 'giftcards' and not usa_stock_externo:
         cant_pines_requeridos = min(cantidad, 50)
         stock_disponible = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (producto_id,)).fetchone()['c']
         if stock_disponible < cant_pines_requeridos:
