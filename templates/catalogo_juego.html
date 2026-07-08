@@ -19,9 +19,24 @@
                 <h3>{{ prod.nombre }}</h3>
                 <p class="product-desc">{{ prod.descripcion }}</p>
                 <div class="product-price">${{ '%.4f'|format(prod.precio) }}</div>
+                {% if categoria.tipo == 'giftcards' %}
+                {% if prod.stock_ilimitado %}
+                <div style="margin:0.5rem 0;color:#10b981;font-size:0.85rem;font-weight:600;"><i class="fas fa-infinity"></i> Stock disponible</div>
+                {% elif prod.stock_disponible|default(0) > 0 %}
+                <div style="margin:0.5rem 0;color:#10b981;font-size:0.85rem;font-weight:600;"><i class="fas fa-box"></i> Disponible: {{ prod.stock_disponible }}</div>
+                {% else %}
+                <div style="margin:0.5rem 0;color:#ef4444;font-size:0.85rem;font-weight:700;"><i class="fas fa-times-circle"></i> Agotado</div>
+                {% endif %}
+                {% endif %}
+                {% if categoria.tipo == 'giftcards' and not prod.stock_ilimitado and prod.stock_disponible|default(0) <= 0 %}
+                <button type="button" class="btn btn-secondary btn-sm btn-block" disabled>
+                    <i class="fas fa-ban"></i> Agotado
+                </button>
+                {% else %}
                 <a href="{{ url_for('producto', id=prod.id) }}" class="btn btn-primary btn-sm btn-block">
                     <i class="fas fa-shopping-cart"></i> Comprar
                 </a>
+                {% endif %}
             </div>
             {% endfor %}
         </div>

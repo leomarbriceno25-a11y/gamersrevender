@@ -17,6 +17,15 @@
                 <h1>{{ producto.nombre }}</h1>
                 <p class="product-detail-desc">{{ producto.descripcion }}</p>
                 <div class="product-detail-price">${{ '%.4f'|format(producto.precio) }}</div>
+                {% if producto.categoria_tipo == 'giftcards' and not producto.bloodstrike_package_id %}
+                {% if producto.stock_ilimitado %}
+                <div style="margin:0.75rem 0;color:#10b981;font-weight:700;"><i class="fas fa-infinity"></i> Stock disponible</div>
+                {% elif producto.stock_disponible|default(0) > 0 %}
+                <div style="margin:0.75rem 0;color:#10b981;font-weight:700;"><i class="fas fa-box"></i> Stock disponible: {{ producto.stock_disponible }}</div>
+                {% else %}
+                <div style="margin:0.75rem 0;color:#ef4444;font-weight:800;"><i class="fas fa-times-circle"></i> Agotado</div>
+                {% endif %}
+                {% endif %}
                 <div class="product-badges">
                     <span class="badge badge-completado"><i class="fas fa-bolt"></i> Entrega instantánea</span>
                     <span class="badge badge-procesando"><i class="fas fa-shield-alt"></i> 100% Seguro</span>
@@ -107,7 +116,7 @@
                         {% if producto.usa_pincentral and producto.pincentral_entrega_directa %}
                         <input type="number" name="cantidad" id="input-cantidad" value="1" min="1" max="1" class="form-input" style="max-width:120px;" readonly>
                         {% else %}
-                        <input type="number" name="cantidad" id="input-cantidad" value="1" min="1" max="50" class="form-input" style="max-width:120px;" oninput="actualizarTotal()">
+                        <input type="number" name="cantidad" id="input-cantidad" value="1" min="1" max="{{ [producto.stock_disponible|default(0), 50]|min }}" class="form-input" style="max-width:120px;" oninput="actualizarTotal()">
                         {% endif %}
                     </div>
                     {% else %}
@@ -141,8 +150,9 @@
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary btn-block btn-lg" id="btn-comprar" {{ 'disabled' if saldo < producto.precio }}>
-                        <i class="fas fa-wallet"></i> Pagar con Cartera
+                    {% set producto_agotado = producto.categoria_tipo == 'giftcards' and not producto.bloodstrike_package_id and not producto.stock_ilimitado and producto.stock_disponible|default(0) <= 0 %}
+                    <button type="submit" class="btn btn-primary btn-block btn-lg" id="btn-comprar" {{ 'disabled' if saldo < producto.precio or producto_agotado }}>
+                        <i class="fas {{ 'fa-ban' if producto_agotado else 'fa-wallet' }}"></i> {{ 'Agotado' if producto_agotado else 'Pagar con Cartera' }}
                     </button>
                     {% if saldo < producto.precio %}
                     <a href="{{ url_for('cartera') }}" class="btn btn-secondary btn-block">
@@ -184,6 +194,9 @@ var saldoActual = {{ saldo|tojson }};
 var productoId = {{ producto.id|tojson }};
 var requiereVerificacion = {{ (producto.verificar_nombre|default(0)|int == 1)|tojson }};
 var forzarUnaUnidad = {{ (producto.categoria_tipo == 'giftcards' and producto.usa_pincentral and producto.pincentral_entrega_directa and not producto.bloodstrike_package_id)|tojson }};
+var stockDisponible = {{ producto.stock_disponible|default(50)|tojson }};
+var stockIlimitado = {{ producto.stock_ilimitado|default(false)|tojson }};
+var productoAgotado = {{ (producto.categoria_tipo == 'giftcards' and not producto.bloodstrike_package_id and not producto.stock_ilimitado and producto.stock_disponible|default(0) <= 0)|tojson }};
 var nombreVerificado = false;
 
 function showToast(msg, type) {
@@ -207,6 +220,7 @@ function actualizarTotal() {
     if (forzarUnaUnidad) cant = 1;
     if (cant < 1) cant = 1;
     if (cant > 50) cant = 50;
+    if (!stockIlimitado && cant > stockDisponible) cant = stockDisponible;
     if (forzarUnaUnidad) {
         cantInput.value = '1';
     }
@@ -216,7 +230,7 @@ function actualizarTotal() {
     var btn = document.getElementById('btn-comprar');
     if (priceEl) priceEl.textContent = '$' + total.toFixed(4);
     if (totalEl) totalEl.textContent = '$' + total.toFixed(4);
-    if (btn) btn.disabled = saldoActual < total;
+    if (btn) btn.disabled = productoAgotado || saldoActual < total;
 }
 
 function verificarNombre() {

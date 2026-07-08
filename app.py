@@ -2778,7 +2778,6 @@ def catalogo_juego(slug):
         return redirect(url_for('catalogo'))
     productos_rows = db.execute("SELECT * FROM productos WHERE categoria_id = ? AND activo = 1 ORDER BY orden ASC, precio ASC", (cat['id'],)).fetchall()
     user_row = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
-    db.close()
 
     productos = []
     for prod in productos_rows:
@@ -2788,8 +2787,13 @@ def catalogo_juego(slug):
         d['precio_normal'] = precio_normal
         d['precio'] = precio_final
         d['precio_suscriptor_aplicado'] = precio_final != precio_normal
+        if cat['tipo'] == 'giftcards':
+            stock = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (prod['id'],)).fetchone()['c']
+            d['stock_disponible'] = stock
+            d['stock_ilimitado'] = bool(int((d.get('usa_pincentral') or 0)) and int((d.get('pincentral_entrega_directa') or 0)))
         productos.append(d)
 
+    db.close()
     return render_template('catalogo_juego.html', categoria=cat, productos=productos)
 
 
@@ -2834,9 +2838,15 @@ def producto(id):
         flash('Producto no encontrado', 'error')
         return redirect(url_for('catalogo'))
     user_row = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+    stock_disponible = 0
+    if prod['categoria_tipo'] == 'giftcards':
+        stock_disponible = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (id,)).fetchone()['c']
     db.close()
     # Convertir a dict y parsear gamepoint_fields JSON
     prod_dict = dict(prod)
+    if prod_dict.get('categoria_tipo') == 'giftcards':
+        prod_dict['stock_disponible'] = stock_disponible
+        prod_dict['stock_ilimitado'] = bool(int((prod_dict.get('usa_pincentral') or 0)) and int((prod_dict.get('pincentral_entrega_directa') or 0)))
     precio_normal = float(prod_dict.get('precio', 0) or 0)
     precio_final = _precio_producto_para_usuario(prod, user_row)
     prod_dict['precio_normal'] = precio_normal
@@ -2899,6 +2909,14 @@ def comprar():
         flash('Debes ingresar el ID del jugador para esta recarga.', 'error')
         db.close()
         return redirect(url_for('producto', id=producto_id))
+
+    if prod['categoria_tipo'] == 'giftcards' and not (usa_pincentral and pincentral_entrega_directa):
+        cant_pines_requeridos = min(cantidad, 50)
+        stock_disponible = db.execute("SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'", (producto_id,)).fetchone()['c']
+        if stock_disponible < cant_pines_requeridos:
+            flash(f'Producto agotado. Stock disponible: {stock_disponible}.', 'error')
+            db.close()
+            return redirect(url_for('producto', id=producto_id))
 
     user_id = session['user_id']
     user_row = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (user_id,)).fetchone()
