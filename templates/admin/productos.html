@@ -171,8 +171,9 @@
                     </label>
                 </div>
                 <div class="form-group" id="bloodstrike-group" style="display:none;">
+                    <input type="hidden" name="bloodstrike_package_id" id="form-bs-package-final" value="">
                     <label><i class="fas fa-box" style="color:#ef4444;"></i> Paquete API externa</label>
-                    <select name="bloodstrike_package_id" id="form-bs-package" class="form-select">
+                    <select id="form-bs-package" class="form-select" onchange="syncBloodStrikePackage('select')">
                         <option value="">-- Seleccionar paquete --</option>
                         <optgroup label="Blood Strike">
                             <option value="gold50">gold50 - 50 Golds</option>
@@ -210,6 +211,9 @@
                             <option value="pinxtore_diamonds5600">diamonds5600 - 5600+1120 Diamonds</option>
                         </optgroup>
                     </select>
+                    <label style="margin-top:0.75rem;"><i class="fas fa-key" style="color:#ef4444;"></i> Clave manual del paquete</label>
+                    <input type="text" id="form-bs-package-manual" placeholder="Ej: diamonds100 o clave exacta del proveedor" oninput="syncBloodStrikePackage('manual')">
+                    <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.35rem;">Si escribes una clave manual, esa será la que se enviará en la petición de recarga.</p>
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
@@ -1015,11 +1019,35 @@ function togglePinCentral() {
     }
 }
 
+function syncBloodStrikePackage(source) {
+    var select = document.getElementById('form-bs-package');
+    var manual = document.getElementById('form-bs-package-manual');
+    var finalInput = document.getElementById('form-bs-package-final');
+    if (!select || !manual || !finalInput) return;
+    if (source === 'select' && select.value) {
+        manual.value = select.value;
+    }
+    finalInput.value = String(manual.value || select.value || '').trim();
+}
+
+function setBloodStrikePackage(value) {
+    var packageValue = String(value || '').trim();
+    var select = document.getElementById('form-bs-package');
+    var manual = document.getElementById('form-bs-package-manual');
+    var finalInput = document.getElementById('form-bs-package-final');
+    if (!select || !manual || !finalInput) return;
+    select.value = packageValue;
+    manual.value = packageValue;
+    finalInput.value = packageValue;
+}
+
 function toggleBloodStrike() {
     var show = document.getElementById('form-usa-bloodstrike').checked;
     document.getElementById('bloodstrike-group').style.display = show ? 'block' : 'none';
     if (!show) {
-        document.getElementById('form-bs-package').value = '';
+        setBloodStrikePackage('');
+    } else {
+        syncBloodStrikePackage('manual');
     }
 }
 
@@ -1227,7 +1255,7 @@ function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono
     document.getElementById('form-pincentral-code').value = pincentralCode || '';
     document.getElementById('form-pincentral-directo').checked = pincentralDirecto == 1;
     document.getElementById('form-usa-bloodstrike').checked = !!bsPackage;
-    document.getElementById('form-bs-package').value = bsPackage || '';
+    setBloodStrikePackage(bsPackage || '');
     document.getElementById('form-usa-gamepoint').checked = (gpProduct > 0);
     document.getElementById('form-gp-product').value = gpProduct || 0;
     document.getElementById('form-gp-package').value = gpPackage || 0;
@@ -1282,7 +1310,7 @@ function resetForm() {
     document.getElementById('form-pincentral-code').value = '';
     document.getElementById('form-pincentral-directo').checked = false;
     document.getElementById('form-usa-bloodstrike').checked = false;
-    document.getElementById('form-bs-package').value = '';
+    setBloodStrikePackage('');
     document.getElementById('form-usa-gamepoint').checked = false;
     document.getElementById('form-recarga-manual').checked = false;
     document.getElementById('form-gp-product').value = '0';
