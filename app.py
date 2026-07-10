@@ -4680,11 +4680,27 @@ def admin_telegram():
     return render_template('admin/telegram.html', config=config)
 
 
+def _asegurar_bloqueo_api_pases_de_nivel(db):
+    db.execute("CREATE TABLE IF NOT EXISTS usuario_api_categorias_bloqueadas (usuario_id INTEGER NOT NULL, categoria_id INTEGER NOT NULL, fecha TEXT DEFAULT (datetime('now','localtime')), PRIMARY KEY (usuario_id, categoria_id), FOREIGN KEY (usuario_id) REFERENCES usuarios(id), FOREIGN KEY (categoria_id) REFERENCES categorias(id))")
+    categoria = db.execute("SELECT id FROM categorias WHERE lower(nombre) = lower(?) LIMIT 1", ('Pases De Nivel',)).fetchone()
+    if not categoria:
+        return
+    db.execute(
+        """
+        INSERT OR IGNORE INTO usuario_api_categorias_bloqueadas (usuario_id, categoria_id)
+        SELECT id, ? FROM usuarios WHERE rol != 'admin'
+        """,
+        (int(categoria['id']),),
+    )
+
+
 @app.route('/admin/usuarios')
 @admin_required
 def admin_usuarios():
     db = get_db()
     db.execute("CREATE TABLE IF NOT EXISTS usuario_api_categorias_bloqueadas (usuario_id INTEGER NOT NULL, categoria_id INTEGER NOT NULL, fecha TEXT DEFAULT (datetime('now','localtime')), PRIMARY KEY (usuario_id, categoria_id), FOREIGN KEY (usuario_id) REFERENCES usuarios(id), FOREIGN KEY (categoria_id) REFERENCES categorias(id))")
+    _asegurar_bloqueo_api_pases_de_nivel(db)
+    db.commit()
     usuarios = db.execute("SELECT u.*, COALESCE(c.saldo, 0) as saldo FROM usuarios u LEFT JOIN carteras c ON u.id = c.usuario_id ORDER BY u.fecha_registro DESC").fetchall()
     categorias_api = db.execute("""
         SELECT c.id, c.nombre, c.tipo, COUNT(p.id) as total_productos
@@ -6349,6 +6365,9 @@ def api_comprar():
                 'estado': str(pedido_existente['estado'] or ''),
                 'merchant_ref': merchant_ref,
             }), 409
+
+    _asegurar_bloqueo_api_pases_de_nivel(db)
+    db.commit()
 
     prod = db.execute("SELECT p.*, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
     if not prod:
