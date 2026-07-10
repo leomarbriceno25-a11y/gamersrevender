@@ -61,7 +61,7 @@
                         <td><span class="badge badge-{{ 'completado' if u.rol == 'admin' else 'procesando' }}">{{ u.rol|capitalize }}</span></td>
                         <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.4f'|format(u.saldo) }}</td>
                         <td>{% if u.suscripcion_hasta %}<span class="badge badge-completado"><i class="fas fa-crown"></i> {{ u.suscripcion_hasta }}</span>{% else %}<span style="color:var(--text-secondary);">-</span>{% endif %}</td>
-                        <td><span class="badge badge-procesando"><i class="fas fa-list-check"></i> {{ (api_productos_bloqueados.get(u.id, []) if api_productos_bloqueados is defined else [])|length }} productos</span></td>
+                        <td><span class="badge badge-procesando"><i class="fas fa-list-check"></i> {{ (api_categorias_bloqueadas.get(u.id, []) if api_categorias_bloqueadas is defined else [])|length }} categorías</span></td>
                         <td>{% if u.activo %}<span class="badge badge-completado">Activo</span>{% else %}<span class="badge badge-cancelado">Pendiente</span>{% endif %}</td>
                         <td>{{ u.fecha_registro or '-' }}</td>
                         <td>
@@ -76,7 +76,7 @@
                                     <button type="submit" class="btn btn-sm btn-primary" title="Aprobar" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')"><i class="fas fa-check"></i></button>
                                     {% endif %}
                                 </form>
-                                <button type="button" class="btn btn-sm" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Bloquear productos específicos vía API" onclick='abrirProductosApi({{ u.id }}, {{ u.nombre|tojson }}, {{ (api_productos_bloqueados.get(u.id, []) if api_productos_bloqueados is defined else [])|tojson }})'><i class="fas fa-list-check"></i></button>
+                                <button type="button" class="btn btn-sm" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Bloquear categorías completas vía API" onclick='abrirCategoriasApi({{ u.id }}, {{ u.nombre|tojson }}, {{ (api_categorias_bloqueadas.get(u.id, []) if api_categorias_bloqueadas is defined else [])|tojson }})'><i class="fas fa-list-check"></i></button>
                                 {% if u.suscripcion_hasta %}
                                 <form method="POST" action="{{ url_for('admin_quitar_suscripcion', id=u.id) }}" style="display:inline;">
                                     <button type="submit" class="btn btn-sm" style="background:#92400e;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Quitar suscripción" onclick="return confirm('¿Quitar la suscripción de {{ u.nombre }}?')"><i class="fas fa-crown"></i></button>
@@ -111,7 +111,7 @@
                     {% if u.suscripcion_hasta %}<i class="fas fa-crown" style="color:#f59e0b;"></i> Suscripción hasta {{ u.suscripcion_hasta }}{% else %}<i class="fas fa-crown"></i> Sin suscripción{% endif %}
                 </div>
                 <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:0.35rem;">
-                    <i class="fas fa-list-check" style="color:#3b82f6;"></i> {{ (api_productos_bloqueados.get(u.id, []) if api_productos_bloqueados is defined else [])|length }} productos bloqueados por API
+                    <i class="fas fa-list-check" style="color:#3b82f6;"></i> {{ (api_categorias_bloqueadas.get(u.id, []) if api_categorias_bloqueadas is defined else [])|length }} categorías bloqueadas por API
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
                     <button class="btn btn-sm btn-secondary" style="flex:1;font-size:0.75rem;" onclick="editarUsuario({{ u.id }}, '{{ u.nombre|e }}', '{{ u.email|e }}', '{{ u.telefono|e }}')"><i class="fas fa-edit"></i> Editar</button>
@@ -124,7 +124,7 @@
                         <button type="submit" class="btn btn-sm btn-primary" style="width:100%;font-size:0.75rem;" onclick="return confirm('¿Aprobar?')"><i class="fas fa-check"></i> Aprobar</button>
                         {% endif %}
                     </form>
-                    <button type="button" class="btn btn-sm" style="flex:1;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick='abrirProductosApi({{ u.id }}, {{ u.nombre|tojson }}, {{ (api_productos_bloqueados.get(u.id, []) if api_productos_bloqueados is defined else [])|tojson }})'><i class="fas fa-list-check"></i> Productos API</button>
+                    <button type="button" class="btn btn-sm" style="flex:1;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick='abrirCategoriasApi({{ u.id }}, {{ u.nombre|tojson }}, {{ (api_categorias_bloqueadas.get(u.id, []) if api_categorias_bloqueadas is defined else [])|tojson }})'><i class="fas fa-list-check"></i> Categorías API</button>
                     {% if u.suscripcion_hasta %}
                     <form method="POST" action="{{ url_for('admin_quitar_suscripcion', id=u.id) }}" style="flex:1;">
                         <button type="submit" class="btn btn-sm" style="width:100%;background:#92400e;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick="return confirm('¿Quitar suscripción?')"><i class="fas fa-crown"></i> Quitar plan</button>
@@ -139,29 +139,29 @@
             {% endfor %}
         </div>
 
-        <div id="modal-api-productos" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;justify-content:center;align-items:center;" onclick="if(event.target===this)this.style.display='none'">
+        <div id="modal-api-categorias" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;justify-content:center;align-items:center;" onclick="if(event.target===this)this.style.display='none'">
             <div style="background:var(--bg-secondary);border-radius:12px;padding:1.5rem;max-width:650px;width:92%;max-height:85vh;overflow-y:auto;">
-                <h3 style="margin:0 0 0.5rem;"><i class="fas fa-list-check"></i> Productos bloqueados por API</h3>
-                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1rem;">Usuario: <strong id="api-prod-user-name"></strong>. Marca los productos que NO podrá comprar por API. Dentro de la web podrá seguir comprando.</p>
-                <form method="POST" id="form-api-productos">
+                <h3 style="margin:0 0 0.5rem;"><i class="fas fa-list-check"></i> Categorías bloqueadas por API</h3>
+                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1rem;">Usuario: <strong id="api-cat-user-name"></strong>. Marca las categorías completas que NO podrá comprar por API. Dentro de la web podrá seguir comprando.</p>
+                <form method="POST" id="form-api-categorias">
                     <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="marcarProductosApi(true)"><i class="fas fa-check-square"></i> Marcar todos</button>
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="marcarProductosApi(false)"><i class="fas fa-square"></i> Limpiar</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="marcarCategoriasApi(true)"><i class="fas fa-check-square"></i> Marcar todas</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="marcarCategoriasApi(false)"><i class="fas fa-square"></i> Limpiar</button>
                     </div>
                     <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0.5rem;">
-                        {% for p in productos_api|default([]) %}
+                        {% for c in categorias_api|default([]) %}
                         <label class="checkbox-label" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:0.55rem;align-items:flex-start;">
-                            <input type="checkbox" class="api-prod-check" name="productos_bloqueados" value="{{ p.id }}">
-                            <span><strong>#{{ p.id }}</strong> {{ p.nombre }}<br><small style="color:var(--text-secondary);">{{ p.categoria_nombre or '-' }}</small></span>
+                            <input type="checkbox" class="api-cat-check" name="categorias_bloqueadas" value="{{ c.id }}">
+                            <span><strong>{{ c.nombre }}</strong><br><small style="color:var(--text-secondary);">{{ c.total_productos }} productos API</small></span>
                         </label>
                         {% endfor %}
                     </div>
-                    {% if productos_api|default([])|length == 0 %}
-                    <p style="color:var(--text-secondary);">No hay productos API activos.</p>
+                    {% if categorias_api|default([])|length == 0 %}
+                    <p style="color:var(--text-secondary);">No hay categorías API activas.</p>
                     {% endif %}
                     <div style="display:flex;gap:0.5rem;margin-top:1rem;">
                         <button type="submit" class="btn btn-primary" style="flex:1;"><i class="fas fa-save"></i> Guardar bloqueos</button>
-                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-api-productos').style.display='none'"><i class="fas fa-times"></i> Cancelar</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-api-categorias').style.display='none'"><i class="fas fa-times"></i> Cancelar</button>
                     </div>
                 </form>
             </div>
@@ -222,17 +222,17 @@
 
 {% block scripts %}
 <script>
-function abrirProductosApi(id, nombre, bloqueados) {
-    bloqueados = Array.isArray(bloqueados) ? bloqueados.map(function(x) { return String(x); }) : [];
-    document.getElementById('api-prod-user-name').textContent = nombre;
-    document.getElementById('form-api-productos').action = '/admin/usuario/' + id + '/api-productos';
-    document.querySelectorAll('.api-prod-check').forEach(function(chk) {
-        chk.checked = bloqueados.indexOf(String(chk.value)) !== -1;
+function abrirCategoriasApi(id, nombre, bloqueadas) {
+    bloqueadas = Array.isArray(bloqueadas) ? bloqueadas.map(function(x) { return String(x); }) : [];
+    document.getElementById('api-cat-user-name').textContent = nombre;
+    document.getElementById('form-api-categorias').action = '/admin/usuario/' + id + '/api-categorias';
+    document.querySelectorAll('.api-cat-check').forEach(function(chk) {
+        chk.checked = bloqueadas.indexOf(String(chk.value)) !== -1;
     });
-    document.getElementById('modal-api-productos').style.display = 'flex';
+    document.getElementById('modal-api-categorias').style.display = 'flex';
 }
-function marcarProductosApi(valor) {
-    document.querySelectorAll('.api-prod-check').forEach(function(chk) { chk.checked = !!valor; });
+function marcarCategoriasApi(valor) {
+    document.querySelectorAll('.api-cat-check').forEach(function(chk) { chk.checked = !!valor; });
 }
 function editarUsuario(id, nombre, email, telefono) {
     document.getElementById('form-editar-usuario').action = '/admin/usuario/' + id + '/editar';
