@@ -4684,9 +4684,25 @@ def admin_telegram():
 @admin_required
 def admin_usuarios():
     db = get_db()
+    db.execute("CREATE TABLE IF NOT EXISTS usuario_api_productos_bloqueados (usuario_id INTEGER NOT NULL, producto_id INTEGER NOT NULL, fecha TEXT DEFAULT (datetime('now','localtime')), PRIMARY KEY (usuario_id, producto_id), FOREIGN KEY (usuario_id) REFERENCES usuarios(id), FOREIGN KEY (producto_id) REFERENCES productos(id))")
     usuarios = db.execute("SELECT u.*, COALESCE(c.saldo, 0) as saldo FROM usuarios u LEFT JOIN carteras c ON u.id = c.usuario_id ORDER BY u.fecha_registro DESC").fetchall()
+    productos_api = db.execute("""
+        SELECT p.id, p.nombre, c.nombre as categoria_nombre
+        FROM productos p
+        LEFT JOIN categorias c ON p.categoria_id = c.id
+        WHERE p.activo = 1 AND (
+            p.usa_api = 1 OR p.usa_razer = 1 OR p.usa_deltaforce = 1 OR p.usa_pincentral = 1
+            OR COALESCE(p.gamepoint_product_id, 0) > 0 OR COALESCE(p.moogold_product_id, 0) > 0
+            OR COALESCE(p.bloodstrike_package_id, '') != ''
+        )
+        ORDER BY c.orden, c.nombre, p.orden, p.nombre
+    """).fetchall()
+    bloqueos_rows = db.execute("SELECT usuario_id, producto_id FROM usuario_api_productos_bloqueados").fetchall()
+    api_productos_bloqueados = {}
+    for row in bloqueos_rows:
+        api_productos_bloqueados.setdefault(int(row['usuario_id']), []).append(int(row['producto_id']))
     db.close()
-    return render_template('admin/usuarios.html', usuarios=usuarios)
+    return render_template('admin/usuarios.html', usuarios=usuarios, productos_api=productos_api, api_productos_bloqueados=api_productos_bloqueados)
 
 
 @app.route('/admin/usuario/<int:id>/toggle', methods=['POST'])
@@ -4726,6 +4742,33 @@ def admin_toggle_api_compras_usuario(id):
         flash(f'Compras vía API habilitadas para {user["nombre"]}.', 'success')
     else:
         flash(f'Compras vía API deshabilitadas para {user["nombre"]}.', 'success')
+    return redirect(url_for('admin_usuarios'))
+
+
+@app.route('/admin/usuario/<int:id>/api-productos', methods=['POST'])
+@admin_required
+def admin_usuario_api_productos(id):
+    db = get_db()
+    user = db.execute("SELECT id, nombre, rol FROM usuarios WHERE id = ?", (id,)).fetchone()
+    if not user or user['rol'] == 'admin':
+        db.close()
+        flash('No se pueden modificar productos API para este usuario.', 'error')
+        return redirect(url_for('admin_usuarios'))
+    db.execute("CREATE TABLE IF NOT EXISTS usuario_api_productos_bloqueados (usuario_id INTEGER NOT NULL, producto_id INTEGER NOT NULL, fecha TEXT DEFAULT (datetime('now','localtime')), PRIMARY KEY (usuario_id, producto_id), FOREIGN KEY (usuario_id) REFERENCES usuarios(id), FOREIGN KEY (producto_id) REFERENCES productos(id))")
+    bloqueados = []
+    for value in request.form.getlist('productos_bloqueados'):
+        try:
+            producto_id = int(value)
+        except (TypeError, ValueError):
+            producto_id = 0
+        if producto_id > 0:
+            bloqueados.append(producto_id)
+    db.execute("DELETE FROM usuario_api_productos_bloqueados WHERE usuario_id = ?", (id,))
+    for producto_id in sorted(set(bloqueados)):
+        db.execute("INSERT OR IGNORE INTO usuario_api_productos_bloqueados (usuario_id, producto_id) VALUES (?, ?)", (id, producto_id))
+    db.commit()
+    db.close()
+    flash(f'Productos API bloqueados actualizados para {user["nombre"]}.', 'success')
     return redirect(url_for('admin_usuarios'))
 
 
@@ -6280,8 +6323,6 @@ def api_productos():
 @api_key_required
 def api_comprar():
     user = request.api_user
-    if not int((user['api_compras_habilitadas'] if 'api_compras_habilitadas' in user.keys() else 1) or 0):
-        return jsonify({'ok': False, 'error': 'Compras vía API no habilitadas para este usuario'}), 403
     data = request.get_json(silent=True) or {}
     merchant_ref = str(data.get('merchant_ref') or data.get('referencia') or '').strip()
     producto_id = data.get('producto_id', 0)
@@ -6312,6 +6353,15 @@ def api_comprar():
     if not prod:
         db.close()
         return jsonify({'ok': False, 'error': 'Producto no encontrado'}), 404
+
+    db.execute("CREATE TABLE IF NOT EXISTS usuario_api_productos_bloqueados (usuario_id INTEGER NOT NULL, producto_id INTEGER NOT NULL, fecha TEXT DEFAULT (datetime('now','localtime')), PRIMARY KEY (usuario_id, producto_id), FOREIGN KEY (usuario_id) REFERENCES usuarios(id), FOREIGN KEY (producto_id) REFERENCES productos(id))")
+    producto_bloqueado_api = db.execute(
+        "SELECT 1 FROM usuario_api_productos_bloqueados WHERE usuario_id = ? AND producto_id = ? LIMIT 1",
+        (user['id'], producto_id),
+    ).fetchone()
+    if producto_bloqueado_api:
+        db.close()
+        return jsonify({'ok': False, 'error': 'Producto no habilitado para compras vía API en este usuario'}), 403
 
     if int((prod['rechazo_automatico'] if 'rechazo_automatico' in prod.keys() else 0) or 0):
         db.close()

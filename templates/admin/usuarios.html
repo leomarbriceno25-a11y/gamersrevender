@@ -50,7 +50,7 @@
         <div class="table-responsive d-none-mobile">
             <table class="table" id="tablaUsuarios">
                 <thead>
-                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Suscripción</th><th>API compras</th><th>Estado</th><th>Registro</th><th>Acciones</th></tr>
+                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Suscripción</th><th>Bloqueos API</th><th>Estado</th><th>Registro</th><th>Acciones</th></tr>
                 </thead>
                 <tbody>
                     {% for u in usuarios %}
@@ -61,7 +61,7 @@
                         <td><span class="badge badge-{{ 'completado' if u.rol == 'admin' else 'procesando' }}">{{ u.rol|capitalize }}</span></td>
                         <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.4f'|format(u.saldo) }}</td>
                         <td>{% if u.suscripcion_hasta %}<span class="badge badge-completado"><i class="fas fa-crown"></i> {{ u.suscripcion_hasta }}</span>{% else %}<span style="color:var(--text-secondary);">-</span>{% endif %}</td>
-                        <td>{% if u.api_compras_habilitadas|default(1) %}<span class="badge badge-completado"><i class="fas fa-plug"></i> Permitida</span>{% else %}<span class="badge badge-cancelado"><i class="fas fa-ban"></i> Bloqueada</span>{% endif %}</td>
+                        <td><span class="badge badge-procesando"><i class="fas fa-list-check"></i> {{ (api_productos_bloqueados.get(u.id, []) if api_productos_bloqueados is defined else [])|length }} productos</span></td>
                         <td>{% if u.activo %}<span class="badge badge-completado">Activo</span>{% else %}<span class="badge badge-cancelado">Pendiente</span>{% endif %}</td>
                         <td>{{ u.fecha_registro or '-' }}</td>
                         <td>
@@ -76,13 +76,7 @@
                                     <button type="submit" class="btn btn-sm btn-primary" title="Aprobar" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')"><i class="fas fa-check"></i></button>
                                     {% endif %}
                                 </form>
-                                <form method="POST" action="{{ url_for('admin_toggle_api_compras_usuario', id=u.id) }}" style="display:inline;">
-                                    {% if u.api_compras_habilitadas|default(1) %}
-                                    <button type="submit" class="btn btn-sm" style="background:#7f1d1d;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Bloquear compras vía API" onclick="return confirm('¿Bloquear compras vía API a {{ u.nombre }}? Dentro de la web podrá seguir comprando.')"><i class="fas fa-plug-circle-xmark"></i></button>
-                                    {% else %}
-                                    <button type="submit" class="btn btn-sm" style="background:#10b981;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Permitir compras vía API" onclick="return confirm('¿Permitir compras vía API a {{ u.nombre }}?')"><i class="fas fa-plug-circle-check"></i></button>
-                                    {% endif %}
-                                </form>
+                                <button type="button" class="btn btn-sm" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Bloquear productos específicos vía API" onclick='abrirProductosApi({{ u.id }}, {{ u.nombre|tojson }}, {{ (api_productos_bloqueados.get(u.id, []) if api_productos_bloqueados is defined else [])|tojson }})'><i class="fas fa-list-check"></i></button>
                                 {% if u.suscripcion_hasta %}
                                 <form method="POST" action="{{ url_for('admin_quitar_suscripcion', id=u.id) }}" style="display:inline;">
                                     <button type="submit" class="btn btn-sm" style="background:#92400e;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Quitar suscripción" onclick="return confirm('¿Quitar la suscripción de {{ u.nombre }}?')"><i class="fas fa-crown"></i></button>
@@ -117,7 +111,7 @@
                     {% if u.suscripcion_hasta %}<i class="fas fa-crown" style="color:#f59e0b;"></i> Suscripción hasta {{ u.suscripcion_hasta }}{% else %}<i class="fas fa-crown"></i> Sin suscripción{% endif %}
                 </div>
                 <div style="font-size:0.78rem;color:var(--text-secondary);margin-top:0.35rem;">
-                    {% if u.api_compras_habilitadas|default(1) %}<i class="fas fa-plug" style="color:#10b981;"></i> API compras permitida{% else %}<i class="fas fa-ban" style="color:#ef4444;"></i> API compras bloqueada{% endif %}
+                    <i class="fas fa-list-check" style="color:#3b82f6;"></i> {{ (api_productos_bloqueados.get(u.id, []) if api_productos_bloqueados is defined else [])|length }} productos bloqueados por API
                 </div>
                 <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.5rem;">
                     <button class="btn btn-sm btn-secondary" style="flex:1;font-size:0.75rem;" onclick="editarUsuario({{ u.id }}, '{{ u.nombre|e }}', '{{ u.email|e }}', '{{ u.telefono|e }}')"><i class="fas fa-edit"></i> Editar</button>
@@ -130,13 +124,7 @@
                         <button type="submit" class="btn btn-sm btn-primary" style="width:100%;font-size:0.75rem;" onclick="return confirm('¿Aprobar?')"><i class="fas fa-check"></i> Aprobar</button>
                         {% endif %}
                     </form>
-                    <form method="POST" action="{{ url_for('admin_toggle_api_compras_usuario', id=u.id) }}" style="flex:1;">
-                        {% if u.api_compras_habilitadas|default(1) %}
-                        <button type="submit" class="btn btn-sm" style="width:100%;background:#7f1d1d;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick="return confirm('¿Bloquear API?')"><i class="fas fa-plug-circle-xmark"></i> Bloquear API</button>
-                        {% else %}
-                        <button type="submit" class="btn btn-sm" style="width:100%;background:#10b981;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick="return confirm('¿Permitir API?')"><i class="fas fa-plug-circle-check"></i> Permitir API</button>
-                        {% endif %}
-                    </form>
+                    <button type="button" class="btn btn-sm" style="flex:1;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick='abrirProductosApi({{ u.id }}, {{ u.nombre|tojson }}, {{ (api_productos_bloqueados.get(u.id, []) if api_productos_bloqueados is defined else [])|tojson }})'><i class="fas fa-list-check"></i> Productos API</button>
                     {% if u.suscripcion_hasta %}
                     <form method="POST" action="{{ url_for('admin_quitar_suscripcion', id=u.id) }}" style="flex:1;">
                         <button type="submit" class="btn btn-sm" style="width:100%;background:#92400e;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick="return confirm('¿Quitar suscripción?')"><i class="fas fa-crown"></i> Quitar plan</button>
@@ -149,6 +137,34 @@
                 </div>
             </div>
             {% endfor %}
+        </div>
+
+        <div id="modal-api-productos" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.7);z-index:9999;justify-content:center;align-items:center;" onclick="if(event.target===this)this.style.display='none'">
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:1.5rem;max-width:650px;width:92%;max-height:85vh;overflow-y:auto;">
+                <h3 style="margin:0 0 0.5rem;"><i class="fas fa-list-check"></i> Productos bloqueados por API</h3>
+                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:1rem;">Usuario: <strong id="api-prod-user-name"></strong>. Marca los productos que NO podrá comprar por API. Dentro de la web podrá seguir comprando.</p>
+                <form method="POST" id="form-api-productos">
+                    <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="marcarProductosApi(true)"><i class="fas fa-check-square"></i> Marcar todos</button>
+                        <button type="button" class="btn btn-sm btn-secondary" onclick="marcarProductosApi(false)"><i class="fas fa-square"></i> Limpiar</button>
+                    </div>
+                    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:0.5rem;">
+                        {% for p in productos_api|default([]) %}
+                        <label class="checkbox-label" style="background:var(--bg-primary);border:1px solid var(--border);border-radius:8px;padding:0.55rem;align-items:flex-start;">
+                            <input type="checkbox" class="api-prod-check" name="productos_bloqueados" value="{{ p.id }}">
+                            <span><strong>#{{ p.id }}</strong> {{ p.nombre }}<br><small style="color:var(--text-secondary);">{{ p.categoria_nombre or '-' }}</small></span>
+                        </label>
+                        {% endfor %}
+                    </div>
+                    {% if productos_api|default([])|length == 0 %}
+                    <p style="color:var(--text-secondary);">No hay productos API activos.</p>
+                    {% endif %}
+                    <div style="display:flex;gap:0.5rem;margin-top:1rem;">
+                        <button type="submit" class="btn btn-primary" style="flex:1;"><i class="fas fa-save"></i> Guardar bloqueos</button>
+                        <button type="button" class="btn btn-secondary" onclick="document.getElementById('modal-api-productos').style.display='none'"><i class="fas fa-times"></i> Cancelar</button>
+                    </div>
+                </form>
+            </div>
         </div>
 
         <!-- Modal editar usuario -->
@@ -206,6 +222,18 @@
 
 {% block scripts %}
 <script>
+function abrirProductosApi(id, nombre, bloqueados) {
+    bloqueados = Array.isArray(bloqueados) ? bloqueados.map(function(x) { return String(x); }) : [];
+    document.getElementById('api-prod-user-name').textContent = nombre;
+    document.getElementById('form-api-productos').action = '/admin/usuario/' + id + '/api-productos';
+    document.querySelectorAll('.api-prod-check').forEach(function(chk) {
+        chk.checked = bloqueados.indexOf(String(chk.value)) !== -1;
+    });
+    document.getElementById('modal-api-productos').style.display = 'flex';
+}
+function marcarProductosApi(valor) {
+    document.querySelectorAll('.api-prod-check').forEach(function(chk) { chk.checked = !!valor; });
+}
 function editarUsuario(id, nombre, email, telefono) {
     document.getElementById('form-editar-usuario').action = '/admin/usuario/' + id + '/editar';
     document.getElementById('edit-nombre').value = nombre;

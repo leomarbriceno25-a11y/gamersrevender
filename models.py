@@ -189,6 +189,15 @@ def init_db():
             FOREIGN KEY (admin_id) REFERENCES usuarios(id)
         );
 
+        CREATE TABLE IF NOT EXISTS usuario_api_productos_bloqueados (
+            usuario_id INTEGER NOT NULL,
+            producto_id INTEGER NOT NULL,
+            fecha TEXT DEFAULT (datetime('now','localtime')),
+            PRIMARY KEY (usuario_id, producto_id),
+            FOREIGN KEY (usuario_id) REFERENCES usuarios(id),
+            FOREIGN KEY (producto_id) REFERENCES productos(id)
+        );
+
         CREATE TABLE IF NOT EXISTS pines (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             producto_id INTEGER NOT NULL,
@@ -231,6 +240,7 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_pedidos_usuario_fecha ON pedidos(usuario_id, fecha_pedido)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_pedidos_estado_fecha ON pedidos(estado, fecha_pedido)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_productos_categoria_activo ON productos(categoria_id, activo)")
+    db.execute("CREATE TABLE IF NOT EXISTS usuario_api_productos_bloqueados (usuario_id INTEGER NOT NULL, producto_id INTEGER NOT NULL, fecha TEXT DEFAULT (datetime('now','localtime')), PRIMARY KEY (usuario_id, producto_id), FOREIGN KEY (usuario_id) REFERENCES usuarios(id), FOREIGN KEY (producto_id) REFERENCES productos(id))")
     db.execute("CREATE INDEX IF NOT EXISTS idx_productos_categoria_orden_precio ON productos(categoria_id, orden, precio)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_categorias_activo_orden ON categorias(activo, orden)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_pines_producto_estado_fecha ON pines(producto_id, estado, fecha_agregado)")
