@@ -4709,6 +4709,26 @@ def admin_toggle_usuario(id):
     return redirect(url_for('admin_usuarios'))
 
 
+@app.route('/admin/usuario/<int:id>/api-compras/toggle', methods=['POST'])
+@admin_required
+def admin_toggle_api_compras_usuario(id):
+    db = get_db()
+    user = db.execute("SELECT id, nombre, rol, api_compras_habilitadas FROM usuarios WHERE id = ?", (id,)).fetchone()
+    if not user or user['rol'] == 'admin':
+        db.close()
+        flash('No se puede modificar este permiso.', 'error')
+        return redirect(url_for('admin_usuarios'))
+    nuevo_estado = 0 if int((user['api_compras_habilitadas'] if 'api_compras_habilitadas' in user.keys() else 1) or 0) else 1
+    db.execute("UPDATE usuarios SET api_compras_habilitadas = ? WHERE id = ?", (nuevo_estado, id))
+    db.commit()
+    db.close()
+    if nuevo_estado:
+        flash(f'Compras vía API habilitadas para {user["nombre"]}.', 'success')
+    else:
+        flash(f'Compras vía API deshabilitadas para {user["nombre"]}.', 'success')
+    return redirect(url_for('admin_usuarios'))
+
+
 @app.route('/admin/usuario/<int:id>/editar', methods=['POST'])
 @admin_required
 def admin_editar_usuario(id):
@@ -6260,6 +6280,8 @@ def api_productos():
 @api_key_required
 def api_comprar():
     user = request.api_user
+    if not int((user['api_compras_habilitadas'] if 'api_compras_habilitadas' in user.keys() else 1) or 0):
+        return jsonify({'ok': False, 'error': 'Compras vía API no habilitadas para este usuario'}), 403
     data = request.get_json(silent=True) or {}
     merchant_ref = str(data.get('merchant_ref') or data.get('referencia') or '').strip()
     producto_id = data.get('producto_id', 0)

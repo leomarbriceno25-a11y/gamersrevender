@@ -97,6 +97,7 @@ def init_db():
             rol TEXT DEFAULT 'revendedor' CHECK(rol IN ('admin', 'revendedor')),
             activo INTEGER DEFAULT 1,
             api_key TEXT UNIQUE,
+            api_compras_habilitadas INTEGER DEFAULT 1,
             suscripcion_hasta TEXT DEFAULT '',
             autorenovar_suscripcion INTEGER DEFAULT 0,
             fecha_registro TEXT DEFAULT (datetime('now','localtime')),
@@ -250,6 +251,11 @@ def init_db():
     except Exception:
         db.execute("ALTER TABLE usuarios ADD COLUMN autorenovar_suscripcion INTEGER DEFAULT 0")
     db.execute("UPDATE usuarios SET autorenovar_suscripcion = 0 WHERE autorenovar_suscripcion IS NULL")
+    try:
+        db.execute("SELECT api_compras_habilitadas FROM usuarios LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE usuarios ADD COLUMN api_compras_habilitadas INTEGER DEFAULT 1")
+    db.execute("UPDATE usuarios SET api_compras_habilitadas = 1 WHERE api_compras_habilitadas IS NULL")
     try:
         db.execute("SELECT api_key_hash FROM usuarios LIMIT 1")
     except Exception:
