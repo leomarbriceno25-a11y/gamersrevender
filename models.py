@@ -896,6 +896,10 @@ def create_user(nombre, email, password, telefono=''):
         user = db.execute("SELECT * FROM usuarios WHERE email = ?", (email,)).fetchone()
         # Crear cartera
         db.execute("INSERT INTO carteras (usuario_id, saldo) VALUES (?, 0.0)", (user['id'],))
+        categoria = db.execute("SELECT id FROM categorias WHERE lower(nombre) = lower(?) LIMIT 1", ('Pases De Nivel',)).fetchone()
+        if categoria:
+            db.execute("CREATE TABLE IF NOT EXISTS usuario_api_categorias_bloqueadas (usuario_id INTEGER NOT NULL, categoria_id INTEGER NOT NULL, fecha TEXT DEFAULT (datetime('now','localtime')), PRIMARY KEY (usuario_id, categoria_id), FOREIGN KEY (usuario_id) REFERENCES usuarios(id), FOREIGN KEY (categoria_id) REFERENCES categorias(id))")
+            db.execute("INSERT OR IGNORE INTO usuario_api_categorias_bloqueadas (usuario_id, categoria_id) VALUES (?, ?)", (user['id'], int(categoria['id'])))
         db.commit()
         db.close()
         return user
