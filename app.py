@@ -1377,7 +1377,12 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
                 f"https://api.isan.eu.org/nickname/ml?id={player_id}&zone={zone_id}",
                 timeout=10
             )
-            data = r.json()
+            if r.status_code != 200:
+                return {'ok': False, 'error': 'Verificación de Mobile Legends no disponible temporalmente. Intenta más tarde.'}
+            try:
+                data = r.json()
+            except Exception:
+                return {'ok': False, 'error': 'Verificación de Mobile Legends no disponible temporalmente. Intenta más tarde.'}
             if data.get('success') and data.get('name'):
                 return {'ok': True, 'nombre': data['name']}
             return {'ok': False, 'error': 'ID o Zone ID no encontrado'}
