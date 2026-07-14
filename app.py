@@ -2931,7 +2931,7 @@ def comprar():
     id_juego = request.form.get('id_juego', '').strip()
 
     db = get_db()
-    prod = db.execute("SELECT p.*, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
+    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
     if not prod:
         flash('Producto no encontrado', 'error')
         db.close()
@@ -3101,7 +3101,7 @@ def comprar():
 
     # Si el producto usa Blood Strike API
     if usa_bloodstrike:
-        proveedor_recarga = 'Free Fire Promo Bonus' if bloodstrike_package_id.startswith('pinxtore_') else ('Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike')
+        proveedor_recarga = str((prod['categoria_nombre'] if 'categoria_nombre' in prod.keys() else '') or '').strip() or ('Free Fire Promo Bonus' if bloodstrike_package_id.startswith('pinxtore_') else ('Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike'))
         referencia_recarga = f"BS{pedido_id}" if proveedor_recarga == 'Blood Strike' else f"FF{pedido_id}"
         db.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (referencia_recarga, pedido_id))
         db.commit()
@@ -6308,7 +6308,7 @@ def api_productos():
         elif usa_api_hype:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador en Free Fire', 'tipo': 'string', 'opciones': []}]
         elif usa_bloodstrike:
-            juego_api = 'Free Fire Promo Bonus' if bloodstrike_package_id.startswith('pinxtore_') else ('Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike')
+            juego_api = str((p['categoria_nombre'] if 'categoria_nombre' in p.keys() else '') or (p['categoria'] if 'categoria' in p.keys() else '') or '').strip() or ('Free Fire Promo Bonus' if bloodstrike_package_id.startswith('pinxtore_') else ('Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike'))
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador en {juego_api}', 'tipo': 'string', 'opciones': []}]
         elif usa_api_razer:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador para API Razer (paquete {razer_paquete})', 'tipo': 'string', 'opciones': []}]
@@ -6365,7 +6365,7 @@ def api_comprar():
             }), 409
 
 
-    prod = db.execute("SELECT p.*, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
+    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
     if not prod:
         db.close()
         return jsonify({'ok': False, 'error': 'Producto no encontrado'}), 404
@@ -6560,7 +6560,7 @@ def api_comprar():
 
     # Blood Strike API
     if usa_bloodstrike:
-        proveedor_recarga = 'Free Fire Promo Bonus' if bloodstrike_package_id.startswith('pinxtore_') else ('Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike')
+        proveedor_recarga = str((prod['categoria_nombre'] if 'categoria_nombre' in prod.keys() else '') or '').strip() or ('Free Fire Promo Bonus' if bloodstrike_package_id.startswith('pinxtore_') else ('Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike'))
         referencia_recarga = f"BS{pedido_id}" if proveedor_recarga == 'Blood Strike' else f"FF{pedido_id}"
         db.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (referencia_recarga, pedido_id))
         db.commit()
