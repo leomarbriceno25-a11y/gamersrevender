@@ -1464,7 +1464,7 @@ def _pincentral_restock_set_cooldown(producto_id, segundos):
         PINCENTRAL_RESTOCK_PRODUCT_COOLDOWN_UNTIL[int(producto_id or 0)] = until_ts
 
 
-def _insertar_pin_disponible(db, producto_id, pin_code):
+def _insertar_pin_disponible(db, producto_id, pin_code, lote_id=''):
     raw = str(pin_code or '').strip()
     if not raw:
         return False, 'vacio'
@@ -1475,8 +1475,8 @@ def _insertar_pin_disponible(db, producto_id, pin_code):
     if existe:
         return False, 'duplicado'
     db.execute(
-        "INSERT INTO pines (producto_id, pin, pin_hash, estado) VALUES (?, ?, ?, 'disponible')",
-        (int(producto_id or 0), encrypt_pin(raw), h),
+        "INSERT INTO pines (producto_id, pin, pin_hash, estado, lote_id) VALUES (?, ?, ?, 'disponible', ?)",
+        (int(producto_id or 0), encrypt_pin(raw), h, str(lote_id or '')),
     )
     return True, 'ok'
 
@@ -5886,10 +5886,11 @@ def admin_almacen():
             pines_text = request.form.get('pines', '').strip()
             if producto_id > 0 and pines_text:
                 pines_list = [p.strip() for p in pines_text.split('\n') if p.strip()]
+                lote_id = f"MANUAL-{datetime.now().strftime('%Y%m%d%H%M%S')}-{producto_id}"
                 count = 0
                 duplicados = 0
                 for pin in pines_list:
-                    ok_insert, reason = _insertar_pin_disponible(db, producto_id, pin)
+                    ok_insert, reason = _insertar_pin_disponible(db, producto_id, pin, lote_id)
                     if ok_insert:
                         count += 1
                     elif reason == 'duplicado':
@@ -5913,6 +5914,30 @@ def admin_almacen():
                 db.execute("DELETE FROM pines WHERE producto_id = ? AND estado = 'disponible'", (producto_id,))
                 db.commit()
                 flash('PINes disponibles eliminados', 'success')
+        elif accion == 'revertir_ultimo_lote':
+            producto_id = int(request.form.get('producto_id', 0))
+            if producto_id > 0:
+                ultimo = db.execute(
+                    """
+                    SELECT lote_id, fecha_agregado, COUNT(*) as total
+                    FROM pines
+                    WHERE producto_id = ? AND estado = 'disponible'
+                    GROUP BY COALESCE(NULLIF(lote_id, ''), fecha_agregado)
+                    ORDER BY MAX(id) DESC
+                    LIMIT 1
+                    """,
+                    (producto_id,),
+                ).fetchone()
+                if ultimo:
+                    lote_id = str((ultimo['lote_id'] if 'lote_id' in ultimo.keys() else '') or '').strip()
+                    if lote_id:
+                        cur = db.execute("DELETE FROM pines WHERE producto_id = ? AND estado = 'disponible' AND lote_id = ?", (producto_id, lote_id))
+                    else:
+                        cur = db.execute("DELETE FROM pines WHERE producto_id = ? AND estado = 'disponible' AND fecha_agregado = ? AND IFNULL(lote_id, '') = ''", (producto_id, ultimo['fecha_agregado']))
+                    db.commit()
+                    flash(f'Último lote revertido: {cur.rowcount} PIN(es) disponibles eliminados.', 'success')
+                else:
+                    flash('No hay lote disponible para revertir en este producto.', 'error')
         elif accion == 'stock_minimo':
             producto_id = int(request.form.get('producto_id', 0))
             stock_min = int(request.form.get('stock_minimo', 0))

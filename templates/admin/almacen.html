@@ -172,7 +172,14 @@
         </div>
 
         {% if filtro and productos_api %}
-        <div style="margin-bottom: 1rem;">
+        <div style="margin-bottom: 1rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
+            <form method="POST" style="display:inline;">
+                <input type="hidden" name="accion" value="revertir_ultimo_lote">
+                <input type="hidden" name="producto_id" value="{{ filtro }}">
+                <button type="submit" class="btn btn-sm" style="background:#f59e0b;color:#111827;border:none;" onclick="return confirm('¿Revertir el ÚLTIMO lote agregado disponible de este producto? Solo elimina PINes disponibles, no usados.')">
+                    <i class="fas fa-rotate-left"></i> Revertir último lote
+                </button>
+            </form>
             <form method="POST" style="display:inline;">
                 <input type="hidden" name="accion" value="eliminar_todos">
                 <input type="hidden" name="producto_id" value="{{ filtro }}">

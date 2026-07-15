@@ -218,6 +218,7 @@ def init_db():
             nombre_juego TEXT,
             fecha_agregado TEXT DEFAULT (datetime('now','localtime')),
             fecha_usado TEXT,
+            lote_id TEXT DEFAULT '',
             FOREIGN KEY (producto_id) REFERENCES productos(id),
             FOREIGN KEY (usado_por) REFERENCES usuarios(id)
         );
@@ -254,6 +255,11 @@ def init_db():
     db.execute("CREATE INDEX IF NOT EXISTS idx_productos_categoria_orden_precio ON productos(categoria_id, orden, precio)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_categorias_activo_orden ON categorias(activo, orden)")
     db.execute("CREATE INDEX IF NOT EXISTS idx_pines_producto_estado_fecha ON pines(producto_id, estado, fecha_agregado)")
+    try:
+        db.execute("SELECT lote_id FROM pines LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE pines ADD COLUMN lote_id TEXT DEFAULT ''")
+    db.execute("CREATE INDEX IF NOT EXISTS idx_pines_lote_producto_estado ON pines(lote_id, producto_id, estado)")
     try:
         db.execute("SELECT recarga_manual FROM productos LIMIT 1")
     except Exception:
