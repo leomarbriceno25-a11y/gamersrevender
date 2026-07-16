@@ -98,6 +98,14 @@
                         <input type="text" name="{{ field.name }}" {% if field.name == 'id_juego' %}id="input-id-juego"{% elif field.name == 'input2' %}id="input-zone-id"{% endif %} placeholder="{{ field.label }}" required>
                     </div>
                     {% endfor %}
+                    {% if producto.verificar_nombre %}
+                    <div id="verificacion-nombre" style="margin-bottom:1rem;">
+                        <button type="button" class="btn btn-secondary btn-block" id="btn-verificar" onclick="verificarNombre()">
+                            <i class="fas fa-user-check"></i> Verificar nombre del jugador
+                        </button>
+                        <div id="resultado-verificacion" style="display:none; margin-top:0.5rem; padding:0.75rem; border-radius:8px;"></div>
+                    </div>
+                    {% endif %}
                     {% elif producto.categoria_tipo != 'giftcards' or producto.bloodstrike_package_id %}
                     <div class="form-group">
                         <label><i class="fas fa-gamepad"></i> ID del Juego *</label>
