@@ -62,7 +62,7 @@
         <div class="table-responsive">
             <table class="table" id="tablaPedidos">
                 <thead>
-                    <tr><th>#</th><th>Usuario</th><th>Producto</th><th>Cant.</th><th>Total</th><th>ID Juego</th><th>PIN Usado</th><th>Código</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr>
+                    <tr><th>#</th><th>Usuario</th><th>Producto</th><th>Cant.</th><th>Total</th><th>ID Juego</th><th>Referencia</th><th>PIN Usado</th><th>Código</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr>
                 </thead>
                 <tbody>
                     {% for p in pedidos %}
@@ -74,6 +74,12 @@
                         <td>x{{ p.cantidad }}</td>
                         <td>${{ '%.4f'|format(p.total) }}</td>
                         <td>{{ p.id_juego or '-' }}</td>
+                        <td style="max-width:160px;">
+                            {% if p.referencia_externa %}
+                            <code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;word-break:break-all;display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ p.referencia_externa }}">{{ p.referencia_externa[:18] }}{% if p.referencia_externa|length > 18 %}…{% endif %}</code>
+                            <button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem;margin-top:0.2rem;" data-referencia="{{ p.referencia_externa|e }}" onclick="copiarReferenciaDesdeBoton(this)"><i class="fas fa-copy"></i> Copiar</button>
+                            {% else %}-{% endif %}
+                        </td>
                         <td style="max-width:150px;">
                             {% if pines_por_pedido.get(p.id) %}
                             {% set pines_ped = pines_por_pedido[p.id] %}
@@ -167,6 +173,14 @@
             var codigo = String(btn.getAttribute('data-codigo') || '');
             navigator.clipboard.writeText(codigo);
             btn.innerHTML = '✓ Copiado';
+            setTimeout(function () {
+                btn.innerHTML = '<i class="fas fa-copy"></i> Copiar';
+            }, 1500);
+        }
+        function copiarReferenciaDesdeBoton(btn) {
+            var referencia = String(btn.getAttribute('data-referencia') || '');
+            navigator.clipboard.writeText(referencia);
+            btn.innerHTML = '✓ Copiada';
             setTimeout(function () {
                 btn.innerHTML = '<i class="fas fa-copy"></i> Copiar';
             }, 1500);
