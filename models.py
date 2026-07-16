@@ -135,6 +135,7 @@ def init_db():
             usa_pincentral INTEGER DEFAULT 0,
             pincentral_product_code TEXT DEFAULT '',
             pincentral_entrega_directa INTEGER DEFAULT 0,
+            pincentral_recarga_directa INTEGER DEFAULT 0,
             gamepoint_product_id INTEGER DEFAULT 0,
             gamepoint_package_id INTEGER DEFAULT 0,
             gamepoint_fields TEXT DEFAULT '',
@@ -340,6 +341,10 @@ def init_db():
         db.execute("SELECT pincentral_entrega_directa FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN pincentral_entrega_directa INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT pincentral_recarga_directa FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN pincentral_recarga_directa INTEGER DEFAULT 0")
     try:
         db.execute("SELECT moogold_category_id FROM productos LIMIT 1")
     except Exception:

@@ -112,3 +112,42 @@ def capturar_pins(transaction_id):
 def consultar_pedido_pin(transaction_id):
     tx_id = str(transaction_id or '').strip()
     return _request('GET', f"/api/pins/{tx_id}")
+
+
+def validar_recarga(product_code, service_user_id, additional_data='', additional_data_2='', client_first_name='', client_last_name='', client_country='VE'):
+    payload = {
+        'product_code': str(product_code).strip(),
+        'service_user_id': str(service_user_id).strip(),
+    }
+    if additional_data:
+        payload['additional_data'] = str(additional_data).strip()
+    if additional_data_2:
+        payload['additional_data_2'] = str(additional_data_2).strip()
+    if client_first_name:
+        payload['client_first_name'] = str(client_first_name).strip()
+    if client_last_name:
+        payload['client_last_name'] = str(client_last_name).strip()
+    if client_country:
+        payload['client_country'] = str(client_country).strip()[:2].upper()
+    return _request('POST', '/api/recharges/validate', payload)
+
+
+def crear_recarga(product_code, service_user_id, order_id, additional_data='', additional_data_2='', client_email='', client_first_name='', client_last_name='', client_country='VE'):
+    payload = {
+        'order_id': str(order_id).strip(),
+        'product_code': str(product_code).strip(),
+        'service_user_id': str(service_user_id).strip(),
+    }
+    if additional_data:
+        payload['additional_data'] = str(additional_data).strip()
+    if additional_data_2:
+        payload['additional_data_2'] = str(additional_data_2).strip()
+    if client_email:
+        payload['client_email'] = str(client_email).strip()
+    if client_first_name:
+        payload['client_first_name'] = str(client_first_name).strip()
+    if client_last_name:
+        payload['client_last_name'] = str(client_last_name).strip()
+    if client_country:
+        payload['client_country'] = str(client_country).strip()[:2].upper()
+    return _request('POST', '/api/recharges', payload)
