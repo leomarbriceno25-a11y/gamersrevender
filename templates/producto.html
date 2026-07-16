@@ -91,6 +91,13 @@
                         <div id="resultado-verificacion" style="display:none; margin-top:0.5rem; padding:0.75rem; border-radius:8px;"></div>
                     </div>
                     {% endif %}
+                    {% elif producto.pincentral_recarga_directa and producto.pincentral_fields_parsed %}
+                    {% for field in producto.pincentral_fields_parsed %}
+                    <div class="form-group">
+                        <label><i class="fas fa-gamepad"></i> {{ field.label }} *</label>
+                        <input type="text" name="{{ field.name }}" {% if field.name == 'id_juego' %}id="input-id-juego"{% elif field.name == 'input2' %}id="input-zone-id"{% endif %} placeholder="{{ field.label }}" required>
+                    </div>
+                    {% endfor %}
                     {% elif producto.categoria_tipo != 'giftcards' or producto.bloodstrike_package_id %}
                     <div class="form-group">
                         <label><i class="fas fa-gamepad"></i> ID del Juego *</label>

@@ -113,7 +113,7 @@
             <div class="table-responsive" id="pc-tabla" style="display:none;">
                 <table class="table">
                     <thead>
-                        <tr><th>Código</th><th>Producto</th><th>Precio</th><th>Stock API</th><th>Acción</th></tr>
+                        <tr><th>Código</th><th>Producto</th><th>Tipo</th><th>Precio</th><th>Inputs a enviar</th><th>Stock API</th><th>Acción</th></tr>
                     </thead>
                     <tbody id="pc-body"></tbody>
                 </table>
@@ -156,6 +156,26 @@ function obtenerPrecio(p) {
     return textoSeguro(precio);
 }
 
+function obtenerTipo(p) {
+    return textoSeguro(p.type || p.tipo || '').trim().toLowerCase();
+}
+
+function badgeTipo(tipo) {
+    if (tipo === 'recharge') return '<span class="badge badge-completado"><i class="fas fa-bolt"></i> Recarga directa</span>';
+    if (tipo === 'pin') return '<span class="badge badge-procesando"><i class="fas fa-key"></i> PIN / Código</span>';
+    return '<span class="badge badge-pendiente">No indicado</span>';
+}
+
+function inputsTipo(tipo) {
+    if (tipo === 'recharge') {
+        return '<code>product_code</code><br><code>service_user_id</code> = ID jugador<br><code>additional_data</code> = input2/servidor si aplica<br><code>additional_data_2</code> = extra si aplica';
+    }
+    if (tipo === 'pin') {
+        return '<code>product</code><br><code>quantity</code><br><code>order_id</code>';
+    }
+    return '-';
+}
+
 function cargarProductos() {
     document.getElementById('pc-loading').style.display = 'block';
     document.getElementById('pc-tabla').style.display = 'none';
@@ -168,7 +188,7 @@ function cargarProductos() {
 
             if (!lista.length) {
                 var err = (data.productos && data.productos.error) ? data.productos.error : 'Sin datos';
-                html = '<tr><td colspan="5" style="text-align:center; color:#ef4444;">' + err + '</td></tr>';
+                html = '<tr><td colspan="7" style="text-align:center; color:#ef4444;">' + err + '</td></tr>';
                 document.getElementById('pc-body').innerHTML = html;
                 document.getElementById('pc-loading').style.display = 'none';
                 document.getElementById('pc-tabla').style.display = 'block';
@@ -180,13 +200,18 @@ function cargarProductos() {
                 var code = obtenerCodigo(p);
                 var nombre = obtenerNombre(p);
                 var precio = obtenerPrecio(p);
+                var tipo = obtenerTipo(p);
                 html += '<tr>';
                 html += '<td><code>' + (code || '-') + '</code></td>';
                 html += '<td>' + nombre + '</td>';
+                html += '<td>' + badgeTipo(tipo) + '</td>';
                 html += '<td>' + (precio || '-') + '</td>';
+                html += '<td style="font-size:0.78rem;line-height:1.45;">' + inputsTipo(tipo) + '</td>';
                 html += '<td id="stock-' + i + '">-</td>';
-                if (code) {
+                if (code && tipo !== 'recharge') {
                     html += '<td><button class="btn btn-sm btn-secondary" onclick="consultarStock(' + i + ', \'' + code.replace(/'/g, "\\'") + '\')"><i class="fas fa-search"></i> Ver stock</button></td>';
+                } else if (tipo === 'recharge') {
+                    html += '<td><span style="color:#22c55e;font-size:0.8rem;"><i class="fas fa-check"></i> Sin stock PIN</span></td>';
                 } else {
                     html += '<td><span style="color:var(--text-secondary);">Sin código</span></td>';
                 }
