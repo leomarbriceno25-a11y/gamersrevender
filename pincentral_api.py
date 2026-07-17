@@ -135,8 +135,8 @@ def validar_recarga(product_code, service_user_id, additional_data='', additiona
 def crear_recarga(product_code, service_user_id, order_id, additional_data='', additional_data_2='', client_email='', client_first_name='', client_last_name='', client_country='VE'):
     payload = {
         'order_id': str(order_id).strip(),
-        'product_code': str(product_code).strip(),
         'service_user_id': str(service_user_id).strip(),
+        'product_code': str(product_code).strip(),
     }
     if additional_data:
         payload['additional_data'] = str(additional_data).strip()
