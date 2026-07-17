@@ -3152,38 +3152,57 @@ def comprar():
         nombre_partes = str((user['nombre'] if user else '') or '').split(' ', 1)
         first_name = nombre_partes[0] if nombre_partes else ''
         last_name = nombre_partes[1] if len(nombre_partes) > 1 else ''
-        order_id = f"PCR{pedido_id}"
+        recargas_total = max(1, min(int((prod['pincentral_recarga_cantidad'] if 'pincentral_recarga_cantidad' in prod.keys() else 1) or 1), 20))
         try:
-            resultado_pc = crear_recarga(
-                product_code=product_code,
-                service_user_id=id_juego,
-                order_id=order_id,
-                additional_data=request.form.get('input2', '').strip(),
-                additional_data_2=request.form.get('additional_data_2', '').strip(),
-            )
-            data_pc = resultado_pc.get('data', {}) if isinstance(resultado_pc.get('data', {}), dict) else {}
-            estado_pc = _pincentral_estado_recarga(data_pc)
-            ref = str(data_pc.get('id') or data_pc.get('receipt') or '').strip()
-            receipt = str(data_pc.get('receipt') or '').strip()
+            refs = []
+            receipts = []
+            errores = []
+            pendientes = 0
+            for idx in range(1, recargas_total + 1):
+                order_id = f"PCR{pedido_id}-{idx}"
+                resultado_pc = crear_recarga(
+                    product_code=product_code,
+                    service_user_id=id_juego,
+                    order_id=order_id,
+                    additional_data=request.form.get('input2', '').strip(),
+                    additional_data_2=request.form.get('additional_data_2', '').strip(),
+                )
+                data_pc = resultado_pc.get('data', {}) if isinstance(resultado_pc.get('data', {}), dict) else {}
+                estado_pc = _pincentral_estado_recarga(data_pc)
+                ref = str(data_pc.get('id') or data_pc.get('receipt') or '').strip()
+                receipt = str(data_pc.get('receipt') or '').strip()
+                if ref:
+                    refs.append(f"{idx}/{recargas_total}: {ref}")
+                if receipt:
+                    receipts.append(f"{idx}/{recargas_total}: {receipt}")
+                if resultado_pc.get('ok') and estado_pc == 'completed':
+                    continue
+                if resultado_pc.get('ok') and estado_pc in ('created', 'retry'):
+                    pendientes += 1
+                    continue
+                error_msg = resultado_pc.get('error') or data_pc.get('message') or f"Estado: {data_pc.get('status', 'desconocido')}"
+                errores.append(f"{idx}/{recargas_total}: {error_msg}")
+                break
+            ref_text = '\n'.join(refs)
+            receipt_text = '\n'.join(receipts) or id_juego
             db2 = get_db()
-            if resultado_pc.get('ok') and estado_pc == 'completed':
-                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt or id_juego, ref, pedido_id))
+            if not errores and pendientes == 0:
+                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
                 db2.commit()
                 db2.close()
-                flash(f'Pedido #{pedido_id} completado por PinCentral (Ref: {ref or "sin referencia"}).', 'success')
+                flash(f'Pedido #{pedido_id} completado por PinCentral ({recargas_total} recarga(s)).', 'success')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
-            if resultado_pc.get('ok') and estado_pc in ('created', 'retry'):
-                db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+            if refs:
+                db2.execute("UPDATE pedidos SET estado = 'procesando', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
                 db2.commit()
                 db2.close()
-                flash(f'Pedido #{pedido_id} enviado a PinCentral. Estado: {estado_pc}.', 'warning')
+                flash(f'Pedido #{pedido_id} quedó procesando/parcial en PinCentral. Referencias guardadas.', 'warning')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
-            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref_text, pedido_id))
             db2.commit()
             db2.close()
             recargar_saldo(user_id, total, f"Reembolso: Error recarga PinCentral pedido #{pedido_id}")
-            error_msg = resultado_pc.get('error') or data_pc.get('message') or f"Estado: {data_pc.get('status', 'desconocido')}"
-            flash(f'PinCentral rechazó la recarga: {error_msg}. Se reembolsó tu saldo.', 'error')
+            flash(f'PinCentral rechazó la recarga: {"; ".join(errores) or "sin referencia"}. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         except Exception as e:
             db2 = get_db()
@@ -5044,6 +5063,7 @@ def admin_productos():
             pincentral_entrega_directa = 1 if request.form.get('pincentral_entrega_directa') else 0
             pincentral_recarga_directa = 1 if request.form.get('pincentral_recarga_directa') else 0
             pincentral_fields = request.form.get('pincentral_fields', '').strip()
+            pincentral_recarga_cantidad = max(1, min(int(request.form.get('pincentral_recarga_cantidad', 1) or 1), 20))
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
@@ -5064,10 +5084,12 @@ def admin_productos():
                 pincentral_entrega_directa = 0
                 pincentral_recarga_directa = 0
                 pincentral_fields = ''
+                pincentral_recarga_cantidad = 1
             if pincentral_recarga_directa:
                 pincentral_entrega_directa = 0
                 if not pincentral_fields:
                     pincentral_fields = 'id_juego:ID del jugador'
+                pincentral_recarga_cantidad = max(1, min(pincentral_recarga_cantidad, 20))
             if not usa_moogold:
                 moogold_category_id = 0
                 moogold_product_id = 0
@@ -5076,8 +5098,8 @@ def admin_productos():
             if precio_suscriptor < 0:
                 precio_suscriptor = 0
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -5100,6 +5122,7 @@ def admin_productos():
             pincentral_entrega_directa = 1 if request.form.get('pincentral_entrega_directa') else 0
             pincentral_recarga_directa = 1 if request.form.get('pincentral_recarga_directa') else 0
             pincentral_fields = request.form.get('pincentral_fields', '').strip()
+            pincentral_recarga_cantidad = max(1, min(int(request.form.get('pincentral_recarga_cantidad', 1) or 1), 20))
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
@@ -5120,10 +5143,12 @@ def admin_productos():
                 pincentral_entrega_directa = 0
                 pincentral_recarga_directa = 0
                 pincentral_fields = ''
+                pincentral_recarga_cantidad = 1
             if pincentral_recarga_directa:
                 pincentral_entrega_directa = 0
                 if not pincentral_fields:
                     pincentral_fields = 'id_juego:ID del jugador'
+                pincentral_recarga_cantidad = max(1, min(pincentral_recarga_cantidad, 20))
             if not usa_moogold:
                 moogold_category_id = 0
                 moogold_product_id = 0
@@ -5132,8 +5157,8 @@ def admin_productos():
             if precio_suscriptor < 0:
                 precio_suscriptor = 0
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, pincentral_recarga_directa=?, pincentral_fields=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, bloodstrike_package_id=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, pincentral_recarga_directa=?, pincentral_fields=?, pincentral_recarga_cantidad=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, bloodstrike_package_id=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -6710,37 +6735,56 @@ def api_comprar():
 
         db.close()
         nombre_partes = str((dict(user).get('nombre', '') if user else '') or '').split(' ', 1)
-        order_id = f"APIR{pedido_id}"
+        recargas_total = max(1, min(int((prod['pincentral_recarga_cantidad'] if 'pincentral_recarga_cantidad' in prod.keys() else 1) or 1), 20))
         try:
-            resultado_pc = crear_recarga(
-                product_code=product_code,
-                service_user_id=id_juego,
-                order_id=order_id,
-                additional_data=input2,
-                additional_data_2=str(data.get('additional_data_2', '') or '').strip(),
-            )
-            data_pc = resultado_pc.get('data', {}) if isinstance(resultado_pc.get('data', {}), dict) else {}
-            estado_pc = _pincentral_estado_recarga(data_pc)
-            ref = str(data_pc.get('id') or data_pc.get('receipt') or '').strip()
-            receipt = str(data_pc.get('receipt') or '').strip()
+            refs = []
+            receipts = []
+            errores = []
+            pendientes = 0
+            for idx in range(1, recargas_total + 1):
+                order_id = f"APIR{pedido_id}-{idx}"
+                resultado_pc = crear_recarga(
+                    product_code=product_code,
+                    service_user_id=id_juego,
+                    order_id=order_id,
+                    additional_data=input2,
+                    additional_data_2=str(data.get('additional_data_2', '') or '').strip(),
+                )
+                data_pc = resultado_pc.get('data', {}) if isinstance(resultado_pc.get('data', {}), dict) else {}
+                estado_pc = _pincentral_estado_recarga(data_pc)
+                ref = str(data_pc.get('id') or data_pc.get('receipt') or '').strip()
+                receipt = str(data_pc.get('receipt') or '').strip()
+                if ref:
+                    refs.append(f"{idx}/{recargas_total}: {ref}")
+                if receipt:
+                    receipts.append(f"{idx}/{recargas_total}: {receipt}")
+                if resultado_pc.get('ok') and estado_pc == 'completed':
+                    continue
+                if resultado_pc.get('ok') and estado_pc in ('created', 'retry'):
+                    pendientes += 1
+                    continue
+                error_msg = resultado_pc.get('error') or data_pc.get('message') or f"Estado: {data_pc.get('status', 'desconocido')}"
+                errores.append(f"{idx}/{recargas_total}: {error_msg}")
+                break
+            ref_text = '\n'.join(refs)
+            receipt_text = '\n'.join(receipts) or id_juego
             db2 = get_db()
-            if resultado_pc.get('ok') and estado_pc == 'completed':
-                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt or id_juego, ref, pedido_id))
+            if not errores and pendientes == 0:
+                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
                 db2.commit()
                 db2.close()
-                enviar_webhook(user_id_api, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref, 'total': total})
-                return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref, 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': 'Recarga PinCentral completada'})
-            if resultado_pc.get('ok') and estado_pc in ('created', 'retry'):
-                db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+                enviar_webhook(user_id_api, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref_text, 'total': total})
+                return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref_text, 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': f'Recarga PinCentral completada ({recargas_total} recarga(s))'})
+            if refs:
+                db2.execute("UPDATE pedidos SET estado = 'procesando', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
                 db2.commit()
                 db2.close()
-                return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando', 'referencia': ref, 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': f'Recarga PinCentral enviada. Estado: {estado_pc}'}), 202
-            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+                return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando', 'referencia': ref_text, 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': 'Recarga PinCentral procesando/parcial. Referencias guardadas.'}), 202
+            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref_text, pedido_id))
             db2.commit()
             db2.close()
             recargar_saldo(user_id_api, total, f"Reembolso API: Error recarga PinCentral pedido #{pedido_id}")
-            error_msg = resultado_pc.get('error') or data_pc.get('message') or f"Estado: {data_pc.get('status', 'desconocido')}"
-            return jsonify({'ok': False, 'error': error_msg, 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api), 'referencia': ref, 'merchant_ref': merchant_ref}), 400
+            return jsonify({'ok': False, 'error': '; '.join(errores) or 'Error recarga PinCentral', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api), 'referencia': ref_text, 'merchant_ref': merchant_ref}), 400
         except Exception as e:
             db2 = get_db()
             db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))

@@ -168,6 +168,11 @@
                         <input type="checkbox" name="pincentral_recarga_directa" id="form-pincentral-recarga" onchange="syncPinCentralModes('recarga')"> Recarga directa PinCentral (usa ID del jugador y opcional servidor/input2)
                     </label>
                     <div style="margin-top:0.75rem;">
+                        <label><i class="fas fa-repeat" style="color:#14b8a6;"></i> Veces a ejecutar esta recarga PinCentral</label>
+                        <input type="number" name="pincentral_recarga_cantidad" id="form-pincentral-recarga-cantidad" class="form-input" value="1" min="1" max="20" style="max-width:140px;">
+                        <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.35rem;">Ej: producto 330 usando código 110 = colocar 3.</p>
+                    </div>
+                    <div style="margin-top:0.75rem;">
                         <label><i class="fas fa-list-check" style="color:#14b8a6;"></i> Requisitos a pedir al cliente</label>
                         <textarea name="pincentral_fields" id="form-pincentral-fields" rows="3" class="form-input" placeholder="id_juego:ID del jugador&#10;input2:Servidor / Zona&#10;additional_data_2:Dato adicional 2"></textarea>
                         <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.35rem;">Formato: campo:Etiqueta. Campos permitidos: id_juego, input2, additional_data_2.</p>
@@ -421,6 +426,7 @@
                         data-pincentral-directo="{{ p.pincentral_entrega_directa|default(0) }}"
                         data-pincentral-recarga="{{ p.pincentral_recarga_directa|default(0) }}"
                         data-pincentral-fields="{{ p.pincentral_fields|default('')|e }}"
+                        data-pincentral-recarga-cantidad="{{ p.pincentral_recarga_cantidad|default(1) }}"
                         data-orden="{{ p.orden|default(0) }}"
                         data-recarga-manual="{{ p.recarga_manual|default(0) }}"
                         data-pin-origen-id="{{ p.pin_origen_producto_id|default(0) }}"
@@ -1237,6 +1243,7 @@ function editarProductoDesdeFila(id) {
         parseInt(row.getAttribute('data-pincentral-directo')) || 0,
         parseInt(row.getAttribute('data-pincentral-recarga')) || 0,
         row.getAttribute('data-pincentral-fields') || '',
+        parseInt(row.getAttribute('data-pincentral-recarga-cantidad')) || 1,
         parseInt(row.getAttribute('data-orden')) || 0,
         parseInt(row.getAttribute('data-gp-product')) || 0,
         parseInt(row.getAttribute('data-gp-package')) || 0,
@@ -1250,7 +1257,7 @@ function editarProductoDesdeFila(id) {
     );
 }
 
-function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, razerPaqueteExtra, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, pincentralDirecto, pincentralRecarga, pincentralFields, orden, gpProduct, gpPackage, bsPackage, rechazoAutomatico, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
+function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, razerPaqueteExtra, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, pincentralDirecto, pincentralRecarga, pincentralFields, pincentralRecargaCantidad, orden, gpProduct, gpPackage, bsPackage, rechazoAutomatico, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
     var row = document.getElementById('row-' + id);
     var mgCategory = row ? (parseInt(row.getAttribute('data-mg-category')) || 0) : 0;
     var mgProduct = row ? (parseInt(row.getAttribute('data-mg-product')) || 0) : 0;
@@ -1278,6 +1285,7 @@ function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono
     document.getElementById('form-pincentral-directo').checked = pincentralDirecto == 1;
     document.getElementById('form-pincentral-recarga').checked = pincentralRecarga == 1;
     document.getElementById('form-pincentral-fields').value = pincentralFields || '';
+    document.getElementById('form-pincentral-recarga-cantidad').value = pincentralRecargaCantidad || 1;
     document.getElementById('form-usa-bloodstrike').checked = !!bsPackage;
     setBloodStrikePackage(bsPackage || '');
     document.getElementById('form-usa-gamepoint').checked = (gpProduct > 0);
@@ -1335,6 +1343,7 @@ function resetForm() {
     document.getElementById('form-pincentral-directo').checked = false;
     document.getElementById('form-pincentral-recarga').checked = false;
     document.getElementById('form-pincentral-fields').value = '';
+    document.getElementById('form-pincentral-recarga-cantidad').value = '1';
     document.getElementById('form-usa-bloodstrike').checked = false;
     setBloodStrikePackage('');
     document.getElementById('form-usa-gamepoint').checked = false;
