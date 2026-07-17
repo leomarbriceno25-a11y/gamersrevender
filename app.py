@@ -3160,9 +3160,6 @@ def comprar():
                 order_id=order_id,
                 additional_data=request.form.get('input2', '').strip(),
                 additional_data_2=request.form.get('additional_data_2', '').strip(),
-                client_email=(user['email'] if user else '') or '',
-                client_first_name=first_name,
-                client_last_name=last_name,
             )
             data_pc = resultado_pc.get('data', {}) if isinstance(resultado_pc.get('data', {}), dict) else {}
             estado_pc = _pincentral_estado_recarga(data_pc)
@@ -6721,9 +6718,6 @@ def api_comprar():
                 order_id=order_id,
                 additional_data=input2,
                 additional_data_2=str(data.get('additional_data_2', '') or '').strip(),
-                client_email=(dict(user).get('email', '') if user else '') or '',
-                client_first_name=nombre_partes[0] if nombre_partes else '',
-                client_last_name=nombre_partes[1] if len(nombre_partes) > 1 else '',
             )
             data_pc = resultado_pc.get('data', {}) if isinstance(resultado_pc.get('data', {}), dict) else {}
             estado_pc = _pincentral_estado_recarga(data_pc)
