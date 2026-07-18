@@ -2033,7 +2033,7 @@ def procesar_pedido_razer_background(pedido_id, user_id, total, id_juego, paquet
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
             'estado': 'cancelado',
-            'razon': error_msg or 'Proveedor Razer rechazó la recarga',
+            'razon': 'La recarga fue rechazada',
             'reembolsado': True,
             'mensaje': 'Recarga rechazada'
         })
@@ -2087,7 +2087,7 @@ def procesar_pedido_deltaforce_background(pedido_id, user_id, total, id_juego, p
                 'pedido_id': pedido_id,
                 'estado': 'completado',
                 'nombre_jugador': nickname or id_juego,
-                'mensaje': f'Delta Force aprobada ({exitosas}/{cantidad})'
+                'mensaje': f'Recarga aprobada ({exitosas}/{cantidad})'
             })
             return
 
@@ -2103,7 +2103,7 @@ def procesar_pedido_deltaforce_background(pedido_id, user_id, total, id_juego, p
                 'estado': 'completado',
                 'nombre_jugador': nickname or id_juego,
                 'reembolso_parcial': monto_parcial,
-                'mensaje': f'Delta Force aprobada parcial ({exitosas}/{cantidad})'
+                'mensaje': f'Recarga aprobada parcial ({exitosas}/{cantidad})'
             })
             return
 
@@ -2115,9 +2115,9 @@ def procesar_pedido_deltaforce_background(pedido_id, user_id, total, id_juego, p
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
             'estado': 'cancelado',
-            'razon': error_msg or 'Proveedor Delta Force rechazó la recarga',
+            'razon': 'La recarga fue rechazada',
             'reembolsado': True,
-            'mensaje': 'Delta Force rechazada'
+            'mensaje': 'Recarga rechazada'
         })
     except Exception as e:
         db_err = get_db()
@@ -2129,9 +2129,9 @@ def procesar_pedido_deltaforce_background(pedido_id, user_id, total, id_juego, p
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
             'estado': 'cancelado',
-            'razon': str(e),
+            'razon': 'Error inesperado al procesar la recarga',
             'reembolsado': True,
-            'mensaje': 'Delta Force rechazada por excepción'
+            'mensaje': 'Recarga rechazada'
         })
         print(f"[DELTAFORCE-BG] Pedido #{pedido_id} cancelado por excepción: {error_msg or str(e)}")
 
@@ -2437,9 +2437,9 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
                 'evento': 'pedido_actualizado',
                 'pedido_id': pedido_id,
                 'estado': 'cancelado',
-                'razon': error_msg,
+                'razon': 'La solicitud fue rechazada',
                 'reembolsado': True,
-                'mensaje': 'PinCentral rechazó autorización de PINs'
+                'mensaje': 'Pedido rechazado'
             })
             return
 
@@ -2471,9 +2471,9 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
                 'evento': 'pedido_actualizado',
                 'pedido_id': pedido_id,
                 'estado': 'cancelado',
-                'razon': error_msg,
+                'razon': 'No fue posible completar la entrega',
                 'reembolsado': True,
-                'mensaje': 'PinCentral rechazó captura de PINs'
+                'mensaje': 'Pedido rechazado'
             })
             return
 
@@ -2494,7 +2494,7 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
             'estado': 'completado',
             'referencia': tx_id,
             'cantidad_codigos': cantidad_codigos,
-            'mensaje': 'PINs PinCentral entregados'
+            'mensaje': 'Códigos entregados'
         })
     except Exception as e:
         db_err = get_db()
@@ -2506,9 +2506,9 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
             'estado': 'cancelado',
-            'razon': str(e),
+            'razon': 'Error inesperado al procesar el pedido',
             'reembolsado': True,
-            'mensaje': 'PinCentral rechazado por excepción'
+            'mensaje': 'Pedido rechazado'
         })
 
 
@@ -2564,7 +2564,7 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
                             'pedido_id': pedido_id,
                             'estado': 'completado',
                             'referencia': ref,
-                            'mensaje': 'Recarga completada por proveedor',
+                            'mensaje': 'Recarga completada',
                             'tiempo_respuesta': estado_api.get('elapsed_seconds'),
                         })
                         return
@@ -2579,9 +2579,9 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
                             'pedido_id': pedido_id,
                             'estado': 'cancelado',
                             'referencia': ref,
-                            'razon': estado_api.get('error', 'Recarga rechazada por proveedor'),
+                            'razon': 'La recarga fue rechazada',
                             'reembolsado': True,
-                            'mensaje': 'Proveedor rechazó la recarga',
+                            'mensaje': 'Recarga rechazada',
                             'tiempo_respuesta': estado_api.get('elapsed_seconds'),
                         })
                         return
@@ -2606,9 +2606,9 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
             'pedido_id': pedido_id,
             'estado': 'cancelado',
             'referencia': ref,
-            'razon': resultado_api.get('error', 'Error del proveedor de recarga'),
+            'razon': 'La recarga fue rechazada',
             'reembolsado': True,
-            'mensaje': 'Proveedor rechazó la recarga',
+            'mensaje': 'Recarga rechazada',
             'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
         })
     except Exception as e:
@@ -2622,9 +2622,9 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
             'pedido_id': pedido_id,
             'estado': 'cancelado',
             'referencia': ref,
-            'razon': str(e),
+            'razon': 'Error inesperado al procesar la recarga',
             'reembolsado': True,
-            'mensaje': 'Proveedor rechazado por excepción',
+            'mensaje': 'Recarga rechazada',
         })
 
 
@@ -2972,7 +2972,7 @@ def comprar():
         return redirect(url_for('catalogo'))
 
     if int((prod['rechazo_automatico'] if 'rechazo_automatico' in prod.keys() else 0) or 0):
-        flash('Este producto está temporalmente deshabilitado por fallas del proveedor. Intenta más tarde.', 'error')
+        flash('Este producto está temporalmente deshabilitado. Intenta más tarde.', 'error')
         db.close()
         return redirect(url_for('producto', id=producto_id))
 
@@ -3004,7 +3004,7 @@ def comprar():
     if prod['categoria_tipo'] == 'giftcards' and moogold_product_id > 0 and moogold_variation_id > 0:
         mg_stock = _moogold_stock_variacion(moogold_product_id, moogold_variation_id)
         if not mg_stock.get('disponible', True):
-            flash('Producto agotado en MooGold. Intenta más tarde.', 'error')
+            flash('Producto agotado temporalmente. Intenta más tarde.', 'error')
             db.close()
             return redirect(url_for('producto', id=producto_id))
 
@@ -3056,7 +3056,7 @@ def comprar():
             db.commit()
             db.close()
             recargar_saldo(user_id, total, f"Reembolso: Código PinCentral no configurado pedido #{pedido_id}")
-            flash('Este producto no tiene código PinCentral configurado. Se reembolsó tu saldo.', 'error')
+            flash('Este producto no está configurado correctamente. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
         user = db.execute("SELECT nombre, email FROM usuarios WHERE id = ?", (user_id,)).fetchone()
@@ -3078,7 +3078,7 @@ def comprar():
                 db_err.commit()
                 db_err.close()
                 recargar_saldo(user_id, total, f"Reembolso: Error API PinCentral pedido #{pedido_id}")
-                flash(f'PinCentral no autorizó la entrega: {error_msg}. Se reembolsó tu saldo.', 'error')
+                flash('No fue posible autorizar la entrega. Se reembolsó tu saldo.', 'error')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
 
             cap = capturar_pins(tx_id)
@@ -3105,7 +3105,7 @@ def comprar():
                 db_err.commit()
                 db_err.close()
                 recargar_saldo(user_id, total, f"Reembolso: Error captura PinCentral pedido #{pedido_id}")
-                flash(f'PinCentral no pudo entregar el PIN: {error_msg}. Se reembolsó tu saldo.', 'error')
+                flash('No fue posible completar la entrega. Se reembolsó tu saldo.', 'error')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
 
             db_ok = get_db()
@@ -3121,9 +3121,9 @@ def comprar():
                 'estado': 'completado',
                 'referencia': tx_id,
                 'cantidad_codigos': 1,
-                'mensaje': 'PIN PinCentral entregado directo'
+                'mensaje': 'Código entregado'
             })
-            flash(f'Pedido #{pedido_id} completado. PIN entregado directamente desde PinCentral.', 'success')
+            flash(f'Pedido #{pedido_id} completado. Código entregado.', 'success')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         except Exception as e:
             db_err = get_db()
@@ -3131,7 +3131,7 @@ def comprar():
             db_err.commit()
             db_err.close()
             recargar_saldo(user_id, total, f"Reembolso: Excepción PinCentral directo pedido #{pedido_id}")
-            flash(f'Error inesperado en entrega directa PinCentral: {e}. Se reembolsó tu saldo.', 'error')
+            flash('Error inesperado en la entrega. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa PinCentral Recarga directa
@@ -3144,7 +3144,7 @@ def comprar():
             db.commit()
             db.close()
             recargar_saldo(user_id, total, f"Reembolso: Código PinCentral recarga no configurado pedido #{pedido_id}")
-            flash('Este producto no tiene código de recarga PinCentral configurado. Se reembolsó tu saldo.', 'error')
+            flash('Este producto no está configurado correctamente. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
         user = db.execute("SELECT nombre, email FROM usuarios WHERE id = ?", (user_id,)).fetchone()
@@ -3190,19 +3190,19 @@ def comprar():
                 db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
                 db2.commit()
                 db2.close()
-                flash(f'Pedido #{pedido_id} completado por PinCentral ({recargas_total} recarga(s)).', 'success')
+                flash(f'Pedido #{pedido_id} completado ({recargas_total} recarga(s)).', 'success')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
             if refs:
                 db2.execute("UPDATE pedidos SET estado = 'procesando', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
                 db2.commit()
                 db2.close()
-                flash(f'Pedido #{pedido_id} quedó procesando/parcial en PinCentral. Referencias guardadas.', 'warning')
+                flash(f'Pedido #{pedido_id} quedó procesando/parcial. Referencias guardadas.', 'warning')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
             db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref_text, pedido_id))
             db2.commit()
             db2.close()
             recargar_saldo(user_id, total, f"Reembolso: Error recarga PinCentral pedido #{pedido_id}")
-            flash(f'PinCentral rechazó la recarga: {"; ".join(errores) or "sin referencia"}. Se reembolsó tu saldo.', 'error')
+            flash('La recarga fue rechazada. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         except Exception as e:
             db2 = get_db()
@@ -3210,7 +3210,7 @@ def comprar():
             db2.commit()
             db2.close()
             recargar_saldo(user_id, total, f"Reembolso: Excepción PinCentral recarga pedido #{pedido_id}")
-            flash(f'Error inesperado en recarga PinCentral: {e}. Se reembolsó tu saldo.', 'error')
+            flash('Error inesperado en la recarga. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa Blood Strike API
@@ -3225,7 +3225,7 @@ def comprar():
             args=(pedido_id, user_id, total, id_juego, bloodstrike_package_id),
             daemon=True,
         ).start()
-        flash(f'Pedido #{pedido_id} recibido. La recarga {proveedor_recarga} seguirá procesándose en segundo plano.', 'warning')
+        flash(f'Pedido #{pedido_id} recibido. La recarga seguirá procesándose en segundo plano.', 'warning')
         return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa GamePoint API (recarga directa o gift card)
@@ -3266,7 +3266,7 @@ def comprar():
                 db2.close()
                 if es_manual:
                     if estado_final == 'procesando':
-                        flash(f'Pedido #{pedido_id} enviado al proveedor (Ref: {ref}). Se confirmará automáticamente cuando el proveedor lo procese.', 'success')
+                        flash(f'Pedido #{pedido_id} recibido (Ref: {ref}). Se confirmará automáticamente cuando termine el proceso.', 'success')
                     else:
                         flash(f'Pedido #{pedido_id} completado. Recarga aplicada a {nombre_jugador or id_juego} (Ref: {ref}).', 'success')
                 elif es_giftcard_gp and codigo:
@@ -3284,8 +3284,8 @@ def comprar():
                         db2.commit()
                         db2.close()
                         recargar_saldo(user_id, total, f"Reembolso: Error GamePoint pedido #{pedido_id}")
-                        error_msg = resultado_api.get('error', resultado_api.get('message', 'Pedido rechazado por proveedor'))
-                        flash(f'Pedido #{pedido_id} rechazado por proveedor ({error_msg}). Se reembolsó ${total:.4f} a tu cartera.', 'error')
+                        error_msg = resultado_api.get('error', resultado_api.get('message', 'Pedido rechazado'))
+                        flash(f'Pedido #{pedido_id} rechazado. Se reembolsó ${total:.4f} a tu cartera.', 'error')
                         return redirect(url_for('pedido_detalle', id=pedido_id))
                     if ref:
                         db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
@@ -3393,14 +3393,14 @@ def comprar():
                 if estado_final == 'completado':
                     flash(f'Pedido #{pedido_id} completado (Ref: {ref or "sin referencia"}).', 'success')
                 else:
-                    flash(f'Pedido #{pedido_id} recibido por proveedor (Ref: {ref or "pendiente"}). Estado: {estado_final}.', 'warning')
+                    flash(f'Pedido #{pedido_id} recibido (Ref: {ref or "pendiente"}). Estado: {estado_final}.', 'warning')
                 return redirect(url_for('pedido_detalle', id=pedido_id))
 
             db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_cliente = ? WHERE id = ?", (partner_order_id, pedido_id))
             db2.commit()
             db2.close()
             recargar_saldo(user_id, total, f"Reembolso: Error MooGold pedido #{pedido_id}")
-            flash(f"Error del proveedor: {resultado_api.get('error', 'Sin respuesta válida')}. Se reembolsó ${total:.4f}.", 'error')
+            flash(f"No fue posible procesar el pedido. Se reembolsó ${total:.4f}.", 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         except Exception as e:
             db2 = get_db()
@@ -3408,7 +3408,7 @@ def comprar():
             db2.commit()
             db2.close()
             recargar_saldo(user_id, total, f"Reembolso: Excepción MooGold pedido #{pedido_id}")
-            flash(f'Error inesperado del proveedor: {e}. Se reembolsó ${total:.4f}.', 'error')
+            flash(f'Error inesperado al procesar el pedido. Se reembolsó ${total:.4f}.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Razer (separada), recarga directa por paquete
@@ -3421,7 +3421,7 @@ def comprar():
             db.commit()
             db.close()
             recargar_saldo(user_id, total, f"Reembolso: Paquete Razer no configurado pedido #{pedido_id}")
-            flash('Este producto no tiene paquete Razer configurado. Se reembolsó tu saldo.', 'error')
+            flash('Este producto no está configurado correctamente. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
         db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
@@ -3443,7 +3443,7 @@ def comprar():
             db.commit()
             db.close()
             recargar_saldo(user_id, total, f"Reembolso: Paquete Delta Force no configurado pedido #{pedido_id}")
-            flash('Este producto no tiene paquete Delta Force configurado. Se reembolsó tu saldo.', 'error')
+            flash('Este producto no está configurado correctamente. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
         db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
@@ -3454,7 +3454,7 @@ def comprar():
             args=(pedido_id, user_id, total, id_juego, paquete, cantidad),
             daemon=True,
         ).start()
-        flash(f'Pedido #{pedido_id} en procesamiento Delta Force. Revisa Mis pedidos para ver si fue aprobado o rechazado.', 'warning')
+        flash(f'Pedido #{pedido_id} en procesamiento. Revisa Mis pedidos para ver si fue aprobado o rechazado.', 'warning')
         return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API PinCentral (PINs remotos) y no es giftcard de almacén
@@ -3465,7 +3465,7 @@ def comprar():
             db.commit()
             db.close()
             recargar_saldo(user_id, total, f"Reembolso: Código de producto PinCentral no configurado pedido #{pedido_id}")
-            flash('Este producto no tiene código PinCentral configurado. Se reembolsó tu saldo.', 'error')
+            flash('Este producto no está configurado correctamente. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
         db.execute("UPDATE pedidos SET estado = 'pendiente' WHERE id = ?", (pedido_id,))
@@ -3476,7 +3476,7 @@ def comprar():
             args=(pedido_id, user_id, total, product_code, cantidad),
             daemon=True,
         ).start()
-        flash(f'Pedido #{pedido_id} enviado a PinCentral. Revisa Mis pedidos para ver cuándo se entregan los PINs.', 'warning')
+        flash(f'Pedido #{pedido_id} recibido. Revisa Mis pedidos para ver cuándo se entregan los códigos.', 'warning')
         return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa API Hype Games (Free Fire), canjear PIN(es) automáticamente
@@ -5676,7 +5676,7 @@ def admin_verificar_gamepoint():
                 enviar_webhook(ped['usuario_id'], {
                     'evento': 'pedido_actualizado', 'pedido_id': ped['id'],
                     'estado': 'cancelado', 'referencia': ped['referencia_externa'],
-                    'razon': inquiry.get('reason', 'Proveedor rechazó la recarga'),
+                    'razon': 'La recarga fue rechazada',
                     'reembolso': float(ped['total']),
                 })
             elif gp_status == 'success' and ped['estado'] == 'procesando':
@@ -5753,7 +5753,7 @@ def cron_verificar_gamepoint():
                     'pedido_id': ped['id'],
                     'estado': 'cancelado',
                     'referencia': ped['referencia_externa'],
-                    'razon': inquiry.get('reason', 'Proveedor rechazó la recarga'),
+                    'razon': 'La recarga fue rechazada',
                     'reembolso': float(ped['total']),
                 })
             elif gp_status == 'success' and ped['estado'] == 'procesando':
@@ -6542,7 +6542,7 @@ def api_comprar():
 
     if int((prod['rechazo_automatico'] if 'rechazo_automatico' in prod.keys() else 0) or 0):
         db.close()
-        return jsonify({'ok': False, 'error': 'Producto temporalmente deshabilitado por proveedor'}), 503
+        return jsonify({'ok': False, 'error': 'Producto temporalmente deshabilitado'}), 503
 
     # Validar que se envíe id_juego si el producto lo requiere (no aplica a gift cards sin campos)
     gp_fields_raw = ''
@@ -6624,7 +6624,7 @@ def api_comprar():
             db.close()
             recargar_saldo(user_id_api, total, f"Reembolso API: Código PinCentral no configurado pedido #{pedido_id}")
             return jsonify({
-                'ok': False, 'error': 'El producto no tiene código PinCentral configurado',
+                'ok': False, 'error': 'El producto no está configurado correctamente',
                 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
             }), 400
 
@@ -6647,7 +6647,7 @@ def api_comprar():
                 recargar_saldo(user_id_api, total, f"Reembolso API: Error autorización PinCentral pedido #{pedido_id}")
                 error_msg = auth.get('error') or auth_data.get('message') or f"Estado autorización: {auth_data.get('status', 'desconocido')}"
                 return jsonify({
-                    'ok': False, 'error': error_msg,
+                    'ok': False, 'error': 'No fue posible procesar el pedido',
                     'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
                 }), 400
 
@@ -6676,7 +6676,7 @@ def api_comprar():
                 if errores_key:
                     error_msg = f"PinCentral devolvió key vacío: {'; '.join(errores_key)}"
                 return jsonify({
-                    'ok': False, 'error': error_msg,
+                    'ok': False, 'error': 'No fue posible procesar el pedido',
                     'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
                 }), 400
 
@@ -6693,7 +6693,7 @@ def api_comprar():
                 'estado': 'completado',
                 'referencia': tx_id,
                 'cantidad_codigos': 1,
-                'mensaje': 'PIN PinCentral entregado directo por API'
+                'mensaje': 'Código entregado'
             })
             return jsonify({
                 'ok': True,
@@ -6705,7 +6705,7 @@ def api_comprar():
                 'merchant_ref': merchant_ref,
                 'total': total,
                 'saldo_restante': get_saldo(user_id_api),
-                'mensaje': 'PIN entregado directamente desde PinCentral'
+                'mensaje': 'Código entregado'
             })
         except Exception as e:
             db_err = get_db()
@@ -6715,7 +6715,7 @@ def api_comprar():
             recargar_saldo(user_id_api, total, f"Reembolso API: Excepción PinCentral directo pedido #{pedido_id}")
             return jsonify({
                 'ok': False,
-                'error': str(e),
+                'error': 'Error inesperado al procesar el pedido',
                 'pedido_id': pedido_id,
                 'reembolsado': True,
                 'saldo_restante': get_saldo(user_id_api)
@@ -6731,7 +6731,7 @@ def api_comprar():
             db.commit()
             db.close()
             recargar_saldo(user_id_api, total, f"Reembolso API: Código PinCentral recarga no configurado pedido #{pedido_id}")
-            return jsonify({'ok': False, 'error': 'El producto no tiene código PinCentral de recarga configurado', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)}), 400
+            return jsonify({'ok': False, 'error': 'El producto no está configurado correctamente', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)}), 400
 
         db.close()
         nombre_partes = str((dict(user).get('nombre', '') if user else '') or '').split(' ', 1)
@@ -6774,24 +6774,24 @@ def api_comprar():
                 db2.commit()
                 db2.close()
                 enviar_webhook(user_id_api, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref_text, 'total': total})
-                return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref_text, 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': f'Recarga PinCentral completada ({recargas_total} recarga(s))'})
+                return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref_text, 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': f'Recarga completada ({recargas_total} recarga(s))'})
             if refs:
                 db2.execute("UPDATE pedidos SET estado = 'procesando', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
                 db2.commit()
                 db2.close()
-                return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando', 'referencia': ref_text, 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': 'Recarga PinCentral procesando/parcial. Referencias guardadas.'}), 202
+                return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando', 'referencia': ref_text, 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': 'Recarga procesando/parcial. Referencias guardadas.'}), 202
             db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref_text, pedido_id))
             db2.commit()
             db2.close()
             recargar_saldo(user_id_api, total, f"Reembolso API: Error recarga PinCentral pedido #{pedido_id}")
-            return jsonify({'ok': False, 'error': '; '.join(errores) or 'Error recarga PinCentral', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api), 'referencia': ref_text, 'merchant_ref': merchant_ref}), 400
+            return jsonify({'ok': False, 'error': 'La recarga fue rechazada', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api), 'referencia': ref_text, 'merchant_ref': merchant_ref}), 400
         except Exception as e:
             db2 = get_db()
             db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db2.commit()
             db2.close()
             recargar_saldo(user_id_api, total, f"Reembolso API: Excepción PinCentral recarga pedido #{pedido_id}")
-            return jsonify({'ok': False, 'error': str(e), 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)}), 500
+            return jsonify({'ok': False, 'error': 'Error inesperado al procesar el pedido', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)}), 500
 
     # Blood Strike API
     if usa_bloodstrike:
@@ -6813,7 +6813,7 @@ def api_comprar():
             'referencia': referencia_recarga,
             'total': total,
             'saldo_restante': get_saldo(user_id_api),
-            'mensaje': f'Pedido {proveedor_recarga} recibido y procesándose en segundo plano',
+            'mensaje': 'Pedido recibido y procesándose en segundo plano',
         }), 202
 
     # GamePoint API (recarga directa o gift card)
@@ -6856,7 +6856,7 @@ def api_comprar():
                 }
                 if es_manual:
                     if estado_final == 'procesando':
-                        resp['mensaje'] = f'Pedido enviado al proveedor (Ref: {ref}). Se confirmará automáticamente.'
+                        resp['mensaje'] = f'Pedido recibido (Ref: {ref}). Se confirmará automáticamente.'
                     else:
                         resp['nombre_jugador'] = nombre_jugador
                         resp['mensaje'] = f'Recarga completada para {nombre_jugador or id_juego} (Ref: {ref})'
@@ -6888,7 +6888,7 @@ def api_comprar():
                         recargar_saldo(user_id_api, total, f"Reembolso API: Error GamePoint pedido #{pedido_id}")
                         return jsonify({
                             'ok': False,
-                            'error': resultado_api.get('error', resultado_api.get('message', 'Pedido rechazado por proveedor')),
+                            'error': 'Pedido rechazado',
                             'pedido_id': pedido_id,
                             'reembolsado': True,
                             'saldo_restante': get_saldo(user_id_api),
@@ -6924,7 +6924,7 @@ def api_comprar():
                     db2.close()
                     recargar_saldo(user_id_api, total, f"Reembolso API: Error GamePoint pedido #{pedido_id}")
                     return jsonify({
-                        'ok': False, 'error': resultado_api.get('error', resultado_api.get('message', 'Error desconocido')),
+                        'ok': False, 'error': 'No fue posible procesar el pedido',
                         'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
                     }), 400
         except Exception as e:
@@ -6955,7 +6955,7 @@ def api_comprar():
                 db2.close()
                 recargar_saldo(user_id_api, total, f"Reembolso API: Excepción GamePoint pedido #{pedido_id}")
                 return jsonify({
-                    'ok': False, 'error': str(e), 'pedido_id': pedido_id,
+                    'ok': False, 'error': 'Error inesperado al procesar el pedido', 'pedido_id': pedido_id,
                     'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
                 }), 500
 
@@ -7017,7 +7017,7 @@ def api_comprar():
                     'saldo_restante': get_saldo(user_id_api),
                     'nombre_jugador': nombre_jugador,
                     'codigo': codigo,
-                    'mensaje': 'Pedido recibido por proveedor' if estado_final != 'completado' else 'Pedido completado',
+                    'mensaje': 'Pedido recibido' if estado_final != 'completado' else 'Pedido completado',
                 })
 
             db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_cliente = ? WHERE id = ?", (partner_order_id, pedido_id))
@@ -7026,7 +7026,7 @@ def api_comprar():
             recargar_saldo(user_id_api, total, f"Reembolso API: Error MooGold pedido #{pedido_id}")
             return jsonify({
                 'ok': False,
-                'error': resultado_api.get('error', 'Error del proveedor'),
+                'error': 'No fue posible procesar el pedido',
                 'pedido_id': pedido_id,
                 'merchant_ref': partner_order_id,
                 'reembolsado': True,
@@ -7040,7 +7040,7 @@ def api_comprar():
             recargar_saldo(user_id_api, total, f"Reembolso API: Excepción MooGold pedido #{pedido_id}")
             return jsonify({
                 'ok': False,
-                'error': str(e),
+                'error': 'Error inesperado al procesar el pedido',
                 'pedido_id': pedido_id,
                 'merchant_ref': partner_order_id,
                 'reembolsado': True,
@@ -7058,7 +7058,7 @@ def api_comprar():
             db.close()
             recargar_saldo(user_id_api, total, f"Reembolso API: Paquete Razer no configurado pedido #{pedido_id}")
             return jsonify({
-                'ok': False, 'error': 'El producto no tiene paquete Razer configurado',
+                'ok': False, 'error': 'El producto no está configurado correctamente',
                 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
             }), 400
 
@@ -7088,7 +7088,7 @@ def api_comprar():
             db.close()
             recargar_saldo(user_id_api, total, f"Reembolso API: Paquete Delta Force no configurado pedido #{pedido_id}")
             return jsonify({
-                'ok': False, 'error': 'El producto no tiene paquete Delta Force configurado',
+                'ok': False, 'error': 'El producto no está configurado correctamente',
                 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
             }), 400
 
@@ -7106,7 +7106,7 @@ def api_comprar():
             'estado': 'pendiente',
             'merchant_ref': merchant_ref,
             'saldo_restante': get_saldo(user_id_api),
-            'mensaje': 'Recarga Delta Force en segundo plano. Consulta el pedido para ver si fue aprobado o rechazado.'
+            'mensaje': 'Recarga en segundo plano. Consulta el pedido para ver si fue aprobado o rechazado.'
         })
 
     # API PinCentral (solo PINs remotos) para productos no giftcard
@@ -7118,7 +7118,7 @@ def api_comprar():
             db.close()
             recargar_saldo(user_id_api, total, f"Reembolso API: Código PinCentral no configurado pedido #{pedido_id}")
             return jsonify({
-                'ok': False, 'error': 'El producto no tiene código PinCentral configurado',
+                'ok': False, 'error': 'El producto no está configurado correctamente',
                 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)
             }), 400
 
@@ -7136,7 +7136,7 @@ def api_comprar():
             'estado': 'pendiente',
             'merchant_ref': merchant_ref,
             'saldo_restante': get_saldo(user_id_api),
-            'mensaje': 'Pedido PinCentral en segundo plano. Consulta el pedido para ver códigos entregados.'
+            'mensaje': 'Pedido en segundo plano. Consulta el pedido para ver códigos entregados.'
         })
 
     # Hype Games API (Free Fire con PINes) - Multi-canje
