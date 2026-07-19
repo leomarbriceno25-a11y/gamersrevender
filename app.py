@@ -6469,27 +6469,17 @@ def api_productos():
         elif usa_api_hype:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador en Free Fire', 'tipo': 'string', 'opciones': []}]
         elif usa_bloodstrike:
-            juego_api = str((p['categoria_nombre'] if 'categoria_nombre' in p.keys() else '') or (p['categoria'] if 'categoria' in p.keys() else '') or '').strip() or ('Free Fire Promo Bonus' if bloodstrike_package_id.startswith('pinxtore_') else ('Free Fire' if bloodstrike_package_id.startswith('diamonds') else 'Blood Strike'))
-            d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador en {juego_api}', 'tipo': 'string', 'opciones': []}]
+            d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador', 'tipo': 'string', 'opciones': []}]
         elif usa_api_razer:
-            d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador para API Razer (paquete {razer_paquete})', 'tipo': 'string', 'opciones': []}]
+            d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador', 'tipo': 'string', 'opciones': []}]
         elif usa_api_deltaforce:
-            d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': f'ID del jugador para API Delta Force (paquete {deltaforce_paquete})', 'tipo': 'string', 'opciones': []}]
+            d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador', 'tipo': 'string', 'opciones': []}]
         elif usa_api_pincentral:
             d['campos_requeridos'] = []
         else:
             d['campos_requeridos'] = []
-        d['usa_gamepoint'] = bool(d.pop('gamepoint_product_id', 0))
-        d['usa_razer'] = bool(usa_api_razer)
-        d['razer_paquete'] = int(razer_paquete or 0)
-        d['usa_deltaforce'] = bool(usa_api_deltaforce)
-        d['deltaforce_paquete'] = int(deltaforce_paquete or 0)
-        d['usa_pincentral'] = bool(usa_api_pincentral)
-        d['usa_bloodstrike'] = bool(usa_bloodstrike)
-        d['bloodstrike_package_id'] = bloodstrike_package_id
-        d['proveedor_api'] = 'freefire_pinxtore' if bloodstrike_package_id.startswith('pinxtore_') else ('freefire' if bloodstrike_package_id.startswith('diamonds') else ('bloodstrike' if usa_bloodstrike else ''))
-        d['pincentral_product_code'] = pincentral_product_code
-        d['rechazo_automatico'] = bool(d.get('rechazo_automatico', 0))
+        d.pop('gamepoint_product_id', None)
+        d.pop('rechazo_automatico', None)
         d['procesamiento_manual'] = bool(d.pop('recarga_manual', 0))
         result.append(d)
     return jsonify({'ok': True, 'productos': result, 'suscripcion_activa': bool(suscripcion_activa)})
