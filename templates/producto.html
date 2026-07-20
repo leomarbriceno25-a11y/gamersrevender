@@ -39,7 +39,22 @@
                 <form method="POST" action="{{ url_for('comprar') }}" id="form-comprar">
                     <input type="hidden" name="producto_id" value="{{ producto.id }}">
 
-                    {% if producto.gamepoint_product_id and producto.gamepoint_fields %}
+                    {% if producto.campos_cliente_parsed %}
+                    {% for field in producto.campos_cliente_parsed %}
+                    <div class="form-group">
+                        <label><i class="fas fa-gamepad"></i> {{ field.label }} *</label>
+                        <input type="text" name="{{ field.name }}" {% if field.name == 'id_juego' %}id="input-id-juego"{% elif field.name in ['input2', 'zone_id'] %}id="input-zone-id"{% endif %} placeholder="{{ field.label }}" required>
+                    </div>
+                    {% endfor %}
+                    {% if producto.verificar_nombre %}
+                    <div id="verificacion-nombre" style="margin-bottom:1rem;">
+                        <button type="button" class="btn btn-secondary btn-block" id="btn-verificar" onclick="verificarNombre()">
+                            <i class="fas fa-user-check"></i> Verificar nombre del jugador
+                        </button>
+                        <div id="resultado-verificacion" style="display:none; margin-top:0.5rem; padding:0.75rem; border-radius:8px;"></div>
+                    </div>
+                    {% endif %}
+                    {% elif producto.gamepoint_product_id and producto.gamepoint_fields %}
                     {% for field in producto.gamepoint_fields %}
                     <div class="form-group">
                         <label><i class="fas fa-gamepad"></i> {{ field.desc }} *</label>

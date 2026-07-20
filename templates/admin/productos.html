@@ -47,6 +47,11 @@
                     <input type="text" name="descripcion" id="form-descripcion" placeholder="Descripción del producto">
                 </div>
                 <div class="form-group">
+                    <label><i class="fas fa-list-check"></i> Datos a pedirle al cliente</label>
+                    <textarea name="campos_cliente" id="form-campos-cliente" rows="3" class="form-input" placeholder="id_juego:ID del jugador&#10;input2:Servidor / Zona"></textarea>
+                    <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Opcional. Si lo dejas vacío, se usan los campos actuales del producto. Formato: campo:Etiqueta. Campos permitidos: id_juego, input2, additional_data_2, zone_id.</small>
+                </div>
+                <div class="form-group">
                     <label class="checkbox-label">
                         <input type="checkbox" name="activo" id="form-activo" checked> Producto activo (visible en catálogo)
                     </label>
@@ -405,6 +410,7 @@
                         data-categoria-id="{{ p.categoria_id|default(0) }}"
                         data-icono="{{ p.icono|default('')|e }}"
                         data-descripcion="{{ p.descripcion|default('')|e }}"
+                        data-campos-cliente="{{ p.campos_cliente|default('')|e }}"
                         data-activo="{{ p.activo|default(1) }}"
                         data-rechazo-auto="{{ p.rechazo_automatico|default(0) }}"
                         data-usa-api="{{ p.usa_api|default(0) }}"
@@ -1263,6 +1269,7 @@ function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono
     var mgProduct = row ? (parseInt(row.getAttribute('data-mg-product')) || 0) : 0;
     var mgVariation = row ? (parseInt(row.getAttribute('data-mg-variation')) || 0) : 0;
     var mgFields = row ? (row.getAttribute('data-mg-fields') || '') : '';
+    var camposCliente = row ? (row.getAttribute('data-campos-cliente') || '') : '';
     document.getElementById('form-accion').value = 'editar';
     document.getElementById('form-producto-id').value = id;
     document.getElementById('form-nombre').value = nombre;
@@ -1271,6 +1278,7 @@ function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono
     document.getElementById('form-categoria').value = categoriaId;
     document.getElementById('form-icono').value = icono;
     document.getElementById('form-descripcion').value = descripcion;
+    document.getElementById('form-campos-cliente').value = camposCliente;
     document.getElementById('form-activo').checked = activo == 1;
     document.getElementById('form-rechazo-automatico').checked = rechazoAutomatico == 1;
     document.getElementById('form-usa-api').checked = usaApi == 1;
@@ -1329,6 +1337,7 @@ function resetForm() {
     document.getElementById('form-precio-suscriptor').value = '0';
     document.getElementById('form-icono').value = 'fa-gem';
     document.getElementById('form-descripcion').value = '';
+    document.getElementById('form-campos-cliente').value = '';
     document.getElementById('form-activo').checked = true;
     document.getElementById('form-rechazo-automatico').checked = false;
     document.getElementById('form-usa-api').checked = false;

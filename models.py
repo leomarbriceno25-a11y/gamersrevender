@@ -120,6 +120,7 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nombre TEXT NOT NULL,
             descripcion TEXT,
+            campos_cliente TEXT DEFAULT '',
             precio REAL NOT NULL,
             precio_suscriptor REAL DEFAULT 0,
             categoria_id INTEGER,
@@ -327,6 +328,10 @@ def init_db():
         db.execute("SELECT usa_deltaforce FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN usa_deltaforce INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT campos_cliente FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN campos_cliente TEXT DEFAULT ''")
     try:
         db.execute("SELECT deltaforce_paquete FROM productos LIMIT 1")
     except Exception:

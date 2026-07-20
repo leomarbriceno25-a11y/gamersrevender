@@ -2380,8 +2380,9 @@ def _pincentral_estado_recarga(data):
     return str((data or {}).get('status', '') or '').strip().lower().replace(' ', '')
 
 
-def _pincentral_parse_fields(raw):
+def _parse_campos_cliente(raw, ensure_id_juego=False):
     fields = []
+    allowed = {'id_juego', 'input2', 'additional_data_2', 'zone_id'}
     for line in str(raw or '').replace('\r', '\n').split('\n'):
         line = line.strip()
         if not line:
@@ -2392,8 +2393,15 @@ def _pincentral_parse_fields(raw):
             name, label = line, line
         name = name.strip()
         label = label.strip() or name
-        if name in ('id_juego', 'input2', 'additional_data_2'):
+        if name in allowed:
             fields.append({'name': name, 'label': label})
+    if ensure_id_juego and not any(f['name'] == 'id_juego' for f in fields):
+        fields.insert(0, {'name': 'id_juego', 'label': 'ID del jugador'})
+    return fields
+
+
+def _pincentral_parse_fields(raw):
+    fields = [f for f in _parse_campos_cliente(raw, ensure_id_juego=True) if f['name'] in ('id_juego', 'input2', 'additional_data_2')]
     if not fields:
         fields = [{'name': 'id_juego', 'label': 'ID del jugador'}]
     if not any(f['name'] == 'id_juego' for f in fields):
@@ -2937,7 +2945,10 @@ def producto(id):
     prod_dict['precio'] = precio_final
     prod_dict['suscripcion_activa'] = _suscripcion_activa_desde_row(user_row)
     prod_dict['precio_suscriptor_aplicado'] = precio_final != precio_normal
-    if prod_dict.get('gamepoint_fields'):
+    prod_dict['campos_cliente_parsed'] = _parse_campos_cliente(prod_dict.get('campos_cliente'))
+    if prod_dict['campos_cliente_parsed']:
+        prod_dict['gamepoint_fields'] = []
+    elif prod_dict.get('gamepoint_fields'):
         try:
             prod_dict['gamepoint_fields'] = _json.loads(prod_dict['gamepoint_fields'])
         except Exception:
@@ -5047,6 +5058,7 @@ def admin_productos():
         if accion == 'crear':
             nombre = request.form.get('nombre', '').strip()
             descripcion = request.form.get('descripcion', '').strip()
+            campos_cliente = request.form.get('campos_cliente', '').strip()
             precio = float(request.form.get('precio', 0))
             precio_suscriptor = float(request.form.get('precio_suscriptor', 0) or 0)
             categoria_id = int(request.form.get('categoria_id', 0))
@@ -5098,14 +5110,15 @@ def admin_productos():
             if precio_suscriptor < 0:
                 precio_suscriptor = 0
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, campos_cliente, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, campos_cliente, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
             prod_id = int(request.form.get('producto_id', 0))
             nombre = request.form.get('nombre', '').strip()
             descripcion = request.form.get('descripcion', '').strip()
+            campos_cliente = request.form.get('campos_cliente', '').strip()
             precio = float(request.form.get('precio', 0))
             precio_suscriptor = float(request.form.get('precio_suscriptor', 0) or 0)
             categoria_id = int(request.form.get('categoria_id', 0))
@@ -5157,8 +5170,8 @@ def admin_productos():
             if precio_suscriptor < 0:
                 precio_suscriptor = 0
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, pincentral_recarga_directa=?, pincentral_fields=?, pincentral_recarga_cantidad=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, bloodstrike_package_id=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, campos_cliente=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, pincentral_recarga_directa=?, pincentral_fields=?, pincentral_recarga_cantidad=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, bloodstrike_package_id=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, campos_cliente, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -6419,7 +6432,7 @@ def api_productos():
     user = request.api_user
     suscripcion_activa = _suscripcion_activa_desde_row(user)
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.precio, p.precio_suscriptor, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.moogold_category_id, p.moogold_variation_id, p.moogold_fields, p.bloodstrike_package_id, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.campos_cliente, p.precio, p.precio_suscriptor, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.moogold_category_id, p.moogold_variation_id, p.moogold_fields, p.bloodstrike_package_id, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
@@ -6452,7 +6465,10 @@ def api_productos():
                 campos = _json.loads(fields_raw)
             except Exception:
                 campos = []
-        if campos:
+        campos_cliente = _parse_campos_cliente(d.pop('campos_cliente', ''))
+        if campos_cliente:
+            d['campos_requeridos'] = [{'nombre': f['name'], 'descripcion': f['label'], 'tipo': 'string', 'opciones': []} for f in campos_cliente]
+        elif campos:
             d['campos_requeridos'] = [{'nombre': f['name'], 'descripcion': f['desc'], 'tipo': f['type'], 'opciones': f.get('options', [])} for f in campos]
         elif usa_moogold:
             mg_campos = _moogold_parse_field_defs(moogold_fields_raw)
