@@ -18,12 +18,12 @@
             <!-- Desktop -->
             <div class="table-responsive d-none-mobile">
                 <table class="table">
-                    <thead><tr><th>ID</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Registro</th><th>Acción</th></tr></thead>
+                    <thead><tr><th>ID</th><th>Nombre</th><th>Email</th><th>Teléfono</th><th>Registro</th><th style="min-width:130px;">Acción</th></tr></thead>
                     <tbody>
                         {% for u in pendientes %}
                         <tr>
                             <td>{{ u.id }}</td><td>{{ u.nombre }}</td><td>{{ u.email }}</td><td>{{ u.telefono or '-' }}</td><td>{{ u.fecha_registro or '-' }}</td>
-                            <td><form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="display:inline;"><button type="submit" class="btn btn-primary" style="padding:0.4rem 1rem;font-size:0.85rem;" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')"><i class="fas fa-check"></i> Aprobar</button></form></td>
+                            <td style="white-space:nowrap;"><form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="display:inline;"><button type="submit" class="btn btn-primary" style="padding:0.4rem 1rem;font-size:0.85rem;white-space:nowrap;" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')"><i class="fas fa-check"></i> Aprobar</button></form></td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -50,7 +50,7 @@
         <div class="table-responsive d-none-mobile">
             <table class="table" id="tablaUsuarios">
                 <thead>
-                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Suscripción</th><th>Bloqueos API</th><th>Estado</th><th>Registro</th><th>Acciones</th></tr>
+                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Suscripción</th><th>Bloqueos API</th><th>Estado</th><th>Registro</th><th style="min-width:240px;">Acciones</th></tr>
                 </thead>
                 <tbody>
                     {% for u in usuarios %}
@@ -64,8 +64,8 @@
                         <td><span class="badge badge-procesando"><i class="fas fa-list-check"></i> {{ (api_categorias_bloqueadas.get(u.id, []) if api_categorias_bloqueadas is defined else [])|length }} categorías</span></td>
                         <td>{% if u.activo %}<span class="badge badge-completado">Activo</span>{% else %}<span class="badge badge-cancelado">Pendiente</span>{% endif %}</td>
                         <td>{{ u.fecha_registro or '-' }}</td>
-                        <td>
-                            <div style="display:flex;gap:0.3rem;flex-wrap:wrap;">
+                        <td style="white-space:nowrap;">
+                            <div style="display:flex;gap:0.3rem;flex-wrap:wrap;min-width:fit-content;">
                                 <button class="btn btn-sm btn-secondary" title="Editar" onclick="editarUsuario({{ u.id }}, '{{ u.nombre|e }}', '{{ u.email|e }}', '{{ u.telefono|e }}')"><i class="fas fa-edit"></i></button>
                                 {% if u.rol != 'admin' %}
                                 <button class="btn btn-sm" style="background:#f59e0b;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Descontar saldo" onclick="descontarSaldo({{ u.id }}, '{{ u.nombre|e }}', {{ u.saldo }})"><i class="fas fa-minus-circle"></i></button>
