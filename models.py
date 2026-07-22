@@ -113,7 +113,11 @@ def init_db():
             tipo TEXT DEFAULT 'juegos',
             descripcion TEXT,
             activo INTEGER DEFAULT 1,
-            orden INTEGER DEFAULT 0
+            orden INTEGER DEFAULT 0,
+            verificar_nombre INTEGER DEFAULT 0,
+            verificar_nombre_tipo TEXT DEFAULT '',
+            validar_id_api INTEGER DEFAULT 0,
+            validar_id_api_tipo TEXT DEFAULT ''
         );
 
         CREATE TABLE IF NOT EXISTS productos (
@@ -653,6 +657,16 @@ def init_db():
         db.execute("SELECT verificar_nombre_tipo FROM categorias LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE categorias ADD COLUMN verificar_nombre_tipo TEXT DEFAULT ''")
+
+    # Validación obligatoria del ID del jugador vía API en compras
+    try:
+        db.execute("SELECT validar_id_api FROM categorias LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE categorias ADD COLUMN validar_id_api INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT validar_id_api_tipo FROM categorias LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE categorias ADD COLUMN validar_id_api_tipo TEXT DEFAULT ''")
 
 
     # Crear admin si no existe

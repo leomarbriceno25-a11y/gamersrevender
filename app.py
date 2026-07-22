@@ -3189,9 +3189,10 @@ def comprar():
     producto_id = int(request.form.get('producto_id', 0))
     cantidad = int(request.form.get('cantidad', 1))
     id_juego = request.form.get('id_juego', '').strip()
+    input2 = request.form.get('input2', '').strip()
 
     db = get_db()
-    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
+    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.tipo as categoria_tipo, c.validar_id_api, c.validar_id_api_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
     if not prod:
         flash('Producto no encontrado', 'error')
         db.close()
@@ -3225,6 +3226,17 @@ def comprar():
         flash('Debes ingresar el ID del jugador para esta recarga.', 'error')
         db.close()
         return redirect(url_for('producto', id=producto_id))
+
+    # Validar ID del jugador vía API si la categoría lo exige
+    nombre_jugador_api = ''
+    if int((prod['validar_id_api'] if 'validar_id_api' in prod.keys() else 0) or 0) and id_juego:
+        tipo_val = str((prod['validar_id_api_tipo'] if 'validar_id_api_tipo' in prod.keys() else '') or '').strip() or 'freefire'
+        val_api = verificar_nombre_jugador(tipo_val, id_juego, input2)
+        if not val_api.get('ok'):
+            flash(val_api.get('error') or 'ID de jugador no válido. Verifica el ID antes de comprar.', 'error')
+            db.close()
+            return redirect(url_for('producto', id=producto_id))
+        nombre_jugador_api = val_api.get('nombre', '')
 
     if freefire_levelpass:
         cached = _get_cached_levelpass(id_juego, producto_id)
@@ -3277,8 +3289,8 @@ def comprar():
         db.close()
         return redirect(url_for('producto', id=producto_id))
 
-    db.execute("INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, estado) VALUES (?,?,?,?,?,?)",
-               (user_id, producto_id, cantidad, total, id_juego, 'procesando'))
+    db.execute("INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, nombre_jugador, estado) VALUES (?,?,?,?,?,?,?)",
+               (user_id, producto_id, cantidad, total, id_juego, nombre_jugador_api, 'procesando'))
     pedido_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
     # Actualizar transacción con pedido_id
@@ -6200,10 +6212,12 @@ def admin_categorias():
             orden = int(request.form.get('orden', 0))
             verificar_nombre = 1 if request.form.get('verificar_nombre') else 0
             verificar_nombre_tipo = request.form.get('verificar_nombre_tipo', '').strip()
+            validar_id_api = 1 if request.form.get('validar_id_api') else 0
+            validar_id_api_tipo = request.form.get('validar_id_api_tipo', '').strip()
             if nombre and slug:
                 try:
-                    db.execute("INSERT INTO categorias (nombre, slug, icono, imagen, tipo, descripcion, orden, verificar_nombre, verificar_nombre_tipo) VALUES (?,?,?,?,?,?,?,?,?)",
-                               (nombre, slug, icono, imagen, tipo, descripcion, orden, verificar_nombre, verificar_nombre_tipo))
+                    db.execute("INSERT INTO categorias (nombre, slug, icono, imagen, tipo, descripcion, orden, verificar_nombre, verificar_nombre_tipo, validar_id_api, validar_id_api_tipo) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                               (nombre, slug, icono, imagen, tipo, descripcion, orden, verificar_nombre, verificar_nombre_tipo, validar_id_api, validar_id_api_tipo))
                     db.commit()
                     flash(f'Categoría "{nombre}" creada', 'success')
                 except Exception:
@@ -6228,9 +6242,11 @@ def admin_categorias():
             activo = 1 if request.form.get('activo') else 0
             verificar_nombre = 1 if request.form.get('verificar_nombre') else 0
             verificar_nombre_tipo = request.form.get('verificar_nombre_tipo', '').strip()
+            validar_id_api = 1 if request.form.get('validar_id_api') else 0
+            validar_id_api_tipo = request.form.get('validar_id_api_tipo', '').strip()
             if cat_id > 0 and nombre and slug:
-                db.execute("UPDATE categorias SET nombre=?, slug=?, icono=?, imagen=?, tipo=?, descripcion=?, orden=?, activo=?, verificar_nombre=?, verificar_nombre_tipo=? WHERE id=?",
-                           (nombre, slug, icono, imagen, tipo, descripcion, orden, activo, verificar_nombre, verificar_nombre_tipo, cat_id))
+                db.execute("UPDATE categorias SET nombre=?, slug=?, icono=?, imagen=?, tipo=?, descripcion=?, orden=?, activo=?, verificar_nombre=?, verificar_nombre_tipo=?, validar_id_api=?, validar_id_api_tipo=? WHERE id=?",
+                           (nombre, slug, icono, imagen, tipo, descripcion, orden, activo, verificar_nombre, verificar_nombre_tipo, validar_id_api, validar_id_api_tipo, cat_id))
                 db.commit()
                 flash('Categoría actualizada', 'success')
         elif accion == 'eliminar':
@@ -6763,7 +6779,7 @@ def api_comprar():
             }), 409
 
 
-    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
+    prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.tipo as categoria_tipo, c.validar_id_api, c.validar_id_api_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
     if not prod:
         db.close()
         return jsonify({'ok': False, 'error': 'Producto no encontrado'}), 404
@@ -6828,6 +6844,16 @@ def api_comprar():
         db.close()
         return jsonify({'ok': False, 'error': 'Se requiere id_juego (Player ID)'}), 400
 
+    # Validar ID del jugador vía API si la categoría lo exige
+    nombre_jugador_api = ''
+    if int((prod['validar_id_api'] if 'validar_id_api' in prod.keys() else 0) or 0) and id_juego:
+        tipo_val = str((prod['validar_id_api_tipo'] if 'validar_id_api_tipo' in prod.keys() else '') or '').strip() or 'freefire'
+        val_api = verificar_nombre_jugador(tipo_val, id_juego, str(input2 or ''))
+        if not val_api.get('ok'):
+            db.close()
+            return jsonify({'ok': False, 'error': val_api.get('error') or 'ID de jugador no válido'}), 400
+        nombre_jugador_api = val_api.get('nombre', '')
+
     if freefire_levelpass:
         cached = _get_cached_levelpass(id_juego, producto_id)
         if cached:
@@ -6852,8 +6878,8 @@ def api_comprar():
         return jsonify({'ok': False, 'error': 'Saldo insuficiente', 'saldo': saldo, 'total': total}), 400
 
     db.execute(
-        "INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, estado, referencia_cliente) VALUES (?,?,?,?,?,?,?)",
-        (user['id'], producto_id, cantidad, total, id_juego, 'procesando', merchant_ref),
+        "INSERT INTO pedidos (usuario_id, producto_id, cantidad, total, id_juego, nombre_jugador, estado, referencia_cliente) VALUES (?,?,?,?,?,?,?,?)",
+        (user['id'], producto_id, cantidad, total, id_juego, nombre_jugador_api, 'procesando', merchant_ref),
     )
     pedido_id = db.execute("SELECT last_insert_rowid()").fetchone()[0]
 
