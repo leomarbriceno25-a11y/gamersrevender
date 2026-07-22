@@ -1369,6 +1369,47 @@ def _verificar_freefire_levelpass(player_id, levelpass_key, validar_id_tipo=None
         return {'ok': False, 'error': 'Error al validar'}
 
 
+# Cache en sesion para evitar revalidar el mismo pase varias veces seguidas
+LEVELPASS_CACHE_TTL_SECONDS = 300
+
+
+def _cache_key_levelpass(player_id, producto_id):
+    return f"{player_id}:{producto_id}"
+
+
+def _get_cached_levelpass(player_id, producto_id):
+    cache = session.get('levelpass_cache') or {}
+    item = cache.get(_cache_key_levelpass(player_id, producto_id))
+    if not item:
+        return None
+    try:
+        ts = datetime.fromisoformat(item.get('ts'))
+        if datetime.utcnow() - ts > timedelta(seconds=LEVELPASS_CACHE_TTL_SECONDS):
+            return None
+    except Exception:
+        return None
+    return item
+
+
+def _set_cached_levelpass(player_id, producto_id, available, nombre=''):
+    cache = session.get('levelpass_cache') or {}
+    cache[_cache_key_levelpass(player_id, producto_id)] = {
+        'available': bool(available),
+        'nombre': str(nombre or ''),
+        'ts': datetime.utcnow().isoformat(),
+    }
+    session['levelpass_cache'] = cache
+
+
+def _clear_cached_levelpass(player_id, producto_id=None):
+    cache = session.get('levelpass_cache') or {}
+    if producto_id is None:
+        session.pop('levelpass_cache', None)
+        return
+    cache.pop(_cache_key_levelpass(player_id, producto_id), None)
+    session['levelpass_cache'] = cache
+
+
 def verificar_nombre_jugador(tipo, player_id, zone_id=''):
     """Consulta APIs externas para obtener el nombre del jugador según el tipo de juego."""
     import requests as ext_requests
@@ -2845,7 +2886,9 @@ def api_verificar_levelpass():
     if not levelpass_key:
         return jsonify({'ok': False, 'error': 'Producto sin pase configurado'}), 400
     tipo = str(prod['verificar_nombre_tipo'] or 'freefire').strip() or 'freefire'
-    return jsonify(_verificar_freefire_levelpass(player_id, levelpass_key, validar_id_tipo=tipo))
+    resultado = _verificar_freefire_levelpass(player_id, levelpass_key, validar_id_tipo=tipo)
+    _set_cached_levelpass(player_id, producto_id, resultado.get('available'), resultado.get('nombre'))
+    return jsonify(resultado)
 
 
 @app.route('/api/verificar-pases', methods=['POST'])
@@ -2904,6 +2947,10 @@ def api_verificar_pases():
             'nombre_pase': lp.get('name', key) if isinstance(lp, dict) else key,
         })
     db.close()
+
+    # Cachear resultados para evitar revalidar al comprar
+    for p in pases:
+        _set_cached_levelpass(player_id, p['producto_id'], p['disponible'], nv.get('nombre'))
 
     return jsonify({
         'ok': True,
@@ -3118,7 +3165,21 @@ def producto(id):
         prod_dict['pincentral_fields_parsed'] = []
     saldo = get_saldo(session['user_id'])
     player_id_prefill = request.args.get('player_id', '').strip()
-    return render_template('producto.html', producto=prod_dict, saldo=saldo, player_id_prefill=player_id_prefill)
+    levelpass_verificado = False
+    player_name_cache = ''
+    if player_id_prefill and prod_dict.get('freefire_levelpass'):
+        cached = _get_cached_levelpass(player_id_prefill, prod_dict['id'])
+        if cached and cached.get('available'):
+            levelpass_verificado = True
+            player_name_cache = cached.get('nombre')
+    return render_template(
+        'producto.html',
+        producto=prod_dict,
+        saldo=saldo,
+        player_id_prefill=player_id_prefill,
+        levelpass_verificado=levelpass_verificado,
+        player_name_cache=player_name_cache,
+    )
 
 
 # ===== COMPRAR =====
@@ -3166,7 +3227,13 @@ def comprar():
         return redirect(url_for('producto', id=producto_id))
 
     if freefire_levelpass:
-        lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass, validar_id_tipo='freefire')
+        cached = _get_cached_levelpass(id_juego, producto_id)
+        if cached:
+            lp_check = {'ok': True, 'available': cached.get('available')}
+        else:
+            lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass, validar_id_tipo='freefire')
+            if lp_check.get('ok'):
+                _set_cached_levelpass(id_juego, producto_id, lp_check.get('available'), lp_check.get('nombre'))
         if not lp_check.get('ok') or not lp_check.get('available'):
             flash(lp_check.get('error') or 'Error al validar la disponibilidad del pase. No es posible comprar este producto.', 'error')
             db.close()
@@ -6762,7 +6829,13 @@ def api_comprar():
         return jsonify({'ok': False, 'error': 'Se requiere id_juego (Player ID)'}), 400
 
     if freefire_levelpass:
-        lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass, validar_id_tipo='freefire')
+        cached = _get_cached_levelpass(id_juego, producto_id)
+        if cached:
+            lp_check = {'ok': True, 'available': cached.get('available')}
+        else:
+            lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass, validar_id_tipo='freefire')
+            if lp_check.get('ok'):
+                _set_cached_levelpass(id_juego, producto_id, lp_check.get('available'), lp_check.get('nombre'))
         if not lp_check.get('ok') or not lp_check.get('available'):
             db.close()
             return jsonify({'ok': False, 'error': lp_check.get('error') or 'Error al validar la disponibilidad del pase'}), 400

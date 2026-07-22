@@ -247,8 +247,9 @@ var stockIlimitado = {{ producto.stock_ilimitado|default(false)|tojson }};
 var productoAgotado = {{ (producto.categoria_tipo == 'giftcards' and not producto.bloodstrike_package_id and (producto.moogold_stock_status|default('') == 'outofstock' or producto.moogold_disponible is defined and not producto.moogold_disponible or (not producto.stock_ilimitado and producto.stock_disponible|default(0) <= 0)))|tojson }};
 var nombreVerificado = false;
 var freefireLevelpass = {{ producto.freefire_levelpass|tojson }};
-var levelpassVerificado = false;
+var levelpassVerificado = {{ levelpass_verificado|tojson }};
 var playerIdPrefill = {{ player_id_prefill|tojson }};
+var playerNameCache = {{ player_name_cache|tojson }};
 
 function showToast(msg, type) {
     type = type || 'info';
@@ -469,12 +470,29 @@ if (zoneInput) {
     });
 }
 
-if (freefireLevelpass) {
+// Apply cached verification status from section without calling the API again
+if (levelpassVerificado && playerIdPrefill) {
+    var idInputPre = document.getElementById('input-id-juego');
+    if (idInputPre) idInputPre.value = playerIdPrefill;
+    var resultadoLp = document.getElementById('resultado-levelpass');
+    if (resultadoLp) {
+        resultadoLp.style.display = 'block';
+        resultadoLp.style.background = 'rgba(34,197,94,0.15)';
+        resultadoLp.style.border = '1px solid #22c55e';
+        resultadoLp.innerHTML = '<i class="fas fa-check-circle" style="color:#22c55e;"></i> <strong>Pase disponible</strong>';
+    }
+    if (playerNameCache && requiereVerificacion) {
+        nombreVerificado = true;
+        var resNombre = document.getElementById('resultado-verificacion');
+        if (resNombre) {
+            resNombre.style.display = 'block';
+            resNombre.style.background = 'rgba(34,197,94,0.15)';
+            resNombre.style.border = '1px solid #22c55e';
+            resNombre.innerHTML = '<i class="fas fa-check-circle" style="color:#22c55e;"></i> <strong>Jugador encontrado:</strong> <span style="color:#22c55e; font-size:1.1rem;">' + playerNameCache + '</span>';
+        }
+    }
     actualizarEstadoBoton();
-}
-
-// Prefill player ID from section and auto-verify
-if (playerIdPrefill) {
+} else if (playerIdPrefill) {
     var idInputPre = document.getElementById('input-id-juego');
     if (idInputPre) {
         idInputPre.value = playerIdPrefill;
