@@ -1343,10 +1343,12 @@ def _verificar_freefire_levelpass(player_id, levelpass_key, validar_id_tipo=None
     levelpass_key = str(levelpass_key or '').strip()
     if not player_id or not levelpass_key:
         return {'ok': False, 'error': 'Datos incompletos'}
+    nombre_jugador = None
     if validar_id_tipo:
         nv = verificar_nombre_jugador(validar_id_tipo, player_id)
         if not nv.get('ok'):
             return {'ok': False, 'error': 'ID de jugador no válido'}
+        nombre_jugador = nv.get('nombre')
     try:
         r = requests.get(
             f"{FREEFIRE_BP_BASE_URL}/api/freefire-bo/levelpass-check",
@@ -1359,7 +1361,10 @@ def _verificar_freefire_levelpass(player_id, levelpass_key, validar_id_tipo=None
         lp = (data.get('levelPasses') or {}).get(levelpass_key)
         if not isinstance(lp, dict):
             return {'ok': False, 'error': 'Error al validar'}
-        return {'ok': True, 'available': bool(lp.get('available'))}
+        result = {'ok': True, 'available': bool(lp.get('available'))}
+        if nombre_jugador:
+            result['nombre'] = nombre_jugador
+        return result
     except Exception:
         return {'ok': False, 'error': 'Error al validar'}
 
@@ -2843,6 +2848,91 @@ def api_verificar_levelpass():
     return jsonify(_verificar_freefire_levelpass(player_id, levelpass_key, validar_id_tipo=tipo))
 
 
+@app.route('/api/verificar-pases', methods=['POST'])
+@login_required
+def api_verificar_pases():
+    """Verifica el ID del jugador y retorna la disponibilidad de todos los pases de nivel configurados."""
+    data = request.get_json(silent=True) or {}
+    player_id = str(data.get('player_id', '') or '').strip()
+    zone_id = str(data.get('zone_id', '') or '').strip()
+    if not player_id:
+        return jsonify({'ok': False, 'error': 'Ingresa el ID del jugador'}), 400
+
+    # 1. Validar que el ID existe antes de consultar pases
+    nv = verificar_nombre_jugador('freefire', player_id, zone_id)
+    if not nv.get('ok'):
+        return jsonify({'ok': False, 'error': 'ID de jugador no válido'}), 400
+
+    # 2. Consultar disponibilidad de todos los pases en una sola llamada
+    try:
+        r = requests.get(
+            f"{FREEFIRE_BP_BASE_URL}/api/freefire-bo/levelpass-check",
+            params={'playerId': player_id, 'token': FREEFIRE_BP_TOKEN},
+            timeout=15,
+        )
+        api_data = r.json() if r.status_code == 200 else {}
+    except Exception:
+        return jsonify({'ok': False, 'error': 'Error al validar'}), 400
+
+    if not isinstance(api_data, dict) or not api_data.get('success'):
+        return jsonify({'ok': False, 'error': 'Error al validar'}), 400
+
+    level_passes = api_data.get('levelPasses') or {}
+
+    db = get_db()
+    user_row = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+    prods = db.execute(
+        "SELECT p.* FROM productos p "
+        "WHERE p.activo = 1 AND COALESCE(p.freefire_levelpass, '') != '' "
+        "ORDER BY p.orden ASC, p.precio ASC, p.nombre ASC"
+    ).fetchall()
+
+    pases = []
+    for prod in prods:
+        key = str(prod['freefire_levelpass'] or '').strip()
+        lp = level_passes.get(key) if isinstance(level_passes, dict) else None
+        disponible = isinstance(lp, dict) and bool(lp.get('available'))
+        precio = _precio_producto_para_usuario(prod, user_row)
+        pases.append({
+            'producto_id': prod['id'],
+            'nombre': prod['nombre'],
+            'descripcion': prod['descripcion'] or '',
+            'icono': prod['icono'] or 'fa-medal',
+            'freefire_levelpass': key,
+            'precio': precio,
+            'disponible': disponible,
+            'nombre_pase': lp.get('name', key) if isinstance(lp, dict) else key,
+        })
+    db.close()
+
+    return jsonify({
+        'ok': True,
+        'player_id': player_id,
+        'player_name': nv.get('nombre'),
+        'alguno_disponible': any(p['disponible'] for p in pases),
+        'pases': pases,
+    })
+
+
+@app.route('/pases-de-nivel')
+@login_required
+def pases_de_nivel():
+    db = get_db()
+    user_row = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
+    prods = db.execute(
+        "SELECT p.* FROM productos p "
+        "WHERE p.activo = 1 AND COALESCE(p.freefire_levelpass, '') != '' "
+        "ORDER BY p.orden ASC, p.precio ASC, p.nombre ASC"
+    ).fetchall()
+    productos = []
+    for prod in prods:
+        d = dict(prod)
+        d['precio'] = _precio_producto_para_usuario(prod, user_row)
+        productos.append(d)
+    db.close()
+    return render_template('pases_de_nivel.html', productos=productos)
+
+
 # ===== DASHBOARD =====
 @app.route('/dashboard')
 @login_required
@@ -2890,8 +2980,11 @@ def catalogo():
         "WHERE c.activo = 1 "
         "ORDER BY c.orden"
     ).fetchall()
+    hay_pases_de_nivel = db.execute(
+        "SELECT 1 FROM productos WHERE activo = 1 AND COALESCE(freefire_levelpass, '') != '' LIMIT 1"
+    ).fetchone() is not None
     db.close()
-    return render_template('catalogo.html', categorias=categorias)
+    return render_template('catalogo.html', categorias=categorias, hay_pases_de_nivel=hay_pases_de_nivel)
 
 
 @app.route('/catalogo/<slug>')
@@ -2902,6 +2995,9 @@ def catalogo_juego(slug):
     if not cat:
         flash('Juego no encontrado', 'error')
         return redirect(url_for('catalogo'))
+    if cat['nombre'].strip().lower() == 'pases de nivel':
+        db.close()
+        return redirect(url_for('pases_de_nivel'))
     productos_rows = db.execute("SELECT * FROM productos WHERE categoria_id = ? AND activo = 1 ORDER BY orden ASC, precio ASC", (cat['id'],)).fetchall()
     user_row = db.execute("SELECT suscripcion_hasta FROM usuarios WHERE id = ?", (session['user_id'],)).fetchone()
 
@@ -3021,7 +3117,8 @@ def producto(id):
     else:
         prod_dict['pincentral_fields_parsed'] = []
     saldo = get_saldo(session['user_id'])
-    return render_template('producto.html', producto=prod_dict, saldo=saldo)
+    player_id_prefill = request.args.get('player_id', '').strip()
+    return render_template('producto.html', producto=prod_dict, saldo=saldo, player_id_prefill=player_id_prefill)
 
 
 # ===== COMPRAR =====

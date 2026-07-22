@@ -1,0 +1,226 @@
+{% extends 'base.html' %}
+{% block title %}Pases de Nivel Free Fire - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<style>
+.levelpass-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    text-align: center;
+    transition: transform 0.2s, border-color 0.2s, opacity 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+.levelpass-card:hover { transform: translateY(-3px); border-color: var(--accent-primary); }
+.levelpass-card.disponible { border-color: #22c55e; box-shadow: 0 0 0 1px #22c55e; }
+.levelpass-card.no-disponible { opacity: 0.55; filter: grayscale(0.7); }
+.levelpass-icon { font-size: 2.5rem; color: var(--accent-primary); margin-bottom: 1rem; }
+.levelpass-card h3 { font-size: 1rem; font-weight: 600; margin-bottom: 0.5rem; }
+.levelpass-desc { color: var(--text-secondary); font-size: 0.8rem; margin-bottom: 0.8rem; }
+.levelpass-price { font-size: 1.3rem; font-weight: 800; color: var(--accent-secondary); margin-bottom: 1rem; }
+.levelpass-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.85rem;
+    font-weight: 700;
+    padding: 0.35rem 0.7rem;
+    border-radius: 999px;
+    margin-bottom: 0.75rem;
+}
+.levelpass-badge.ok { background: rgba(34,197,94,0.15); color: #22c55e; }
+.levelpass-badge.no { background: rgba(239,68,68,0.15); color: #ef4444; }
+.levelpass-verify-box {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    max-width: 520px;
+    margin: 0 auto 2rem;
+}
+.levelpass-global-msg {
+    text-align: center;
+    padding: 1.5rem;
+    border-radius: var(--radius);
+    margin-bottom: 1.5rem;
+    font-weight: 700;
+}
+</style>
+
+<section class="page-header">
+    <div class="container">
+        <a href="{{ url_for('catalogo') }}" class="btn-back"><i class="fas fa-arrow-left"></i> Catálogo</a>
+        <h1><i class="fas fa-medal"></i> Pases de Nivel Free Fire</h1>
+        <p>Ingresa el ID del jugador para ver qué pases tiene disponibles.</p>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <div class="levelpass-verify-box">
+            <div class="form-group">
+                <label><i class="fas fa-gamepad"></i> ID del jugador *</label>
+                <input type="text" id="input-player-id" class="form-control" placeholder="Ingresa el ID de Free Fire" required>
+            </div>
+            <button type="button" class="btn btn-primary btn-block" id="btn-verificar-pases" onclick="verificarPases()">
+                <i class="fas fa-search"></i> Verificar disponibilidad
+            </button>
+            <div id="resultado-global" style="display:none; margin-top:1rem;"></div>
+        </div>
+
+        {% if productos %}
+        <div id="pases-grid" class="products-grid" style="opacity:0.6; pointer-events:none;">
+            {% for prod in productos %}
+            <div class="levelpass-card" data-producto-id="{{ prod.id }}" data-levelpass="{{ prod.freefire_levelpass|e }}">
+                <div class="levelpass-icon"><i class="fas {{ prod.icono }}"></i></div>
+                <h3>{{ prod.nombre }}</h3>
+                <p class="levelpass-desc">{{ prod.descripcion }}</p>
+                <div class="levelpass-price">${{ '%.4f'|format(prod.precio) }}</div>
+                <div class="levelpass-badge estado" style="display:none;"></div>
+                <a href="{{ url_for('producto', id=prod.id) }}" class="btn btn-primary btn-sm btn-block btn-comprar" style="display:none;">
+                    <i class="fas fa-shopping-cart"></i> Comprar
+                </a>
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <div class="empty-state">
+            <i class="fas fa-box-open"></i>
+            <h2>Sin pases configurados</h2>
+            <p>No hay pases de nivel disponibles en este momento.</p>
+        </div>
+        {% endif %}
+    </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showToast(msg, type) {
+    type = type || 'info';
+    var icons = { warning: 'fa-exclamation-triangle', error: 'fa-times-circle', success: 'fa-check-circle', info: 'fa-info-circle' };
+    var container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        container.style.cssText = 'position:fixed; bottom:1rem; right:1rem; z-index:9999;';
+        document.body.appendChild(container);
+    }
+    var toast = document.createElement('div');
+    toast.className = 'toast-msg ' + type;
+    toast.innerHTML = '<i class="fas ' + (icons[type] || icons.info) + '"></i> ' + msg;
+    container.appendChild(toast);
+    setTimeout(function() {
+        toast.style.animation = 'toast-out 0.3s ease forwards';
+        setTimeout(function() { toast.remove(); }, 300);
+    }, 3500);
+}
+
+function verificarPases() {
+    var input = document.getElementById('input-player-id');
+    var btn = document.getElementById('btn-verificar-pases');
+    var global = document.getElementById('resultado-global');
+    var grid = document.getElementById('pases-grid');
+    var playerId = input.value.trim();
+
+    if (!playerId) {
+        showToast('Ingresa el ID del jugador', 'warning');
+        input.focus();
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
+    global.style.display = 'none';
+    global.className = '';
+    global.innerHTML = '';
+
+    if (grid) {
+        grid.style.opacity = '0.6';
+        grid.style.pointerEvents = 'none';
+        grid.querySelectorAll('.levelpass-card').forEach(function(card) {
+            card.classList.remove('disponible', 'no-disponible');
+            var badge = card.querySelector('.levelpass-badge.estado');
+            if (badge) { badge.style.display = 'none'; badge.innerHTML = ''; }
+            var buy = card.querySelector('.btn-comprar');
+            if (buy) { buy.style.display = 'none'; buy.href = buy.getAttribute('data-base-href') || buy.href.split('?')[0]; }
+        });
+    }
+
+    fetch('/api/verificar-pases', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ player_id: playerId })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-search"></i> Verificar disponibilidad';
+        global.style.display = 'block';
+
+        if (!data.ok) {
+            global.className = 'levelpass-global-msg';
+            global.style.background = 'rgba(239,68,68,0.15)';
+            global.style.color = '#ef4444';
+            global.innerHTML = '<i class="fas fa-times-circle"></i> ' + (data.error || 'Error al validar');
+            return;
+        }
+
+        if (data.alguno_disponible) {
+            global.className = 'levelpass-global-msg';
+            global.style.background = 'rgba(34,197,94,0.15)';
+            global.style.color = '#22c55e';
+            global.innerHTML = '<i class="fas fa-check-circle"></i> Jugador encontrado: <strong>' + (data.player_name || data.player_id) + '</strong>. Estos pases están disponibles.';
+        } else {
+            global.className = 'levelpass-global-msg';
+            global.style.background = 'rgba(100,116,139,0.2)';
+            global.style.color = '#94a3b8';
+            global.innerHTML = '<i class="fas fa-times-circle"></i> Jugador encontrado: <strong>' + (data.player_name || data.player_id) + '</strong>. No tiene pases de nivel disponibles.';
+        }
+
+        if (grid) {
+            grid.style.opacity = '1';
+            grid.style.pointerEvents = 'auto';
+            data.pases.forEach(function(p) {
+                var card = grid.querySelector('.levelpass-card[data-producto-id="' + p.producto_id + '"]');
+                if (!card) return;
+                var badge = card.querySelector('.levelpass-badge.estado');
+                var buy = card.querySelector('.btn-comprar');
+                if (p.disponible) {
+                    card.classList.add('disponible');
+                    if (badge) {
+                        badge.style.display = 'inline-flex';
+                        badge.className = 'levelpass-badge estado ok';
+                        badge.innerHTML = '<i class="fas fa-check-circle"></i> Disponible';
+                    }
+                    if (buy) {
+                        buy.style.display = 'inline-block';
+                        var base = buy.getAttribute('data-base-href') || buy.href.split('?')[0];
+                        buy.setAttribute('data-base-href', base);
+                        buy.href = base + '?player_id=' + encodeURIComponent(data.player_id);
+                    }
+                } else {
+                    card.classList.add('no-disponible');
+                    if (badge) {
+                        badge.style.display = 'inline-flex';
+                        badge.className = 'levelpass-badge estado no';
+                        badge.innerHTML = '<i class="fas fa-times-circle"></i> No disponible';
+                    }
+                    if (buy) buy.style.display = 'none';
+                }
+            });
+        }
+    })
+    .catch(function(err) {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-search"></i> Verificar disponibilidad';
+        global.style.display = 'block';
+        global.className = 'levelpass-global-msg';
+        global.style.background = 'rgba(239,68,68,0.15)';
+        global.style.color = '#ef4444';
+        global.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Error de conexión. Intenta de nuevo.';
+    });
+}
+</script>
+{% endblock %}

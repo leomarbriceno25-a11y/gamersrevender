@@ -12,6 +12,27 @@
 {% set giftcards = categorias | selectattr('tipo', 'equalto', 'giftcards') | list %}
 {% set streaming = categorias | selectattr('tipo', 'equalto', 'streaming') | list %}
 
+{% if hay_pases_de_nivel %}
+<section class="section">
+    <div class="container">
+        <div class="catalog-section-header">
+            <h2><i class="fas fa-medal"></i> Pases de Nivel</h2>
+            <span class="catalog-count">Verifica tu ID</span>
+        </div>
+        <div class="games-grid">
+            <a href="{{ url_for('pases_de_nivel') }}" class="game-card-img">
+                <div class="game-card-bg" style="background-image: url('/static/img/freefire-bg.jpg'); background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);"></div>
+                <div class="game-card-overlay"></div>
+                <div class="game-card-content">
+                    <span class="game-tag">FREE FIRE</span>
+                    <h3>PASES DE NIVEL</h3>
+                </div>
+            </a>
+        </div>
+    </div>
+</section>
+{% endif %}
+
 {% if juegos %}
 <section class="section">
     <div class="container">
