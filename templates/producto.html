@@ -1,6 +1,13 @@
 {% extends 'base.html' %}
 {% block title %}{{ producto.nombre }} - {{ tienda_nombre }}{% endblock %}
 {% block content %}
+<style>
+#form-comprar.levelpass-unavailable {
+    filter: grayscale(0.5);
+    opacity: 0.7;
+    transition: filter 0.2s ease, opacity 0.2s ease;
+}
+</style>
 <section class="page-header">
     <div class="container">
         <a href="{{ url_for('catalogo_juego', slug=producto.categoria_slug) }}" class="btn-back">
@@ -142,6 +149,15 @@
                     {% endif %}
                     {% endif %}
 
+                    {% if producto.freefire_levelpass %}
+                    <div id="levelpass-check" style="margin-bottom:1rem;">
+                        <button type="button" class="btn btn-secondary btn-block" id="btn-verificar-levelpass" onclick="verificarLevelpass()">
+                            <i class="fas fa-shield-alt"></i> Verificar disponibilidad del pase
+                        </button>
+                        <div id="resultado-levelpass" style="display:none; margin-top:0.5rem; padding:0.75rem; border-radius:8px;"></div>
+                    </div>
+                    {% endif %}
+
                     {% if producto.categoria_tipo == 'giftcards' and not producto.bloodstrike_package_id %}
                     <div class="form-group">
                         <label><i class="fas fa-layer-group"></i> Cantidad (máx. 50)</label>
@@ -230,6 +246,8 @@ var stockDisponible = {{ producto.stock_disponible|default(50)|tojson }};
 var stockIlimitado = {{ producto.stock_ilimitado|default(false)|tojson }};
 var productoAgotado = {{ (producto.categoria_tipo == 'giftcards' and not producto.bloodstrike_package_id and (producto.moogold_stock_status|default('') == 'outofstock' or producto.moogold_disponible is defined and not producto.moogold_disponible or (not producto.stock_ilimitado and producto.stock_disponible|default(0) <= 0)))|tojson }};
 var nombreVerificado = false;
+var freefireLevelpass = {{ producto.freefire_levelpass|tojson }};
+var levelpassVerificado = false;
 
 function showToast(msg, type) {
     type = type || 'info';
@@ -243,6 +261,22 @@ function showToast(msg, type) {
         toast.style.animation = 'toast-out 0.3s ease forwards';
         setTimeout(function() { toast.remove(); }, 300);
     }, 3500);
+}
+
+function actualizarEstadoBoton() {
+    var btn = document.getElementById('btn-comprar');
+    if (!btn) return;
+    var cantInput = document.getElementById('input-cantidad');
+    var cant = 1;
+    if (cantInput) {
+        cant = parseInt(cantInput.value) || 1;
+        if (forzarUnaUnidad) cant = 1;
+        if (cant < 1) cant = 1;
+        if (cant > 50) cant = 50;
+        if (!stockIlimitado && cant > stockDisponible) cant = stockDisponible;
+    }
+    var total = precioUnitario * cant;
+    btn.disabled = productoAgotado || saldoActual < total || (freefireLevelpass && !levelpassVerificado);
 }
 
 function actualizarTotal() {
@@ -259,10 +293,65 @@ function actualizarTotal() {
     var total = precioUnitario * cant;
     var priceEl = document.getElementById('summary-price');
     var totalEl = document.getElementById('summary-total');
-    var btn = document.getElementById('btn-comprar');
     if (priceEl) priceEl.textContent = '$' + total.toFixed(4);
     if (totalEl) totalEl.textContent = '$' + total.toFixed(4);
-    if (btn) btn.disabled = productoAgotado || saldoActual < total;
+    actualizarEstadoBoton();
+}
+
+function verificarLevelpass() {
+    var idJuego = document.getElementById('input-id-juego');
+    if (!idJuego || !idJuego.value.trim()) {
+        showToast('Ingresa el ID del juego primero', 'warning');
+        idJuego.focus();
+        return;
+    }
+    var btn = document.getElementById('btn-verificar-levelpass');
+    var resultado = document.getElementById('resultado-levelpass');
+    var formComprar = document.getElementById('form-comprar');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Verificando...';
+    resultado.style.display = 'none';
+    levelpassVerificado = false;
+    if (formComprar) formComprar.classList.remove('levelpass-unavailable');
+
+    fetch('/api/verificar-levelpass', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ producto_id: productoId, player_id: idJuego.value.trim() })
+    })
+    .then(function(r) { return r.json(); })
+    .then(function(data) {
+        resultado.style.display = 'block';
+        if (data.ok && data.available) {
+            levelpassVerificado = true;
+            resultado.style.background = 'rgba(34,197,94,0.15)';
+            resultado.style.border = '1px solid #22c55e';
+            resultado.innerHTML = '<i class="fas fa-check-circle" style="color:#22c55e;"></i> <strong>Pase disponible</strong>';
+        } else if (data.ok && !data.available) {
+            resultado.style.background = 'rgba(100,116,139,0.2)';
+            resultado.style.border = '1px solid #64748b';
+            resultado.innerHTML = '<i class="fas fa-times-circle" style="color:#94a3b8;"></i> <strong>Pase no disponible</strong> para este jugador';
+            if (formComprar) formComprar.classList.add('levelpass-unavailable');
+        } else {
+            resultado.style.background = 'rgba(239,68,68,0.15)';
+            resultado.style.border = '1px solid #ef4444';
+            resultado.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#ef4444;"></i> <strong>Error al validar</strong>. No es posible comprar este producto ahora.';
+            if (formComprar) formComprar.classList.add('levelpass-unavailable');
+        }
+        actualizarEstadoBoton();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-shield-alt"></i> Verificar disponibilidad del pase';
+    })
+    .catch(function(err) {
+        resultado.style.display = 'block';
+        resultado.style.background = 'rgba(239,68,68,0.15)';
+        resultado.style.border = '1px solid #ef4444';
+        resultado.innerHTML = '<i class="fas fa-exclamation-triangle" style="color:#ef4444;"></i> <strong>Error al validar</strong>. No es posible comprar este producto ahora.';
+        if (formComprar) formComprar.classList.add('levelpass-unavailable');
+        actualizarEstadoBoton();
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-shield-alt"></i> Verificar disponibilidad del pase';
+    });
 }
 
 function verificarNombre() {
@@ -317,6 +406,13 @@ function verificarNombre() {
 document.getElementById('form-comprar').addEventListener('submit', function(e) {
     var btn = document.getElementById('btn-comprar');
     if (btn.disabled) { e.preventDefault(); return; }
+    if (freefireLevelpass && !levelpassVerificado) {
+        e.preventDefault();
+        showToast('Debes verificar la disponibilidad del pase antes de comprar.', 'warning');
+        var btnV = document.getElementById('btn-verificar-levelpass');
+        if (btnV) { btnV.style.animation = 'pulse-btn 0.5s ease 2'; setTimeout(function(){ btnV.style.animation = ''; }, 1100); }
+        return;
+    }
     if (requiereVerificacion && !nombreVerificado) {
         e.preventDefault();
         showToast('Debes verificar el nombre del jugador antes de comprar.', 'warning');
@@ -335,17 +431,31 @@ var idInput = document.getElementById('input-id-juego');
 if (idInput) {
     idInput.addEventListener('input', function() {
         nombreVerificado = false;
+        levelpassVerificado = false;
         var res = document.getElementById('resultado-verificacion');
         if (res) res.style.display = 'none';
+        var resLp = document.getElementById('resultado-levelpass');
+        if (resLp) resLp.style.display = 'none';
+        var formComprar = document.getElementById('form-comprar');
+        if (formComprar) formComprar.classList.remove('levelpass-unavailable');
+        actualizarEstadoBoton();
     });
 }
 var zoneInput = document.getElementById('input-zone-id');
 if (zoneInput) {
     zoneInput.addEventListener('input', function() {
         nombreVerificado = false;
+        levelpassVerificado = false;
         var res = document.getElementById('resultado-verificacion');
         if (res) res.style.display = 'none';
+        var resLp = document.getElementById('resultado-levelpass');
+        if (resLp) resLp.style.display = 'none';
+        actualizarEstadoBoton();
     });
+}
+
+if (freefireLevelpass) {
+    actualizarEstadoBoton();
 }
 </script>
 {% endblock %}

@@ -47,6 +47,9 @@ RECARGA_STATUS_CACHE_MAX_ITEMS = max(100, int(os.environ.get('RECARGA_STATUS_CAC
 RECARGA_STATUS_CACHE = {}
 RECARGA_STATUS_CACHE_LOCK = threading.Lock()
 
+FREEFIRE_BP_BASE_URL = os.environ.get('FREEFIRE_BP_BASE_URL', 'http://2.24.197.52').rstrip('/')
+FREEFIRE_BP_TOKEN = os.environ.get('FREEFIRE_BP_TOKEN', 'psn-tiendagiftven')
+
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
 
@@ -1331,6 +1334,29 @@ def _verificar_pago_binance_solicitud(db, sol):
         ),
     )
     return {'ok': True, 'match': match}
+
+
+def _verificar_freefire_levelpass(player_id, levelpass_key):
+    """Consulta la API de Free Fire BO para saber si un pase de nivel está disponible."""
+    player_id = str(player_id or '').strip()
+    levelpass_key = str(levelpass_key or '').strip()
+    if not player_id or not levelpass_key:
+        return {'ok': False, 'error': 'Datos incompletos'}
+    try:
+        r = requests.get(
+            f"{FREEFIRE_BP_BASE_URL}/api/freefire-bo/levelpass-check",
+            params={'playerId': player_id, 'token': FREEFIRE_BP_TOKEN},
+            timeout=15,
+        )
+        data = r.json() if r.status_code == 200 else {}
+        if not isinstance(data, dict) or not data.get('success'):
+            return {'ok': False, 'error': 'Error al validar'}
+        lp = (data.get('levelPasses') or {}).get(levelpass_key)
+        if not isinstance(lp, dict):
+            return {'ok': False, 'error': 'Error al validar'}
+        return {'ok': True, 'available': bool(lp.get('available'))}
+    except Exception:
+        return {'ok': False, 'error': 'Error al validar'}
 
 
 def verificar_nombre_jugador(tipo, player_id, zone_id=''):
@@ -2786,6 +2812,26 @@ def api_verificar_nombre():
     return jsonify(resultado)
 
 
+# ===== VERIFICAR PASE DE NIVEL FREE FIRE =====
+@app.route('/api/verificar-levelpass', methods=['POST'])
+@login_required
+def api_verificar_levelpass():
+    data = request.get_json(silent=True) or {}
+    producto_id = int(data.get('producto_id', 0) or 0)
+    player_id = str(data.get('player_id', '') or '').strip()
+    if not producto_id or not player_id:
+        return jsonify({'ok': False, 'error': 'Producto y player ID requeridos'}), 400
+    db = get_db()
+    prod = db.execute("SELECT freefire_levelpass FROM productos WHERE id = ? AND activo = 1", (producto_id,)).fetchone()
+    db.close()
+    if not prod:
+        return jsonify({'ok': False, 'error': 'Producto no encontrado'}), 404
+    levelpass_key = str(prod['freefire_levelpass'] or '').strip()
+    if not levelpass_key:
+        return jsonify({'ok': False, 'error': 'Producto sin pase configurado'}), 400
+    return jsonify(_verificar_freefire_levelpass(player_id, levelpass_key))
+
+
 # ===== DASHBOARD =====
 @app.route('/dashboard')
 @login_required
@@ -3005,10 +3051,18 @@ def comprar():
     if prod['categoria_tipo'] == 'giftcards' and usa_pincentral and pincentral_entrega_directa:
         cantidad = 1
     requiere_id_moogold = usa_moogold and bool(moogold_field_names)
-    if (prod['usa_api'] or usa_razer or usa_deltaforce or requiere_id_moogold or usa_bloodstrike or (usa_pincentral and pincentral_recarga_directa)) and not id_juego:
+    freefire_levelpass = str((prod['freefire_levelpass'] if 'freefire_levelpass' in prod.keys() else '') or '').strip()
+    if (prod['usa_api'] or usa_razer or usa_deltaforce or requiere_id_moogold or usa_bloodstrike or (usa_pincentral and pincentral_recarga_directa) or freefire_levelpass) and not id_juego:
         flash('Debes ingresar el ID del jugador para esta recarga.', 'error')
         db.close()
         return redirect(url_for('producto', id=producto_id))
+
+    if freefire_levelpass:
+        lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass)
+        if not lp_check.get('ok') or not lp_check.get('available'):
+            flash(lp_check.get('error') or 'Error al validar la disponibilidad del pase. No es posible comprar este producto.', 'error')
+            db.close()
+            return redirect(url_for('producto', id=producto_id))
 
     moogold_product_id = int((prod['moogold_product_id'] if 'moogold_product_id' in prod.keys() else 0) or 0)
     moogold_variation_id = int((prod['moogold_variation_id'] if 'moogold_variation_id' in prod.keys() else 0) or 0)
@@ -5059,6 +5113,7 @@ def admin_productos():
             nombre = request.form.get('nombre', '').strip()
             descripcion = request.form.get('descripcion', '').strip()
             campos_cliente = request.form.get('campos_cliente', '').strip()
+            freefire_levelpass = request.form.get('freefire_levelpass', '').strip()
             precio = float(request.form.get('precio', 0))
             precio_suscriptor = float(request.form.get('precio_suscriptor', 0) or 0)
             categoria_id = int(request.form.get('categoria_id', 0))
@@ -5110,8 +5165,8 @@ def admin_productos():
             if precio_suscriptor < 0:
                 precio_suscriptor = 0
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, campos_cliente, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, campos_cliente, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, campos_cliente, freefire_levelpass, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, campos_cliente, freefire_levelpass, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -5119,6 +5174,7 @@ def admin_productos():
             nombre = request.form.get('nombre', '').strip()
             descripcion = request.form.get('descripcion', '').strip()
             campos_cliente = request.form.get('campos_cliente', '').strip()
+            freefire_levelpass = request.form.get('freefire_levelpass', '').strip()
             precio = float(request.form.get('precio', 0))
             precio_suscriptor = float(request.form.get('precio_suscriptor', 0) or 0)
             categoria_id = int(request.form.get('categoria_id', 0))
@@ -5170,8 +5226,8 @@ def admin_productos():
             if precio_suscriptor < 0:
                 precio_suscriptor = 0
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, campos_cliente=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, pincentral_recarga_directa=?, pincentral_fields=?, pincentral_recarga_cantidad=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, bloodstrike_package_id=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, campos_cliente, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, campos_cliente=?, freefire_levelpass=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, pincentral_recarga_directa=?, pincentral_fields=?, pincentral_recarga_cantidad=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, bloodstrike_package_id=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, campos_cliente, freefire_levelpass, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -6582,6 +6638,7 @@ def api_comprar():
     pincentral_recarga_directa = int((prod['pincentral_recarga_directa'] if 'pincentral_recarga_directa' in prod.keys() else 0) or 0)
     if prod['categoria_tipo'] == 'giftcards' and usa_pincentral and pincentral_entrega_directa:
         cantidad = 1
+    freefire_levelpass = str((prod['freefire_levelpass'] if 'freefire_levelpass' in prod.keys() else '') or '').strip()
     requiere_id = (
         prod['usa_api']
         or usa_razer
@@ -6590,10 +6647,17 @@ def api_comprar():
         or (usa_moogold and bool(moogold_field_names))
         or usa_bloodstrike
         or (usa_pincentral and pincentral_recarga_directa)
+        or freefire_levelpass
     )
     if requiere_id and not id_juego:
         db.close()
         return jsonify({'ok': False, 'error': 'Se requiere id_juego (Player ID)'}), 400
+
+    if freefire_levelpass:
+        lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass)
+        if not lp_check.get('ok') or not lp_check.get('available'):
+            db.close()
+            return jsonify({'ok': False, 'error': lp_check.get('error') or 'Error al validar la disponibilidad del pase'}), 400
 
     precio_unitario = _precio_producto_para_usuario(prod, user)
     total = precio_unitario * cantidad

@@ -121,6 +121,7 @@ def init_db():
             nombre TEXT NOT NULL,
             descripcion TEXT,
             campos_cliente TEXT DEFAULT '',
+            freefire_levelpass TEXT DEFAULT '',
             precio REAL NOT NULL,
             precio_suscriptor REAL DEFAULT 0,
             categoria_id INTEGER,
@@ -380,6 +381,10 @@ def init_db():
         db.execute("SELECT bloodstrike_package_id FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN bloodstrike_package_id TEXT DEFAULT ''")
+    try:
+        db.execute("SELECT freefire_levelpass FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN freefire_levelpass TEXT DEFAULT ''")
     try:
         db.execute("SELECT rechazo_automatico FROM productos LIMIT 1")
     except Exception:

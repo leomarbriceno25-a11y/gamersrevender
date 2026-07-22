@@ -52,6 +52,19 @@
                     <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Opcional. Si lo dejas vacío, se usan los campos actuales del producto. Formato: campo:Etiqueta. Campos permitidos: id_juego, input2, additional_data_2, zone_id.</small>
                 </div>
                 <div class="form-group">
+                    <label><i class="fas fa-medal" style="color:#fbbf24;"></i> Pase de nivel Free Fire (Level Pass)</label>
+                    <select name="freefire_levelpass" id="form-freefire-levelpass" class="form-select">
+                        <option value="">-- No aplica --</option>
+                        <option value="levelpass6">Pase de Nivel 6</option>
+                        <option value="levelpass10">Pase de Nivel 10</option>
+                        <option value="levelpass15">Pase de Nivel 15</option>
+                        <option value="levelpass20">Pase de Nivel 20</option>
+                        <option value="levelpass25">Pase de Nivel 25</option>
+                        <option value="levelpass30">Pase de Nivel 30</option>
+                    </select>
+                    <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Si seleccionas un pase, el cliente deberá verificar la disponibilidad con su ID antes de comprar.</small>
+                </div>
+                <div class="form-group">
                     <label class="checkbox-label">
                         <input type="checkbox" name="activo" id="form-activo" checked> Producto activo (visible en catálogo)
                     </label>
@@ -411,6 +424,7 @@
                         data-icono="{{ p.icono|default('')|e }}"
                         data-descripcion="{{ p.descripcion|default('')|e }}"
                         data-campos-cliente="{{ p.campos_cliente|default('')|e }}"
+                        data-freefire-levelpass="{{ p.freefire_levelpass|default('')|e }}"
                         data-activo="{{ p.activo|default(1) }}"
                         data-rechazo-auto="{{ p.rechazo_automatico|default(0) }}"
                         data-usa-api="{{ p.usa_api|default(0) }}"
@@ -1259,11 +1273,12 @@ function editarProductoDesdeFila(id) {
         parseInt(row.getAttribute('data-pin-origen-id')) || 0,
         parseInt(row.getAttribute('data-stock-min')) || 0,
         parseInt(row.getAttribute('data-stock-obj')) || 0,
-        parseInt(row.getAttribute('data-canjes')) || 1
+        parseInt(row.getAttribute('data-canjes')) || 1,
+        row.getAttribute('data-freefire-levelpass') || ''
     );
 }
 
-function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, razerPaqueteExtra, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, pincentralDirecto, pincentralRecarga, pincentralFields, pincentralRecargaCantidad, orden, gpProduct, gpPackage, bsPackage, rechazoAutomatico, recargaManual, pinOrigenId, stockMin, stockObj, canjes) {
+function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, razerPaqueteExtra, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, pincentralDirecto, pincentralRecarga, pincentralFields, pincentralRecargaCantidad, orden, gpProduct, gpPackage, bsPackage, rechazoAutomatico, recargaManual, pinOrigenId, stockMin, stockObj, canjes, freefireLevelpass) {
     var row = document.getElementById('row-' + id);
     var mgCategory = row ? (parseInt(row.getAttribute('data-mg-category')) || 0) : 0;
     var mgProduct = row ? (parseInt(row.getAttribute('data-mg-product')) || 0) : 0;
@@ -1271,6 +1286,7 @@ function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono
     var mgFields = row ? (row.getAttribute('data-mg-fields') || '') : '';
     var camposCliente = row ? (row.getAttribute('data-campos-cliente') || '') : '';
     document.getElementById('form-accion').value = 'editar';
+    document.getElementById('form-freefire-levelpass').value = freefireLevelpass || '';
     document.getElementById('form-producto-id').value = id;
     document.getElementById('form-nombre').value = nombre;
     document.getElementById('form-precio').value = precio;
@@ -1312,6 +1328,7 @@ function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono
     document.getElementById('form-stock-minimo').value = stockMin || 0;
     document.getElementById('form-stock-objetivo').value = stockObj || 0;
     document.getElementById('form-canjes').value = canjes || 1;
+    document.getElementById('form-freefire-levelpass').value = freefireLevelpass || '';
     toggleMonto();
     toggleRazer();
     toggleDeltaforce();
@@ -1338,6 +1355,7 @@ function resetForm() {
     document.getElementById('form-icono').value = 'fa-gem';
     document.getElementById('form-descripcion').value = '';
     document.getElementById('form-campos-cliente').value = '';
+    document.getElementById('form-freefire-levelpass').value = '';
     document.getElementById('form-activo').checked = true;
     document.getElementById('form-rechazo-automatico').checked = false;
     document.getElementById('form-usa-api').checked = false;
