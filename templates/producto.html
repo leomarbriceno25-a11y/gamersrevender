@@ -302,9 +302,10 @@ function verificarLevelpass() {
     var idJuego = document.getElementById('input-id-juego');
     if (!idJuego || !idJuego.value.trim()) {
         showToast('Ingresa el ID del juego primero', 'warning');
-        idJuego.focus();
+        if (idJuego) idJuego.focus();
         return;
     }
+    var zoneId = document.getElementById('input-zone-id');
     var btn = document.getElementById('btn-verificar-levelpass');
     var resultado = document.getElementById('resultado-levelpass');
     var formComprar = document.getElementById('form-comprar');
@@ -314,10 +315,13 @@ function verificarLevelpass() {
     levelpassVerificado = false;
     if (formComprar) formComprar.classList.remove('levelpass-unavailable');
 
+    var body = { producto_id: productoId, player_id: idJuego.value.trim() };
+    if (zoneId) body.zone_id = zoneId.value.trim();
+
     fetch('/api/verificar-levelpass', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ producto_id: productoId, player_id: idJuego.value.trim() })
+        body: JSON.stringify(body)
     })
     .then(function(r) { return r.json(); })
     .then(function(data) {

@@ -1336,12 +1336,17 @@ def _verificar_pago_binance_solicitud(db, sol):
     return {'ok': True, 'match': match}
 
 
-def _verificar_freefire_levelpass(player_id, levelpass_key):
-    """Consulta la API de Free Fire BO para saber si un pase de nivel está disponible."""
+def _verificar_freefire_levelpass(player_id, levelpass_key, validar_id_tipo=None):
+    """Consulta la API de Free Fire BO para saber si un pase de nivel está disponible.
+    Si validar_id_tipo se especifica, primero verifica que el ID del jugador exista."""
     player_id = str(player_id or '').strip()
     levelpass_key = str(levelpass_key or '').strip()
     if not player_id or not levelpass_key:
         return {'ok': False, 'error': 'Datos incompletos'}
+    if validar_id_tipo:
+        nv = verificar_nombre_jugador(validar_id_tipo, player_id)
+        if not nv.get('ok'):
+            return {'ok': False, 'error': 'ID de jugador no válido'}
     try:
         r = requests.get(
             f"{FREEFIRE_BP_BASE_URL}/api/freefire-bo/levelpass-check",
@@ -2819,17 +2824,23 @@ def api_verificar_levelpass():
     data = request.get_json(silent=True) or {}
     producto_id = int(data.get('producto_id', 0) or 0)
     player_id = str(data.get('player_id', '') or '').strip()
+    zone_id = str(data.get('zone_id', '') or '').strip()
     if not producto_id or not player_id:
         return jsonify({'ok': False, 'error': 'Producto y player ID requeridos'}), 400
     db = get_db()
-    prod = db.execute("SELECT freefire_levelpass FROM productos WHERE id = ? AND activo = 1", (producto_id,)).fetchone()
+    prod = db.execute(
+        "SELECT p.freefire_levelpass, c.verificar_nombre, c.verificar_nombre_tipo "
+        "FROM productos p JOIN categorias c ON p.categoria_id = c.id "
+        "WHERE p.id = ? AND p.activo = 1", (producto_id,)
+    ).fetchone()
     db.close()
     if not prod:
         return jsonify({'ok': False, 'error': 'Producto no encontrado'}), 404
     levelpass_key = str(prod['freefire_levelpass'] or '').strip()
     if not levelpass_key:
         return jsonify({'ok': False, 'error': 'Producto sin pase configurado'}), 400
-    return jsonify(_verificar_freefire_levelpass(player_id, levelpass_key))
+    tipo = str(prod['verificar_nombre_tipo'] or 'freefire').strip() or 'freefire'
+    return jsonify(_verificar_freefire_levelpass(player_id, levelpass_key, validar_id_tipo=tipo))
 
 
 # ===== DASHBOARD =====
@@ -3058,7 +3069,7 @@ def comprar():
         return redirect(url_for('producto', id=producto_id))
 
     if freefire_levelpass:
-        lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass)
+        lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass, validar_id_tipo='freefire')
         if not lp_check.get('ok') or not lp_check.get('available'):
             flash(lp_check.get('error') or 'Error al validar la disponibilidad del pase. No es posible comprar este producto.', 'error')
             db.close()
@@ -6654,7 +6665,7 @@ def api_comprar():
         return jsonify({'ok': False, 'error': 'Se requiere id_juego (Player ID)'}), 400
 
     if freefire_levelpass:
-        lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass)
+        lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass, validar_id_tipo='freefire')
         if not lp_check.get('ok') or not lp_check.get('available'):
             db.close()
             return jsonify({'ok': False, 'error': lp_check.get('error') or 'Error al validar la disponibilidad del pase'}), 400
