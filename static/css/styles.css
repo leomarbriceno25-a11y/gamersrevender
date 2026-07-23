@@ -632,3 +632,33 @@ button:disabled, button[disabled] { opacity: 0.5; cursor: not-allowed; }
     font-size: 0.75rem;
     color: var(--text-secondary);
 }
+
+/* ===== WHATSAPP CHANNEL FLOATING BUTTON ===== */
+.wa-channel-fixed {
+    position: fixed !important;
+    bottom: 1.25rem !important;
+    right: 1.25rem !important;
+    left: auto !important;
+    top: auto !important;
+    z-index: 999999 !important;
+    background: #25d366 !important;
+    color: #fff !important;
+    padding: 0.75rem 1rem !important;
+    border-radius: 999px !important;
+    text-decoration: none !important;
+    font-weight: 700 !important;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.35) !important;
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 0.5rem !important;
+    width: max-content !important;
+    max-width: calc(100% - 2.5rem) !important;
+    line-height: 1.2 !important;
+    border: 2px solid #fff !important;
+    visibility: visible !important;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    white-space: nowrap !important;
+}
+.wa-channel-fixed i { font-size: 1.4rem !important; color: #fff !important; }
+.wa-channel-fixed:hover { background: #1ebc59 !important; color: #fff !important; }
