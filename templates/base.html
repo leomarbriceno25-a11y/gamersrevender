@@ -102,11 +102,9 @@
             setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 300); }, 4000);
         });
     </script>
-    {% if request.endpoint == 'pases_de_nivel' %}
     <a href="https://whatsapp.com/channel/0029VbAb8a37j6gEPCHdms1z" target="_blank" rel="noopener noreferrer" class="wa-channel-fixed">
         <i class="fab fa-whatsapp"></i> Únete al canal
     </a>
-    {% endif %}
     {% block scripts %}{% endblock %}
 </body>
 </html>
