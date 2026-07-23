@@ -670,14 +670,17 @@ def init_db():
         db.execute("ALTER TABLE categorias ADD COLUMN validar_id_api_tipo TEXT DEFAULT ''")
 
 
-    # Crear admin si no existe
-    admin = db.execute("SELECT id FROM usuarios WHERE email = ?", ('admin@gamersrev.com',)).fetchone()
-    if not admin:
-        api_key = generate_api_key()
-        db.execute(
-            "INSERT INTO usuarios (nombre, email, password, rol, api_key, api_key_hash, api_key_prefix) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            ('Admin', 'admin@gamersrev.com', generate_password_hash('admin123'), 'admin', None, _hash_api_key(api_key), api_key[:8])
-        )
+    # Crear admin inicial solo si se provee ADMIN_PASSWORD por entorno
+    admin_email = os.environ.get('ADMIN_EMAIL', 'admin@gamersrev.com').strip()
+    admin_password = os.environ.get('ADMIN_PASSWORD', '').strip()
+    if admin_email and admin_password:
+        admin = db.execute("SELECT id FROM usuarios WHERE email = ?", (admin_email,)).fetchone()
+        if not admin:
+            api_key = generate_api_key()
+            db.execute(
+                "INSERT INTO usuarios (nombre, email, password, rol, api_key, api_key_hash, api_key_prefix) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                ('Admin', admin_email, generate_password_hash(admin_password), 'admin', None, _hash_api_key(api_key), api_key[:8])
+            )
 
     # Migración en caliente: usuarios con api_key legada en texto plano -> hash
     legacy_users = db.execute(

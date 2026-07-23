@@ -53,14 +53,14 @@ RECARGA_STATUS_CACHE = {}
 RECARGA_STATUS_CACHE_LOCK = threading.Lock()
 
 FREEFIRE_BP_BASE_URL = os.environ.get('FREEFIRE_BP_BASE_URL', 'http://2.24.197.52').rstrip('/')
-FREEFIRE_BP_TOKEN = os.environ.get('FREEFIRE_BP_TOKEN', 'psn-tiendagiftven')
+FREEFIRE_BP_TOKEN = os.environ.get('FREEFIRE_BP_TOKEN', '')
 
 # Configuración de correo electrónico
 SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
 SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
-SMTP_USER = os.environ.get('SMTP_USER', 'soporte@tiendagiftven.com')
-SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', 'mqwb xahz vcxn gnsc')
-SMTP_FROM = os.environ.get('SMTP_FROM', 'soporte@tiendagiftven.com')
+SMTP_USER = os.environ.get('SMTP_USER', '')
+SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', '')
+SMTP_FROM = os.environ.get('SMTP_FROM', '')
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -68,6 +68,7 @@ app.secret_key = config.SECRET_KEY
 # Seguridad de cookies de sesión
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
+app.config['SESSION_COOKIE_SECURE'] = os.environ.get('FLASK_SECURE_COOKIES', '0') == '1'
 app.config['PERMANENT_SESSION_LIFETIME'] = 3600 * 8  # 8 horas
 
 # Rate limiter (protección contra fuerza bruta)
@@ -8136,4 +8137,7 @@ iniciar_worker_restock_pincentral_global()
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    debug_mode = os.environ.get('FLASK_DEBUG', '0') == '1'
+    host = os.environ.get('FLASK_HOST', '127.0.0.1')
+    port = int(os.environ.get('PORT', '5000'))
+    app.run(debug=debug_mode, host=host, port=port)

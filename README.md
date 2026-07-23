@@ -9,8 +9,14 @@ Plataforma Flask + SQLite para gestión de recargas de diamantes Free Fire y Gif
 - Catálogo de productos (Free Fire, Gift Cards)
 - Historial de transacciones y pedidos
 
-## Credenciales de prueba
-- **Admin:** admin@gamersrev.com / admin123
+## Variables de entorno requeridas
+- `ADMIN_EMAIL` y `ADMIN_PASSWORD`: crean el usuario administrador inicial.
+- `SMTP_PASSWORD`: para envío de correos (verificación/recuperación).
+- `FREEFIRE_BP_TOKEN`: token del proveedor Free Fire BP.
+- `GAMEPOINT_PARTNER_ID` y `GAMEPOINT_SECRET_KEY`: credenciales de GamePoint Club.
+- `PINCENTRAL_API_KEY`, `PINCENTRAL_API_SECRET`, etc. según proveedores activos.
+
+Puedes ponerlas en un archivo `.env` o en el servicio/systemd.
 
 ## API Endpoints
 - `GET /api/v1/saldo` - Consultar saldo
