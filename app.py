@@ -2953,8 +2953,8 @@ def registro():
         email = request.form.get('email', '').strip()
         password = request.form.get('password', '')
         telefono = request.form.get('telefono', '').strip()
-        if not nombre or not email or not password:
-            flash('Todos los campos son obligatorios', 'error')
+        if not nombre or not email or not password or not telefono:
+            flash('Todos los campos son obligatorios, incluyendo el teléfono', 'error')
             return render_template('registro.html')
         if len(password) < 6:
             flash('La contraseña debe tener al menos 6 caracteres', 'error')
