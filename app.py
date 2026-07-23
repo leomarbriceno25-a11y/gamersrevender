@@ -22,6 +22,11 @@ from decimal import Decimal, InvalidOperation
 from datetime import datetime, timedelta
 
 import requests
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import secrets
+import random
 
 PINCENTRAL_RESTOCK_LOCK = threading.Lock()
 PINCENTRAL_SCAN_THREAD_GUARD = threading.Lock()
@@ -49,6 +54,13 @@ RECARGA_STATUS_CACHE_LOCK = threading.Lock()
 
 FREEFIRE_BP_BASE_URL = os.environ.get('FREEFIRE_BP_BASE_URL', 'http://2.24.197.52').rstrip('/')
 FREEFIRE_BP_TOKEN = os.environ.get('FREEFIRE_BP_TOKEN', 'psn-tiendagiftven')
+
+# Configuración de correo electrónico
+SMTP_HOST = os.environ.get('SMTP_HOST', 'smtp.gmail.com')
+SMTP_PORT = int(os.environ.get('SMTP_PORT', '587'))
+SMTP_USER = os.environ.get('SMTP_USER', 'soporte@tiendagiftven.com')
+SMTP_PASSWORD = os.environ.get('SMTP_PASSWORD', 'mqwb xahz vcxn gnsc')
+SMTP_FROM = os.environ.get('SMTP_FROM', 'soporte@tiendagiftven.com')
 
 app = Flask(__name__)
 app.secret_key = config.SECRET_KEY
@@ -103,6 +115,111 @@ def _config_set(db, key, value):
         db.execute("UPDATE configuracion SET valor = ? WHERE clave = ?", (value, key))
     else:
         db.execute("INSERT INTO configuracion (clave, valor) VALUES (?,?)", (key, value))
+
+
+def _enviar_email(destinatario, asunto, cuerpo_html, cuerpo_texto=None):
+    """Envía un correo electrónico usando SMTP. Retorna (ok, error)."""
+    try:
+        msg = MIMEMultipart('alternative')
+        msg['Subject'] = asunto
+        msg['From'] = SMTP_FROM
+        msg['To'] = destinatario
+
+        texto = cuerpo_texto or re.sub(r'<[^>]+>', '', cuerpo_html)
+        msg.attach(MIMEText(texto, 'plain'))
+        msg.attach(MIMEText(cuerpo_html, 'html'))
+
+        with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=20) as server:
+            server.starttls()
+            server.login(SMTP_USER, SMTP_PASSWORD)
+            server.sendmail(SMTP_FROM, [destinatario], msg.as_string())
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+def _generar_codigo_verificacion(longitud=6):
+    return ''.join([str(random.randint(0, 9)) for _ in range(longitud)])
+
+
+def _generar_token_seguro(longitud=32):
+    return secrets.token_urlsafe(longitud)
+
+
+def _crear_token_usuario(usuario_id, tipo, expiracion_minutos=30):
+    db = get_db()
+    if tipo == 'verificacion_email':
+        token = _generar_codigo_verificacion()
+    else:
+        token = _generar_token_seguro()
+    expiracion = (datetime.now() + timedelta(minutes=expiracion_minutos)).strftime('%Y-%m-%d %H:%M:%S')
+    db.execute(
+        "UPDATE usuario_tokens SET usado = 1 WHERE usuario_id = ? AND tipo = ? AND usado = 0",
+        (usuario_id, tipo)
+    )
+    db.execute(
+        "INSERT INTO usuario_tokens (usuario_id, token, tipo, expiracion) VALUES (?,?,?,?)",
+        (usuario_id, token, tipo, expiracion)
+    )
+    db.commit()
+    db.close()
+    return token
+
+
+def _validar_token_usuario(token, tipo):
+    db = get_db()
+    row = db.execute(
+        "SELECT * FROM usuario_tokens WHERE token = ? AND tipo = ? AND usado = 0 ORDER BY id DESC LIMIT 1",
+        (token, tipo)
+    ).fetchone()
+    if not row:
+        db.close()
+        return None
+    exp = _parse_local_datetime(row['expiracion'])
+    if not exp or exp < datetime.now():
+        db.close()
+        return None
+    db.close()
+    return row
+
+
+def _marcar_token_usado(token_id):
+    db = get_db()
+    db.execute("UPDATE usuario_tokens SET usado = 1 WHERE id = ?", (token_id,))
+    db.commit()
+    db.close()
+
+
+def _enviar_verificacion_email(usuario_id, email, nombre):
+    codigo = _crear_token_usuario(usuario_id, 'verificacion_email', expiracion_minutos=30)
+    asunto = f"Verifica tu correo en {os.environ.get('TIENDA_NOMBRE', 'Tienda Gift Ven')}"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px;border:1px solid #eee;border-radius:10px;">
+        <h2 style="color:#7c3aed;">Hola {nombre},</h2>
+        <p>Gracias por registrarte. Para activar tu cuenta ingresa el siguiente código de verificación:</p>
+        <div style="font-size:2rem;font-weight:800;letter-spacing:4px;text-align:center;padding:15px;background:#f3f4f6;border-radius:8px;margin:20px 0;">{codigo}</div>
+        <p>Este código expira en 30 minutos.</p>
+        <p style="font-size:0.85rem;color:#666;">Si no solicitaste este registro, ignora este mensaje.</p>
+    </div>
+    """
+    return _enviar_email(email, asunto, html)
+
+
+def _enviar_recuperacion_email(usuario_id, email, nombre):
+    token = _crear_token_usuario(usuario_id, 'reset_password', expiracion_minutos=30)
+    enlace = url_for('restablecer', token=token, _external=True)
+    asunto = f"Recuperación de contraseña en {os.environ.get('TIENDA_NOMBRE', 'Tienda Gift Ven')}"
+    html = f"""
+    <div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:20px;border:1px solid #eee;border-radius:10px;">
+        <h2 style="color:#7c3aed;">Hola {nombre},</h2>
+        <p>Recibimos una solicitud para restablecer tu contraseña. Haz clic en el siguiente enlace o copia y pégalo en tu navegador:</p>
+        <a href="{enlace}" style="display:inline-block;padding:12px 24px;background:#7c3aed;color:#fff;text-decoration:none;border-radius:6px;margin:15px 0;">Restablecer contraseña</a>
+        <p style="word-break:break-all;">{enlace}</p>
+        <p>Este enlace expira en 30 minutos.</p>
+        <p style="font-size:0.85rem;color:#666;">Si no solicitaste esto, ignora este mensaje.</p>
+    </div>
+    """
+    return _enviar_email(email, asunto, html)
 
 
 def _to_decimal(value, default=None):
@@ -2797,6 +2914,9 @@ def login():
             if not user['activo']:
                 flash('Tu cuenta está pendiente de aprobación. El administrador debe activarla antes de que puedas acceder.', 'error')
                 return render_template('login.html')
+            if not int((user['email_verificado'] if 'email_verificado' in user.keys() else 1) or 1):
+                flash('Debes verificar tu correo electrónico antes de iniciar sesión.', 'error')
+                return redirect(url_for('verificar_email', email=user['email']))
             session['user_id'] = user['id']
             session['user_nombre'] = user['nombre']
             session['user_rol'] = user['rol']
@@ -2829,9 +2949,116 @@ def registro():
         if not user:
             flash('El email ya está registrado', 'error')
             return render_template('registro.html')
-        flash('Registro exitoso. Ya puedes iniciar sesión.', 'success')
-        return redirect(url_for('login'))
+        ok, err = _enviar_verificacion_email(user['id'], user['email'], user['nombre'])
+        if not ok:
+            flash(f'Cuenta creada, pero no pudimos enviar el correo de verificación: {err}. Intenta reenviar el código.', 'error')
+        else:
+            flash('Te hemos enviado un código de verificación a tu correo. Ingrésalo para activar tu cuenta.', 'success')
+        return redirect(url_for('verificar_email', email=user['email']))
     return render_template('registro.html')
+
+
+@app.route('/verificar-email', methods=['GET', 'POST'])
+def verificar_email():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    email = request.args.get('email', request.form.get('email', '')).strip()
+    if request.method == 'POST':
+        codigo = request.form.get('codigo', '').strip()
+        db = get_db()
+        user = db.execute("SELECT * FROM usuarios WHERE email = ?", (email,)).fetchone() if email else None
+        if not user:
+            db.close()
+            flash('Correo no encontrado.', 'error')
+            return redirect(url_for('login'))
+        row = db.execute(
+            "SELECT * FROM usuario_tokens WHERE usuario_id = ? AND token = ? AND tipo = 'verificacion_email' AND usado = 0 ORDER BY id DESC LIMIT 1",
+            (user['id'], codigo)
+        ).fetchone()
+        if not row:
+            db.close()
+            flash('Código incorrecto.', 'error')
+            return redirect(url_for('verificar_email', email=email))
+        exp = _parse_local_datetime(row['expiracion'])
+        if not exp or exp < datetime.now():
+            db.close()
+            flash('El código ha expirado. Solicita uno nuevo.', 'error')
+            return redirect(url_for('verificar_email', email=email))
+        db.execute("UPDATE usuarios SET email_verificado = 1 WHERE id = ?", (user['id'],))
+        db.execute("UPDATE usuario_tokens SET usado = 1 WHERE id = ?", (row['id'],))
+        db.commit()
+        db.close()
+        flash('Correo verificado correctamente. Ahora puedes iniciar sesión.', 'success')
+        return redirect(url_for('login'))
+    return render_template('verificar_email.html', email=email)
+
+
+@app.route('/reenviar-verificacion', methods=['POST'])
+@limiter.limit("3 per minute", methods=["POST"])
+def reenviar_verificacion():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    email = request.form.get('email', '').strip()
+    user = get_user_by_email(email)
+    if not user:
+        flash('Correo no encontrado.', 'error')
+        return redirect(url_for('registro'))
+    if int((user['email_verificado'] if 'email_verificado' in user.keys() else 0) or 0):
+        flash('Este correo ya está verificado.', 'info')
+        return redirect(url_for('login'))
+    ok, err = _enviar_verificacion_email(user['id'], user['email'], user['nombre'])
+    if ok:
+        flash('Código reenviado. Revisa tu correo.', 'success')
+    else:
+        flash(f'No se pudo reenviar el código: {err}', 'error')
+    return redirect(url_for('verificar_email', email=email))
+
+
+@app.route('/recuperar', methods=['GET', 'POST'])
+def recuperar():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip()
+        user = get_user_by_email(email)
+        if user:
+            ok, err = _enviar_recuperacion_email(user['id'], user['email'], user['nombre'])
+            if not ok:
+                flash(f'No pudimos enviar el correo: {err}', 'error')
+                return redirect(url_for('recuperar'))
+        flash('Si el correo está registrado, recibirás las instrucciones para restablecer tu contraseña.', 'success')
+        return redirect(url_for('login'))
+    return render_template('recuperar.html')
+
+
+@app.route('/restablecer', methods=['GET', 'POST'])
+def restablecer():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    token = request.args.get('token', request.form.get('token', '')).strip()
+    row = _validar_token_usuario(token, 'reset_password')
+    if not row:
+        flash('El enlace de recuperación es inválido o ha expirado.', 'error')
+        return redirect(url_for('login'))
+    db = get_db()
+    user = db.execute("SELECT * FROM usuarios WHERE id = ?", (row['usuario_id'],)).fetchone()
+    if not user:
+        db.close()
+        flash('Usuario no encontrado.', 'error')
+        return redirect(url_for('login'))
+    if request.method == 'POST':
+        password = request.form.get('password', '')
+        if len(password) < 6:
+            flash('La contraseña debe tener al menos 6 caracteres.', 'error')
+            return redirect(url_for('restablecer', token=token))
+        db.execute("UPDATE usuarios SET password = ? WHERE id = ?", (generate_password_hash(password), user['id']))
+        db.execute("UPDATE usuario_tokens SET usado = 1 WHERE id = ?", (row['id'],))
+        db.commit()
+        db.close()
+        flash('Contraseña actualizada. Inicia sesión con tu nueva contraseña.', 'success')
+        return redirect(url_for('login'))
+    db.close()
+    return render_template('restablecer.html', token=token)
 
 
 @app.route('/logout')

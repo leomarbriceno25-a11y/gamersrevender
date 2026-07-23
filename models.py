@@ -96,6 +96,7 @@ def init_db():
             telefono TEXT DEFAULT '',
             rol TEXT DEFAULT 'revendedor' CHECK(rol IN ('admin', 'revendedor')),
             activo INTEGER DEFAULT 1,
+            email_verificado INTEGER DEFAULT 0,
             api_key TEXT UNIQUE,
             api_compras_habilitadas INTEGER DEFAULT 1,
             suscripcion_hasta TEXT DEFAULT '',
@@ -869,6 +870,31 @@ def init_db():
             ]:
                 db.execute("INSERT INTO productos (nombre, descripcion, precio, categoria_id, icono) VALUES (?,?,?,?,?)",
                            (nombre, desc, precio, cid, 'fa-gift'))
+
+    # Verificación de email y tokens de recuperación
+    try:
+        db.execute("SELECT email_verificado FROM usuarios LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE usuarios ADD COLUMN email_verificado INTEGER DEFAULT 0")
+        # Los usuarios existentes quedan verificados para no bloquear cuentas antiguas
+        db.execute("UPDATE usuarios SET email_verificado = 1")
+    try:
+        db.execute("SELECT id FROM usuario_tokens LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS usuario_tokens (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL,
+                token TEXT NOT NULL,
+                tipo TEXT NOT NULL,
+                expiracion TEXT NOT NULL,
+                usado INTEGER DEFAULT 0,
+                fecha_creacion TEXT DEFAULT (datetime('now','localtime')),
+                FOREIGN KEY (usuario_id) REFERENCES usuarios(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_usuario_tokens_token_tipo ON usuario_tokens(token, tipo);
+            CREATE INDEX IF NOT EXISTS idx_usuario_tokens_usuario ON usuario_tokens(usuario_id, tipo);
+        """)
 
     db.commit()
     db.close()
