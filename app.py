@@ -5531,16 +5531,38 @@ def admin_eliminar_usuario(id):
         flash('No se puede eliminar un administrador', 'error')
         return redirect(url_for('admin_usuarios'))
     nombre = user['nombre']
-    db.execute("UPDATE pines SET usado_por = NULL WHERE usado_por = ?", (id,))
-    db.execute("DELETE FROM pedidos WHERE usuario_id = ?", (id,))
-    db.execute("DELETE FROM transacciones WHERE usuario_id = ?", (id,))
-    db.execute("DELETE FROM transacciones WHERE admin_id = ?", (id,))
-    db.execute("DELETE FROM carteras WHERE usuario_id = ?", (id,))
-    db.execute("DELETE FROM solicitudes_recarga WHERE usuario_id = ?", (id,))
-    db.execute("DELETE FROM usuarios WHERE id = ?", (id,))
-    db.commit()
-    db.close()
-    flash(f'Usuario "{nombre}" eliminado permanentemente', 'success')
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        # Tablas auxiliares que referencian directamente al usuario
+        db.execute("DELETE FROM usuario_tokens WHERE usuario_id = ?", (id,))
+        db.execute("DELETE FROM popup_publicidad_vistas WHERE usuario_id = ?", (id,))
+        db.execute("DELETE FROM usuario_api_productos_bloqueados WHERE usuario_id = ?", (id,))
+        db.execute("DELETE FROM usuario_api_categorias_bloqueadas WHERE usuario_id = ?", (id,))
+        # Transacciones propias o gestionadas por el usuario
+        db.execute("DELETE FROM transacciones WHERE usuario_id = ? OR admin_id = ? OR pedido_id IN (SELECT id FROM pedidos WHERE usuario_id = ?)", (id, id, id))
+        # Auditoría de recargas asociadas al usuario o a sus pedidos
+        db.execute("DELETE FROM recargas_auditoria WHERE usuario_id = ? OR pedido_id IN (SELECT id FROM pedidos WHERE usuario_id = ?)", (id, id))
+        # Referencias de pago ligadas al usuario o a sus solicitudes
+        db.execute(
+            "DELETE FROM referencias_pago_usadas WHERE usuario_id = ? OR solicitud_id IN (SELECT id FROM solicitudes_recarga WHERE usuario_id = ? OR admin_id = ?)",
+            (id, id, id)
+        )
+        # Solicitudes de recarga propias o gestionadas por el usuario
+        db.execute("DELETE FROM solicitudes_recarga WHERE usuario_id = ? OR admin_id = ?", (id, id))
+        # Cartera y pines usados
+        db.execute("DELETE FROM carteras WHERE usuario_id = ?", (id,))
+        db.execute("UPDATE pines SET usado_por = NULL, pedido_id = NULL WHERE usado_por = ?", (id,))
+        # Pedidos (después de limpiar tablas que los referencian)
+        db.execute("DELETE FROM pedidos WHERE usuario_id = ?", (id,))
+        # Usuario
+        db.execute("DELETE FROM usuarios WHERE id = ?", (id,))
+        db.commit()
+        flash(f'Usuario "{nombre}" eliminado permanentemente', 'success')
+    except Exception as e:
+        db.rollback()
+        flash(f'No se pudo eliminar el usuario: {e}', 'error')
+    finally:
+        db.close()
     return redirect(url_for('admin_usuarios'))
 
 
