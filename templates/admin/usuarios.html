@@ -54,7 +54,7 @@
                 </thead>
                 <tbody>
                     {% for u in usuarios %}
-                    <tr>
+                    <tr data-email="{{ u.email|e }}" data-nombre="{{ u.nombre|e }}" data-rol="{{ u.rol|e }}">
                         <td>{{ u.id }}</td>
                         <td>{{ u.nombre }}</td>
                         <td><button type="button" class="btn btn-sm btn-secondary" style="white-space:nowrap;" onclick='verCorreo({{ u.nombre|tojson }}, {{ u.email|tojson }})'><i class="fas fa-envelope"></i> Ver correo</button></td>
@@ -97,7 +97,7 @@
         <!-- Mobile cards -->
         <div class="d-only-mobile pedidos-cards" id="cardsUsuarios">
             {% for u in usuarios %}
-            <div class="pedido-card usuario-card-item">
+            <div class="pedido-card usuario-card-item" data-email="{{ u.email|e }}" data-nombre="{{ u.nombre|e }}" data-rol="{{ u.rol|e }}">
                 <div class="pedido-card-header">
                     <span class="pedido-card-id">{{ u.nombre }}</span>
                     <span class="badge badge-{{ 'completado' if u.activo else 'cancelado' }}">{{ 'Activo' if u.activo else 'Pendiente' }}</span>
@@ -275,8 +275,13 @@ function descontarSaldo(id, nombre, saldo) {
 }
 function filtrarUsuarios() {
     var texto = document.getElementById('filtroUsuarios').value.toLowerCase();
-    document.querySelectorAll('#tablaUsuarios tbody tr').forEach(function(f){ f.style.display = f.textContent.toLowerCase().includes(texto) ? '' : 'none'; });
-    document.querySelectorAll('.usuario-card-item').forEach(function(c){ c.style.display = c.textContent.toLowerCase().includes(texto) ? '' : 'none'; });
+    function coincide(el) {
+        var datos = (el.dataset.nombre || '') + ' ' + (el.dataset.email || '') + ' ' + (el.dataset.rol || '');
+        var todo = (el.textContent + ' ' + datos).toLowerCase();
+        return todo.includes(texto);
+    }
+    document.querySelectorAll('#tablaUsuarios tbody tr').forEach(function(f){ f.style.display = coincide(f) ? '' : 'none'; });
+    document.querySelectorAll('.usuario-card-item').forEach(function(c){ c.style.display = coincide(c) ? '' : 'none'; });
 }
 </script>
 {% endblock %}
