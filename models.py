@@ -876,8 +876,6 @@ def init_db():
         db.execute("SELECT email_verificado FROM usuarios LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE usuarios ADD COLUMN email_verificado INTEGER DEFAULT 0")
-        # Los usuarios existentes quedan verificados para no bloquear cuentas antiguas
-        db.execute("UPDATE usuarios SET email_verificado = 1")
     try:
         db.execute("SELECT id FROM usuario_tokens LIMIT 1")
     except Exception:
@@ -895,6 +893,19 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_usuario_tokens_token_tipo ON usuario_tokens(token, tipo);
             CREATE INDEX IF NOT EXISTS idx_usuario_tokens_usuario ON usuario_tokens(usuario_id, tipo);
         """)
+
+    # Forzar a todos los usuarios existentes a verificar su correo una sola vez
+    try:
+        ya_forzado = db.execute(
+            "SELECT valor FROM configuracion WHERE clave = 'migracion_forzar_verificacion_email'"
+        ).fetchone()
+        if not ya_forzado:
+            db.execute("UPDATE usuarios SET email_verificado = 0")
+            db.execute(
+                "INSERT INTO configuracion (clave, valor) VALUES ('migracion_forzar_verificacion_email', '1')"
+            )
+    except Exception:
+        pass
 
     db.commit()
     db.close()

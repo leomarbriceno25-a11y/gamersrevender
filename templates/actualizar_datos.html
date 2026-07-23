@@ -1,0 +1,27 @@
+{% extends 'base.html' %}
+{% block title %}Actualizar datos - {{ tienda_nombre }}{% endblock %}
+{% block content %}
+<section class="auth-section">
+    <div class="auth-card">
+        <div class="auth-logo"><i class="fas fa-user-edit"></i></div>
+        <h1>Actualiza tus datos</h1>
+        <p class="auth-subtitle">Para continuar debes verificar tu correo electrónico. Confirma o actualiza tu información.</p>
+        <form method="POST">
+            <div class="form-group">
+                <label><i class="fas fa-user"></i> Nombre completo</label>
+                <input type="text" name="nombre" value="{{ user.nombre }}" required>
+            </div>
+            <div class="form-group">
+                <label><i class="fas fa-envelope"></i> Correo electrónico</label>
+                <input type="email" name="email" value="{{ user.email }}" required>
+            </div>
+            <div class="form-group">
+                <label><i class="fas fa-phone"></i> Teléfono</label>
+                <input type="text" name="telefono" value="{{ user.telefono or '' }}" placeholder="Tu teléfono">
+            </div>
+            <button type="submit" class="btn btn-primary btn-block"><i class="fas fa-paper-plane"></i> Guardar y enviar código</button>
+        </form>
+        <p class="auth-link"><a href="{{ url_for('logout') }}">Cerrar sesión</a></p>
+    </div>
+</section>
+{% endblock %}

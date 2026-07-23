@@ -2831,12 +2831,26 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
 
 
 # ===== DECORADORES =====
+# Endpoints permitidos para usuarios logueados pero con email no verificado
+_EMAIL_VERIFICACION_EXCEPT_ENDPOINTS = {
+    'actualizar_datos', 'verificar_email', 'reenviar_verificacion', 'logout',
+    'static', 'login', 'registro', 'recuperar', 'restablecer',
+}
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         if 'user_id' not in session:
             flash('Inicia sesión para continuar', 'error')
             return redirect(url_for('login'))
+        user = get_user_by_id(session['user_id'])
+        if not user:
+            session.clear()
+            return redirect(url_for('login'))
+        if request.endpoint not in _EMAIL_VERIFICACION_EXCEPT_ENDPOINTS:
+            if not int((user['email_verificado'] if 'email_verificado' in user.keys() else 1) or 1):
+                flash('Debes verificar tu correo electrónico para continuar.', 'error')
+                return redirect(url_for('actualizar_datos'))
         return f(*args, **kwargs)
     return decorated
 
@@ -2914,9 +2928,6 @@ def login():
             if not user['activo']:
                 flash('Tu cuenta está pendiente de aprobación. El administrador debe activarla antes de que puedas acceder.', 'error')
                 return render_template('login.html')
-            if not int((user['email_verificado'] if 'email_verificado' in user.keys() else 1) or 1):
-                flash('Debes verificar tu correo electrónico antes de iniciar sesión.', 'error')
-                return redirect(url_for('verificar_email', email=user['email']))
             session['user_id'] = user['id']
             session['user_nombre'] = user['nombre']
             session['user_rol'] = user['rol']
@@ -2924,6 +2935,9 @@ def login():
             db.execute("UPDATE usuarios SET ultimo_login = datetime('now','localtime') WHERE id = ?", (user['id'],))
             db.commit()
             db.close()
+            if not int((user['email_verificado'] if 'email_verificado' in user.keys() else 1) or 1):
+                flash('Por seguridad debes verificar tu correo electrónico. Actualiza tus datos y solicita el código.', 'error')
+                return redirect(url_for('actualizar_datos'))
             flash(f'Bienvenido, {user["nombre"]}!', 'success')
             return redirect(url_for('dashboard'))
         flash('Email o contraseña incorrectos', 'error')
@@ -2961,7 +2975,9 @@ def registro():
 @app.route('/verificar-email', methods=['GET', 'POST'])
 def verificar_email():
     if 'user_id' in session:
-        return redirect(url_for('dashboard'))
+        user = get_user_by_id(session['user_id'])
+        if user and int((user['email_verificado'] if 'email_verificado' in user.keys() else 0) or 0):
+            return redirect(url_for('dashboard'))
     email = request.args.get('email', request.form.get('email', '')).strip()
     if request.method == 'POST':
         codigo = request.form.get('codigo', '').strip()
@@ -2988,7 +3004,9 @@ def verificar_email():
         db.execute("UPDATE usuario_tokens SET usado = 1 WHERE id = ?", (row['id'],))
         db.commit()
         db.close()
-        flash('Correo verificado correctamente. Ahora puedes iniciar sesión.', 'success')
+        flash('Correo verificado correctamente.', 'success')
+        if 'user_id' in session:
+            return redirect(url_for('dashboard'))
         return redirect(url_for('login'))
     return render_template('verificar_email.html', email=email)
 
@@ -2996,22 +3014,67 @@ def verificar_email():
 @app.route('/reenviar-verificacion', methods=['POST'])
 @limiter.limit("3 per minute", methods=["POST"])
 def reenviar_verificacion():
-    if 'user_id' in session:
-        return redirect(url_for('dashboard'))
     email = request.form.get('email', '').strip()
+    if not email and 'user_id' in session:
+        user = get_user_by_id(session['user_id'])
+        if user:
+            email = user['email']
     user = get_user_by_email(email)
     if not user:
         flash('Correo no encontrado.', 'error')
+        if 'user_id' in session:
+            return redirect(url_for('actualizar_datos'))
         return redirect(url_for('registro'))
     if int((user['email_verificado'] if 'email_verificado' in user.keys() else 0) or 0):
         flash('Este correo ya está verificado.', 'info')
-        return redirect(url_for('login'))
+        return redirect(url_for('dashboard' if 'user_id' in session else 'login'))
     ok, err = _enviar_verificacion_email(user['id'], user['email'], user['nombre'])
     if ok:
         flash('Código reenviado. Revisa tu correo.', 'success')
     else:
         flash(f'No se pudo reenviar el código: {err}', 'error')
     return redirect(url_for('verificar_email', email=email))
+
+
+@app.route('/actualizar-datos', methods=['GET', 'POST'])
+@login_required
+def actualizar_datos():
+    user = get_user_by_id(session['user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login'))
+    if int((user['email_verificado'] if 'email_verificado' in user.keys() else 0) or 0):
+        return redirect(url_for('dashboard'))
+    if request.method == 'POST':
+        nombre = request.form.get('nombre', '').strip()
+        email = request.form.get('email', '').strip()
+        telefono = request.form.get('telefono', '').strip()
+        if not nombre or not email:
+            flash('Nombre y correo son obligatorios.', 'error')
+            return render_template('actualizar_datos.html', user=user)
+        if '@' not in email or '.' not in email.split('@')[-1]:
+            flash('Ingresa un correo válido.', 'error')
+            return render_template('actualizar_datos.html', user=user)
+        db = get_db()
+        existing = db.execute("SELECT id FROM usuarios WHERE email = ? AND id != ?", (email, user['id'])).fetchone()
+        if existing:
+            db.close()
+            flash('Ese correo ya está registrado por otro usuario.', 'error')
+            return render_template('actualizar_datos.html', user=user)
+        db.execute(
+            "UPDATE usuarios SET nombre = ?, email = ?, telefono = ?, email_verificado = 0 WHERE id = ?",
+            (nombre, email, telefono, user['id'])
+        )
+        db.commit()
+        db.close()
+        session['user_nombre'] = nombre
+        ok, err = _enviar_verificacion_email(user['id'], email, nombre)
+        if ok:
+            flash('Datos actualizados. Te enviamos un código de verificación.', 'success')
+        else:
+            flash(f'Datos actualizados, pero no se pudo enviar el código: {err}', 'error')
+        return redirect(url_for('verificar_email', email=email))
+    return render_template('actualizar_datos.html', user=user)
 
 
 @app.route('/recuperar', methods=['GET', 'POST'])
