@@ -8,3 +8,10 @@ venv/
 .vscode/
 test_api.py
 static/uploads/
+
+# Archivos temporales de debug/diagnóstico
+tmp_*.py
+tmp_*.txt
+debug_gp*.py
+test_gp*.py
+test_*_vps.py
