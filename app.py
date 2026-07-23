@@ -2829,7 +2829,7 @@ def registro():
         if not user:
             flash('El email ya está registrado', 'error')
             return render_template('registro.html')
-        flash('Registro exitoso. Tu cuenta debe ser aprobada por el administrador antes de poder acceder.', 'success')
+        flash('Registro exitoso. Ya puedes iniciar sesión.', 'success')
         return redirect(url_for('login'))
     return render_template('registro.html')
 

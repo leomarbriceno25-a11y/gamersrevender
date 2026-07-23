@@ -934,7 +934,7 @@ def create_user(nombre, email, password, telefono=''):
     api_key = generate_api_key()
     try:
         db.execute(
-            "INSERT INTO usuarios (nombre, email, password, telefono, api_key, api_key_hash, api_key_prefix, activo) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
+            "INSERT INTO usuarios (nombre, email, password, telefono, api_key, api_key_hash, api_key_prefix, activo) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
             (nombre, email, generate_password_hash(password), telefono, None, _hash_api_key(api_key), api_key[:8])
         )
         db.commit()
