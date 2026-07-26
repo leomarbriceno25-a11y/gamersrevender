@@ -6974,12 +6974,44 @@ def admin_pedidos():
 @app.route('/admin/pedido/<int:id>/estado', methods=['POST'])
 @admin_required
 def admin_cambiar_estado(id):
-    estado = request.form.get('estado', 'pendiente')
+    estado_nuevo = request.form.get('estado', 'pendiente')
     db = get_db()
-    db.execute("UPDATE pedidos SET estado = ? WHERE id = ?", (estado, id))
+    pedido = db.execute(
+        "SELECT usuario_id, estado, total FROM pedidos WHERE id = ?",
+        (id,),
+    ).fetchone()
+    estado_anterior = str(pedido['estado'] or '').strip().lower() if pedido else ''
+    total = float((pedido['total'] or 0) if pedido else 0)
+    usuario_id = int(pedido['usuario_id'] if pedido else 0)
+
+    db.execute("UPDATE pedidos SET estado = ? WHERE id = ?", (estado_nuevo, id))
     db.commit()
+
+    reembolsado = False
+    if estado_nuevo == 'cancelado' and estado_anterior not in ('cancelado', 'completado') and usuario_id > 0 and total > 0:
+        try:
+            recargar_saldo(usuario_id, total, f"Reembolso: Pedido #{id} cancelado manualmente")
+            reembolsado = True
+        except Exception as e:
+            flash(f'Pedido cancelado, pero no se pudo reembolsar: {e}', 'warning')
+
+    if reembolsado:
+        try:
+            enviar_webhook(usuario_id, {
+                'evento': 'pedido_actualizado',
+                'pedido_id': id,
+                'estado': 'cancelado',
+                'razon': 'Pedido cancelado manualmente por administrador',
+                'reembolsado': True,
+                'reembolso': float(total),
+            })
+        except Exception:
+            pass
+        flash(f'Pedido #{id} cancelado y reembolsado (${total:.2f})', 'success')
+    else:
+        flash(f'Pedido #{id} actualizado a {estado_nuevo}', 'success')
+
     db.close()
-    flash(f'Pedido #{id} actualizado a {estado}', 'success')
     return redirect(url_for('admin_pedidos'))
 
 
