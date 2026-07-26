@@ -5769,17 +5769,17 @@ def admin_productos():
             descripcion = request.form.get('descripcion', '').strip()
             campos_cliente = request.form.get('campos_cliente', '').strip()
             freefire_levelpass = request.form.get('freefire_levelpass', '').strip()
-            precio = float(request.form.get('precio', 0))
+            precio = float(request.form.get('precio', 0) or 0)
             precio_suscriptor = float(request.form.get('precio_suscriptor', 0) or 0)
-            categoria_id = int(request.form.get('categoria_id', 0))
+            categoria_id = int(request.form.get('categoria_id', 0) or 0)
             icono = request.form.get('icono', 'fa-gem').strip()
             usa_api = 1 if request.form.get('usa_api') else 0
-            monto_api = int(request.form.get('monto_api', 0))
+            monto_api = int(request.form.get('monto_api', 0) or 0)
             usa_razer = 1 if request.form.get('usa_razer') else 0
-            razer_paquete = int(request.form.get('razer_paquete', 0))
+            razer_paquete = int(request.form.get('razer_paquete', 0) or 0)
             razer_paquete_extra = int(request.form.get('razer_paquete_extra', 0) or 0)
             usa_deltaforce = 1 if request.form.get('usa_deltaforce') else 0
-            deltaforce_paquete = int(request.form.get('deltaforce_paquete', 0))
+            deltaforce_paquete = int(request.form.get('deltaforce_paquete', 0) or 0)
             usa_pincentral = 1 if request.form.get('usa_pincentral') else 0
             pincentral_product_code = request.form.get('pincentral_product_code', '').strip()
             pincentral_entrega_directa = 1 if request.form.get('pincentral_entrega_directa') else 0
@@ -5790,8 +5790,8 @@ def admin_productos():
             jadh_item_id = request.form.get('jadh_item_id', '').strip() or '32'
             jadh_diamonds = int(request.form.get('jadh_diamonds', 0) or 0)
             jadh_package_id = request.form.get('jadh_package_id', '').strip()
-            gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
-            gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
+            gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0) or 0)
+            gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0) or 0)
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
             bloodstrike_package_id = request.form.get('bloodstrike_package_id', '').strip()
             usa_moogold = 1 if request.form.get('usa_moogold') else 0
@@ -5801,10 +5801,10 @@ def admin_productos():
             moogold_fields = request.form.get('moogold_fields', '').strip()
             rechazo_automatico = 1 if request.form.get('rechazo_automatico') else 0
             recarga_manual = 1 if request.form.get('recarga_manual') else 0
-            orden = int(request.form.get('orden', 0))
-            pin_origen_producto_id = int(request.form.get('pin_origen_producto_id', 0))
-            stock_minimo = int(request.form.get('stock_minimo', 0))
-            stock_objetivo = int(request.form.get('stock_objetivo', 0))
+            orden = int(request.form.get('orden', 0) or 0)
+            pin_origen_producto_id = int(request.form.get('pin_origen_producto_id', 0) or 0)
+            stock_minimo = int(request.form.get('stock_minimo', 0) or 0)
+            stock_objetivo = int(request.form.get('stock_objetivo', 0) or 0)
             canjes_por_compra = int(request.form.get('canjes_por_compra', 1)) or 1
             if not usa_pincentral:
                 pincentral_entrega_directa = 0
@@ -5833,22 +5833,22 @@ def admin_productos():
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
-            prod_id = int(request.form.get('producto_id', 0))
+            prod_id = int(request.form.get('producto_id', 0) or 0)
             nombre = request.form.get('nombre', '').strip()
             descripcion = request.form.get('descripcion', '').strip()
             campos_cliente = request.form.get('campos_cliente', '').strip()
             freefire_levelpass = request.form.get('freefire_levelpass', '').strip()
-            precio = float(request.form.get('precio', 0))
+            precio = float(request.form.get('precio', 0) or 0)
             precio_suscriptor = float(request.form.get('precio_suscriptor', 0) or 0)
-            categoria_id = int(request.form.get('categoria_id', 0))
+            categoria_id = int(request.form.get('categoria_id', 0) or 0)
             activo = 1 if request.form.get('activo') else 0
             usa_api = 1 if request.form.get('usa_api') else 0
-            monto_api = int(request.form.get('monto_api', 0))
+            monto_api = int(request.form.get('monto_api', 0) or 0)
             usa_razer = 1 if request.form.get('usa_razer') else 0
-            razer_paquete = int(request.form.get('razer_paquete', 0))
+            razer_paquete = int(request.form.get('razer_paquete', 0) or 0)
             razer_paquete_extra = int(request.form.get('razer_paquete_extra', 0) or 0)
             usa_deltaforce = 1 if request.form.get('usa_deltaforce') else 0
-            deltaforce_paquete = int(request.form.get('deltaforce_paquete', 0))
+            deltaforce_paquete = int(request.form.get('deltaforce_paquete', 0) or 0)
             usa_pincentral = 1 if request.form.get('usa_pincentral') else 0
             pincentral_product_code = request.form.get('pincentral_product_code', '').strip()
             pincentral_entrega_directa = 1 if request.form.get('pincentral_entrega_directa') else 0
@@ -5859,8 +5859,8 @@ def admin_productos():
             jadh_item_id = request.form.get('jadh_item_id', '').strip() or '32'
             jadh_diamonds = int(request.form.get('jadh_diamonds', 0) or 0)
             jadh_package_id = request.form.get('jadh_package_id', '').strip()
-            gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
-            gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
+            gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0) or 0)
+            gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0) or 0)
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
             bloodstrike_package_id = request.form.get('bloodstrike_package_id', '').strip()
             usa_moogold = 1 if request.form.get('usa_moogold') else 0
@@ -5870,10 +5870,10 @@ def admin_productos():
             moogold_fields = request.form.get('moogold_fields', '').strip()
             rechazo_automatico = 1 if request.form.get('rechazo_automatico') else 0
             recarga_manual = 1 if request.form.get('recarga_manual') else 0
-            orden = int(request.form.get('orden', 0))
-            pin_origen_producto_id = int(request.form.get('pin_origen_producto_id', 0))
-            stock_minimo = int(request.form.get('stock_minimo', 0))
-            stock_objetivo = int(request.form.get('stock_objetivo', 0))
+            orden = int(request.form.get('orden', 0) or 0)
+            pin_origen_producto_id = int(request.form.get('pin_origen_producto_id', 0) or 0)
+            stock_minimo = int(request.form.get('stock_minimo', 0) or 0)
+            stock_objetivo = int(request.form.get('stock_objetivo', 0) or 0)
             canjes_por_compra = int(request.form.get('canjes_por_compra', 1)) or 1
             if not usa_pincentral:
                 pincentral_entrega_directa = 0
@@ -5902,7 +5902,7 @@ def admin_productos():
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
-            prod_id = int(request.form.get('producto_id', 0))
+            prod_id = int(request.form.get('producto_id', 0) or 0)
             if prod_id > 0:
                 try:
                     db.execute("DELETE FROM productos WHERE id = ?", (prod_id,))
@@ -6693,7 +6693,7 @@ def admin_categorias():
                 imagen = uploaded
             tipo = request.form.get('tipo', 'juegos')
             descripcion = request.form.get('descripcion', '').strip()
-            orden = int(request.form.get('orden', 0))
+            orden = int(request.form.get('orden', 0) or 0)
             verificar_nombre = 1 if request.form.get('verificar_nombre') else 0
             verificar_nombre_tipo = request.form.get('verificar_nombre_tipo', '').strip()
             validar_id_api = 1 if request.form.get('validar_id_api') else 0
@@ -6722,7 +6722,7 @@ def admin_categorias():
                     imagen = old['imagen']
             tipo = request.form.get('tipo', 'juegos')
             descripcion = request.form.get('descripcion', '').strip()
-            orden = int(request.form.get('orden', 0))
+            orden = int(request.form.get('orden', 0) or 0)
             activo = 1 if request.form.get('activo') else 0
             verificar_nombre = 1 if request.form.get('verificar_nombre') else 0
             verificar_nombre_tipo = request.form.get('verificar_nombre_tipo', '').strip()
