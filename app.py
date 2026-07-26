@@ -3679,7 +3679,7 @@ def comprar():
 
     # Si el producto usa PinCentral Recarga directa
     if usa_pincentral and pincentral_recarga_directa:
-        from pincentral_api import crear_recarga
+        from pincentral_api import crear_recarga, validar_recarga
 
         product_code = str((prod['pincentral_product_code'] if 'pincentral_product_code' in prod.keys() else '') or '').strip()
         if not product_code:
@@ -3696,6 +3696,33 @@ def comprar():
         first_name = nombre_partes[0] if nombre_partes else ''
         last_name = nombre_partes[1] if len(nombre_partes) > 1 else ''
         recargas_total = max(1, min(int((prod['pincentral_recarga_cantidad'] if 'pincentral_recarga_cantidad' in prod.keys() else 1) or 1), 20))
+
+        # Validar la cuenta del jugador antes de intentar la recarga
+        input2 = request.form.get('input2', '').strip()
+        additional_data_2 = request.form.get('additional_data_2', '').strip()
+        validacion = validar_recarga(
+            product_code=product_code,
+            service_user_id=id_juego,
+            additional_data=input2,
+            additional_data_2=additional_data_2,
+            client_first_name=first_name,
+            client_last_name=last_name,
+        )
+        val_data = validacion.get('data', {}) if isinstance(validacion.get('data', {}), dict) else {}
+        val_status = val_data.get('status')
+        val_ok = validacion.get('ok') and (
+            val_status is True or str(val_status).strip().lower() in ('true', '1', 'ok', 'success')
+        )
+        if not val_ok:
+            db2 = get_db()
+            db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db2.commit()
+            db2.close()
+            error_msg = validacion.get('error') or val_data.get('message') or 'Cuenta o ID de jugador inválido'
+            recargar_saldo(user_id, total, f"Reembolso: Validación PinCentral fallida pedido #{pedido_id}: {error_msg}")
+            flash(f'La validación falló: {error_msg}. Se reembolsó tu saldo.', 'error')
+            return redirect(url_for('pedido_detalle', id=pedido_id))
+
         try:
             refs = []
             receipts = []
@@ -7313,7 +7340,7 @@ def api_comprar():
 
     # PinCentral Recarga directa
     if usa_pincentral and pincentral_recarga_directa:
-        from pincentral_api import crear_recarga
+        from pincentral_api import crear_recarga, validar_recarga
 
         product_code = str((prod['pincentral_product_code'] if 'pincentral_product_code' in prod.keys() else '') or '').strip()
         if not product_code:
@@ -7325,7 +7352,34 @@ def api_comprar():
 
         db.close()
         nombre_partes = str((dict(user).get('nombre', '') if user else '') or '').split(' ', 1)
+        first_name = nombre_partes[0] if nombre_partes else ''
+        last_name = nombre_partes[1] if len(nombre_partes) > 1 else ''
         recargas_total = max(1, min(int((prod['pincentral_recarga_cantidad'] if 'pincentral_recarga_cantidad' in prod.keys() else 1) or 1), 20))
+
+        # Validar la cuenta del jugador antes de intentar la recarga
+        additional_data_2_api = str(data.get('additional_data_2', '') or '').strip()
+        validacion = validar_recarga(
+            product_code=product_code,
+            service_user_id=id_juego,
+            additional_data=input2,
+            additional_data_2=additional_data_2_api,
+            client_first_name=first_name,
+            client_last_name=last_name,
+        )
+        val_data = validacion.get('data', {}) if isinstance(validacion.get('data', {}), dict) else {}
+        val_status = val_data.get('status')
+        val_ok = validacion.get('ok') and (
+            val_status is True or str(val_status).strip().lower() in ('true', '1', 'ok', 'success')
+        )
+        if not val_ok:
+            db2 = get_db()
+            db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db2.commit()
+            db2.close()
+            error_msg = validacion.get('error') or val_data.get('message') or 'Cuenta o ID de jugador inválido'
+            recargar_saldo(user_id_api, total, f"Reembolso API: Validación PinCentral fallida pedido #{pedido_id}: {error_msg}")
+            return jsonify({'ok': False, 'error': f'La validación falló: {error_msg}', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)}), 400
+
         try:
             refs = []
             receipts = []
