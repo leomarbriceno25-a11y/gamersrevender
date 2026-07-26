@@ -3829,8 +3829,6 @@ def comprar():
             service_user_id=id_juego,
             additional_data=input2,
             additional_data_2=additional_data_2,
-            client_first_name=first_name,
-            client_last_name=last_name,
         )
         val_data = validacion.get('data', {}) if isinstance(validacion.get('data', {}), dict) else {}
         val_status = val_data.get('status')
@@ -7539,8 +7537,6 @@ def api_comprar():
             service_user_id=id_juego,
             additional_data=input2,
             additional_data_2=additional_data_2_api,
-            client_first_name=first_name,
-            client_last_name=last_name,
         )
         val_data = validacion.get('data', {}) if isinstance(validacion.get('data', {}), dict) else {}
         val_status = val_data.get('status')
