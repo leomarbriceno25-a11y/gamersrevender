@@ -56,3 +56,17 @@ MOOGOLD_API_URL = os.environ.get('MOOGOLD_API_URL', 'https://moogold.com/wp-json
 MOOGOLD_PARTNER_ID = os.environ.get('MOOGOLD_PARTNER_ID', '')
 MOOGOLD_SECRET_KEY = os.environ.get('MOOGOLD_SECRET_KEY', '')
 MOOGOLD_CALLBACK_TOKEN = os.environ.get('MOOGOLD_CALLBACK_TOKEN', '')
+
+# Jadh Shop API (compra de pines Free Fire Chile)
+JADH_BASE_URL = os.environ.get('JADH_BASE_URL', 'https://jadh.shop')
+JADH_EMAIL = os.environ.get('JADH_EMAIL', '')
+JADH_PASSWORD = os.environ.get('JADH_PASSWORD', '')
+JADH_ITEM_ID = os.environ.get('JADH_ITEM_ID', '32')
+JADH_PACKAGE_MAP = {
+    '100': '150',
+    '300': '151',
+    '500': '152',
+    '1000': '153',
+    '2000': '154',
+    '5000': '155',
+}

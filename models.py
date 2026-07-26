@@ -398,6 +398,22 @@ def init_db():
         db.execute("SELECT precio_suscriptor FROM productos LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE productos ADD COLUMN precio_suscriptor REAL DEFAULT 0")
+    try:
+        db.execute("SELECT usa_jadh FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN usa_jadh INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT jadh_item_id FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN jadh_item_id TEXT DEFAULT '32'")
+    try:
+        db.execute("SELECT jadh_diamonds FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN jadh_diamonds INTEGER DEFAULT 0")
+    try:
+        db.execute("SELECT jadh_package_id FROM productos LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE productos ADD COLUMN jadh_package_id TEXT DEFAULT ''")
     # Bonus por monto de recarga
     try:
         db.execute("SELECT id FROM bonus_recarga LIMIT 1")

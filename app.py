@@ -29,6 +29,7 @@ import secrets
 import random
 
 PINCENTRAL_RESTOCK_LOCK = threading.Lock()
+JADH_RESTOCK_LOCK = threading.Lock()
 PINCENTRAL_SCAN_THREAD_GUARD = threading.Lock()
 PINCENTRAL_SCAN_THREAD_STARTED = False
 PINCENTRAL_SCAN_INTERVAL_SECONDS = 60
@@ -2074,6 +2075,85 @@ def restock_pincentral_almacen_async(producto_id):
     threading.Thread(target=restock_pincentral_almacen, args=(pid,), daemon=True).start()
 
 
+def restock_jadh_almacen(producto_id):
+    """Reabastece pines desde Jadh Shop cuando el stock local baja del mínimo."""
+    from jadh_api import comprar_pines_jadh
+
+    with JADH_RESTOCK_LOCK:
+        db = get_db()
+        prod = db.execute(
+            "SELECT id, nombre, usa_jadh, jadh_item_id, jadh_diamonds, jadh_package_id, stock_minimo, stock_objetivo "
+            "FROM productos WHERE id = ? AND activo = 1",
+            (producto_id,),
+        ).fetchone()
+
+        if not prod:
+            db.close()
+            return 0
+
+        usa_jadh = int(prod['usa_jadh'] or 0)
+        item_id = str(prod['jadh_item_id'] or '').strip() or '32'
+        diamonds = int(prod['jadh_diamonds'] or 0)
+        package_id = str(prod['jadh_package_id'] or '').strip()
+        stock_minimo = int(prod['stock_minimo'] or 0)
+        stock_objetivo = int(prod['stock_objetivo'] or 0)
+
+        if not usa_jadh or diamonds <= 0 or stock_minimo <= 0:
+            db.close()
+            return 0
+
+        stock_actual = db.execute(
+            "SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'",
+            (producto_id,),
+        ).fetchone()['c']
+
+        if stock_actual >= stock_minimo:
+            db.close()
+            return 0
+
+        objetivo = stock_objetivo if stock_objetivo > stock_minimo else stock_minimo
+        necesarios = objetivo - stock_actual
+        if necesarios <= 0:
+            db.close()
+            return 0
+
+        try:
+            lote_id = f"JADH_{producto_id}_{uuid.uuid4().hex[:10]}"
+            print(f"[JADH-RESTOCK] Comprando {necesarios} pines de {diamonds} diamantes (producto #{producto_id})...")
+            pins = comprar_pines_jadh(
+                diamonds=diamonds,
+                quantity=necesarios,
+                item_id=item_id,
+                package_id=package_id or None,
+            )
+            agregados = 0
+            for pin in pins:
+                ok_insert, _ = _insertar_pin_disponible(db, producto_id, pin, lote_id=lote_id)
+                if ok_insert:
+                    agregados += 1
+            db.commit()
+            db.close()
+            if agregados > 0:
+                print(f"[JADH-RESTOCK] {agregados} PIN(s) agregados a '{prod['nombre']}'")
+            return agregados
+        except Exception as e:
+            db.rollback()
+            db.close()
+            print(f"[JADH-RESTOCK] Error reabasteciendo producto #{producto_id}: {e}")
+            return 0
+
+
+def restock_jadh_almacen_async(producto_id):
+    """Ejecuta restock Jadh Shop en segundo plano para no bloquear la compra."""
+    try:
+        pid = int(producto_id or 0)
+    except Exception:
+        return
+    if pid <= 0:
+        return
+    threading.Thread(target=restock_jadh_almacen, args=(pid,), daemon=True).start()
+
+
 def _pincentral_adquirir_lock_global(lock_name='pincentral_restock_scan', ttl_seg=55):
     now_ts = int(time.time())
     expira_ts = now_ts + max(10, int(ttl_seg or 55))
@@ -2126,6 +2206,29 @@ def restock_pincentral_productos_bajo_minimo():
                 restock_pincentral_almacen(prod['id'])
         except Exception as e:
             print(f"[PINCENTRAL-SCAN] Error revisando producto #{prod['id']}: {e}")
+
+    # Revisar productos con auto-compra Jadh Shop
+    db = get_db()
+    try:
+        productos_jadh = db.execute(
+            "SELECT id, nombre, stock_minimo FROM productos "
+            "WHERE activo = 1 AND COALESCE(usa_jadh, 0) = 1 AND COALESCE(stock_minimo, 0) > 0"
+        ).fetchall()
+    finally:
+        db.close()
+
+    for prod in productos_jadh:
+        try:
+            db2 = get_db()
+            stock_actual = db2.execute(
+                "SELECT COUNT(*) as c FROM pines WHERE producto_id = ? AND estado = 'disponible'",
+                (prod['id'],),
+            ).fetchone()['c']
+            db2.close()
+            if stock_actual < int(prod['stock_minimo'] or 0):
+                restock_jadh_almacen(prod['id'])
+        except Exception as e:
+            print(f"[JADH-SCAN] Error revisando producto #{prod['id']}: {e}")
 
 
 def _worker_restock_pincentral_global():
@@ -4234,11 +4337,15 @@ def comprar():
             verificar_stock_bajo(producto_id)
             if (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
                 restock_pincentral_almacen_async(producto_id)
+            if (prod['usa_jadh'] if 'usa_jadh' in prod.keys() else 0):
+                restock_jadh_almacen_async(producto_id)
             flash(f'Pedido #{pedido_id} completado. {len(codigos)} código(s) entregado(s).', 'success')
             return redirect(url_for('pedido_detalle', id=pedido_id))
         else:
             if (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
                 restock_pincentral_almacen_async(producto_id)
+            if (prod['usa_jadh'] if 'usa_jadh' in prod.keys() else 0):
+                restock_jadh_almacen_async(producto_id)
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
             db.close()
@@ -5658,6 +5765,10 @@ def admin_productos():
             pincentral_recarga_directa = 1 if request.form.get('pincentral_recarga_directa') else 0
             pincentral_fields = request.form.get('pincentral_fields', '').strip()
             pincentral_recarga_cantidad = max(1, min(int(request.form.get('pincentral_recarga_cantidad', 1) or 1), 20))
+            usa_jadh = 1 if request.form.get('usa_jadh') else 0
+            jadh_item_id = request.form.get('jadh_item_id', '').strip() or '32'
+            jadh_diamonds = int(request.form.get('jadh_diamonds', 0) or 0)
+            jadh_package_id = request.form.get('jadh_package_id', '').strip()
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
@@ -5689,11 +5800,15 @@ def admin_productos():
                 moogold_product_id = 0
                 moogold_variation_id = 0
                 moogold_fields = ''
+            if not usa_jadh:
+                jadh_item_id = '32'
+                jadh_diamonds = 0
+                jadh_package_id = ''
             if precio_suscriptor < 0:
                 precio_suscriptor = 0
             if nombre and precio > 0 and categoria_id > 0:
-                db.execute("INSERT INTO productos (nombre, descripcion, campos_cliente, freefire_levelpass, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                           (nombre, descripcion, campos_cliente, freefire_levelpass, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
+                db.execute("INSERT INTO productos (nombre, descripcion, campos_cliente, freefire_levelpass, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, usa_jadh, jadh_item_id, jadh_diamonds, jadh_package_id, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                           (nombre, descripcion, campos_cliente, freefire_levelpass, precio, precio_suscriptor, categoria_id, icono, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, usa_jadh, jadh_item_id, jadh_diamonds, jadh_package_id, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra))
                 db.commit()
                 flash(f'Producto "{nombre}" creado', 'success')
         elif accion == 'editar':
@@ -5719,6 +5834,10 @@ def admin_productos():
             pincentral_recarga_directa = 1 if request.form.get('pincentral_recarga_directa') else 0
             pincentral_fields = request.form.get('pincentral_fields', '').strip()
             pincentral_recarga_cantidad = max(1, min(int(request.form.get('pincentral_recarga_cantidad', 1) or 1), 20))
+            usa_jadh = 1 if request.form.get('usa_jadh') else 0
+            jadh_item_id = request.form.get('jadh_item_id', '').strip() or '32'
+            jadh_diamonds = int(request.form.get('jadh_diamonds', 0) or 0)
+            jadh_package_id = request.form.get('jadh_package_id', '').strip()
             gamepoint_product_id = int(request.form.get('gamepoint_product_id', 0))
             gamepoint_package_id = int(request.form.get('gamepoint_package_id', 0))
             gamepoint_fields = request.form.get('gamepoint_fields', '').strip()
@@ -5750,11 +5869,15 @@ def admin_productos():
                 moogold_product_id = 0
                 moogold_variation_id = 0
                 moogold_fields = ''
+            if not usa_jadh:
+                jadh_item_id = '32'
+                jadh_diamonds = 0
+                jadh_package_id = ''
             if precio_suscriptor < 0:
                 precio_suscriptor = 0
             if prod_id > 0 and nombre and precio > 0:
-                db.execute("UPDATE productos SET nombre=?, descripcion=?, campos_cliente=?, freefire_levelpass=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, pincentral_recarga_directa=?, pincentral_fields=?, pincentral_recarga_cantidad=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, bloodstrike_package_id=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
-                           (nombre, descripcion, campos_cliente, freefire_levelpass, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
+                db.execute("UPDATE productos SET nombre=?, descripcion=?, campos_cliente=?, freefire_levelpass=?, precio=?, precio_suscriptor=?, categoria_id=?, activo=?, usa_api=?, monto_api=?, usa_razer=?, razer_paquete=?, razer_paquete_extra=?, usa_deltaforce=?, deltaforce_paquete=?, usa_pincentral=?, pincentral_product_code=?, pincentral_entrega_directa=?, pincentral_recarga_directa=?, pincentral_fields=?, pincentral_recarga_cantidad=?, usa_jadh=?, jadh_item_id=?, jadh_diamonds=?, jadh_package_id=?, gamepoint_product_id=?, gamepoint_package_id=?, gamepoint_fields=?, bloodstrike_package_id=?, moogold_category_id=?, moogold_product_id=?, moogold_variation_id=?, moogold_fields=?, rechazo_automatico=?, recarga_manual=?, orden=?, pin_origen_producto_id=?, stock_minimo=?, stock_objetivo=?, canjes_por_compra=? WHERE id=?",
+                           (nombre, descripcion, campos_cliente, freefire_levelpass, precio, precio_suscriptor, categoria_id, activo, usa_api, monto_api, usa_razer, razer_paquete, razer_paquete_extra, usa_deltaforce, deltaforce_paquete, usa_pincentral, pincentral_product_code, pincentral_entrega_directa, pincentral_recarga_directa, pincentral_fields, pincentral_recarga_cantidad, usa_jadh, jadh_item_id, jadh_diamonds, jadh_package_id, gamepoint_product_id, gamepoint_package_id, gamepoint_fields, bloodstrike_package_id, moogold_category_id, moogold_product_id, moogold_variation_id, moogold_fields, rechazo_automatico, recarga_manual, orden, pin_origen_producto_id, stock_minimo, stock_objetivo, canjes_por_compra, prod_id))
                 db.commit()
                 flash(f'Producto actualizado', 'success')
         elif accion == 'eliminar':
@@ -8010,6 +8133,8 @@ def api_comprar():
             verificar_stock_bajo(producto_id)
             if (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
                 restock_pincentral_almacen_async(producto_id)
+            if (prod['usa_jadh'] if 'usa_jadh' in prod.keys() else 0):
+                restock_jadh_almacen_async(producto_id)
             return jsonify({
                 'ok': True, 'pedido_id': pedido_id, 'estado': 'completado',
                 'total': total, 'saldo_restante': get_saldo(user_id_api),
@@ -8020,6 +8145,8 @@ def api_comprar():
         else:
             if (prod['usa_pincentral'] if 'usa_pincentral' in prod.keys() else 0):
                 restock_pincentral_almacen_async(producto_id)
+            if (prod['usa_jadh'] if 'usa_jadh' in prod.keys() else 0):
+                restock_jadh_almacen_async(producto_id)
             db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
             db.commit()
             db.close()

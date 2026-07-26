@@ -198,6 +198,37 @@
                 </div>
                 <div class="form-group">
                     <label class="checkbox-label">
+                        <input type="checkbox" name="usa_jadh" id="form-usa-jadh" onchange="toggleJadh()"> <i class="fas fa-shopping-bag" style="color:#8b5cf6;"></i> Usa Jadh Shop (auto-compra de pines)
+                    </label>
+                </div>
+                <div class="form-group" id="jadh-group" style="display:none;">
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label><i class="fas fa-gem" style="color:#8b5cf6;"></i> Diamantes</label>
+                            <select name="jadh_diamonds" id="form-jadh-diamonds" class="form-select">
+                                <option value="0">-- Seleccionar --</option>
+                                <option value="100">100 💎</option>
+                                <option value="300">300 💎</option>
+                                <option value="500">500 💎</option>
+                                <option value="1000">1.000 💎</option>
+                                <option value="2000">2.000 💎</option>
+                                <option value="5000">5.000 💎</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-box" style="color:#8b5cf6;"></i> Package ID (override)</label>
+                            <input type="text" name="jadh_package_id" id="form-jadh-package-id" class="form-input" placeholder="Ej: 150">
+                            <p style="color:var(--text-secondary); font-size:0.75rem; margin-top:0.2rem;">Si se deja vacío se usa el mapa por defecto según diamantes.</p>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top:0.5rem;">
+                        <label><i class="fas fa-tag" style="color:#8b5cf6;"></i> Item ID del producto en Jadh</label>
+                        <input type="text" name="jadh_item_id" id="form-jadh-item-id" class="form-input" value="32" placeholder="Ej: 32">
+                    </div>
+                    <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.4rem;">Reabastece pines automáticamente desde jadh.shop cuando el stock local baje del mínimo.</p>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
                         <input type="checkbox" id="form-usa-bloodstrike" onchange="toggleBloodStrike()"> <i class="fas fa-tint" style="color:#ef4444;"></i> Usa Blood Strike API
                     </label>
                 </div>
@@ -447,6 +478,10 @@
                         data-pincentral-recarga="{{ p.pincentral_recarga_directa|default(0) }}"
                         data-pincentral-fields="{{ p.pincentral_fields|default('')|e }}"
                         data-pincentral-recarga-cantidad="{{ p.pincentral_recarga_cantidad|default(1) }}"
+                        data-usa-jadh="{{ p.usa_jadh|default(0) }}"
+                        data-jadh-item-id="{{ p.jadh_item_id|default('32')|e }}"
+                        data-jadh-diamonds="{{ p.jadh_diamonds|default(0) }}"
+                        data-jadh-package-id="{{ p.jadh_package_id|default('')|e }}"
                         data-orden="{{ p.orden|default(0) }}"
                         data-recarga-manual="{{ p.recarga_manual|default(0) }}"
                         data-pin-origen-id="{{ p.pin_origen_producto_id|default(0) }}"
@@ -478,6 +513,8 @@
                             <span class="badge badge-completado"><i class="fas fa-crosshairs"></i> Delta</span>
                             {% elif p.usa_pincentral|default(0) %}
                             <span class="badge badge-completado"><i class="fas fa-ticket"></i> PinCentral</span>
+                            {% elif p.usa_jadh|default(0) %}
+                            <span class="badge badge-completado"><i class="fas fa-shopping-bag"></i> Jadh</span>
                             {% elif p.usa_api %}
                             <span class="badge badge-pendiente"><i class="fas fa-bolt"></i> Hype</span>
                             {% else %}
@@ -1056,6 +1093,16 @@ function togglePinCentral() {
     }
 }
 
+function toggleJadh() {
+    var show = document.getElementById('form-usa-jadh').checked;
+    document.getElementById('jadh-group').style.display = show ? 'block' : 'none';
+    if (!show) {
+        document.getElementById('form-jadh-diamonds').value = '0';
+        document.getElementById('form-jadh-package-id').value = '';
+        document.getElementById('form-jadh-item-id').value = '32';
+    }
+}
+
 function syncPinCentralModes(mode) {
     if (mode === 'pin' && document.getElementById('form-pincentral-directo').checked) {
         document.getElementById('form-pincentral-recarga').checked = false;
@@ -1264,6 +1311,10 @@ function editarProductoDesdeFila(id) {
         parseInt(row.getAttribute('data-pincentral-recarga')) || 0,
         row.getAttribute('data-pincentral-fields') || '',
         parseInt(row.getAttribute('data-pincentral-recarga-cantidad')) || 1,
+        parseInt(row.getAttribute('data-usa-jadh')) || 0,
+        row.getAttribute('data-jadh-item-id') || '32',
+        parseInt(row.getAttribute('data-jadh-diamonds')) || 0,
+        row.getAttribute('data-jadh-package-id') || '',
         parseInt(row.getAttribute('data-orden')) || 0,
         parseInt(row.getAttribute('data-gp-product')) || 0,
         parseInt(row.getAttribute('data-gp-package')) || 0,
@@ -1278,7 +1329,7 @@ function editarProductoDesdeFila(id) {
     );
 }
 
-function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, razerPaqueteExtra, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, pincentralDirecto, pincentralRecarga, pincentralFields, pincentralRecargaCantidad, orden, gpProduct, gpPackage, bsPackage, rechazoAutomatico, recargaManual, pinOrigenId, stockMin, stockObj, canjes, freefireLevelpass) {
+function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono, descripcion, activo, usaApi, montoApi, usaRazer, razerPaquete, razerPaqueteExtra, usaDeltaforce, deltaforcePaquete, usaPincentral, pincentralCode, pincentralDirecto, pincentralRecarga, pincentralFields, pincentralRecargaCantidad, usaJadh, jadhItemId, jadhDiamonds, jadhPackageId, orden, gpProduct, gpPackage, bsPackage, rechazoAutomatico, recargaManual, pinOrigenId, stockMin, stockObj, canjes, freefireLevelpass) {
     var row = document.getElementById('row-' + id);
     var mgCategory = row ? (parseInt(row.getAttribute('data-mg-category')) || 0) : 0;
     var mgProduct = row ? (parseInt(row.getAttribute('data-mg-product')) || 0) : 0;
@@ -1310,6 +1361,10 @@ function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono
     document.getElementById('form-pincentral-recarga').checked = pincentralRecarga == 1;
     document.getElementById('form-pincentral-fields').value = pincentralFields || '';
     document.getElementById('form-pincentral-recarga-cantidad').value = pincentralRecargaCantidad || 1;
+    document.getElementById('form-usa-jadh').checked = usaJadh == 1;
+    document.getElementById('form-jadh-item-id').value = jadhItemId || '32';
+    document.getElementById('form-jadh-diamonds').value = jadhDiamonds || 0;
+    document.getElementById('form-jadh-package-id').value = jadhPackageId || '';
     document.getElementById('form-usa-bloodstrike').checked = !!bsPackage;
     setBloodStrikePackage(bsPackage || '');
     document.getElementById('form-usa-gamepoint').checked = (gpProduct > 0);
@@ -1333,6 +1388,7 @@ function editarProducto(id, nombre, precio, precioSuscriptor, categoriaId, icono
     toggleRazer();
     toggleDeltaforce();
     togglePinCentral();
+    toggleJadh();
     toggleBloodStrike();
     toggleGamepoint();
     toggleMoogold();
@@ -1371,6 +1427,10 @@ function resetForm() {
     document.getElementById('form-pincentral-recarga').checked = false;
     document.getElementById('form-pincentral-fields').value = '';
     document.getElementById('form-pincentral-recarga-cantidad').value = '1';
+    document.getElementById('form-usa-jadh').checked = false;
+    document.getElementById('form-jadh-item-id').value = '32';
+    document.getElementById('form-jadh-diamonds').value = '0';
+    document.getElementById('form-jadh-package-id').value = '';
     document.getElementById('form-usa-bloodstrike').checked = false;
     setBloodStrikePackage('');
     document.getElementById('form-usa-gamepoint').checked = false;
@@ -1404,6 +1464,7 @@ function resetForm() {
     toggleRazer();
     toggleDeltaforce();
     togglePinCentral();
+    toggleJadh();
     toggleBloodStrike();
     toggleGamepoint();
     toggleMoogold();
