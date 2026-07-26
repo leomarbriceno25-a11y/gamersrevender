@@ -2172,7 +2172,7 @@ def _pincentral_adquirir_lock_global(lock_name='pincentral_restock_scan', ttl_se
             (lock_name, owner, expira_ts),
         )
         db.commit()
-        return True
+        return owner
     except sqlite3.IntegrityError:
         db.rollback()
         return False
@@ -2180,6 +2180,19 @@ def _pincentral_adquirir_lock_global(lock_name='pincentral_restock_scan', ttl_se
         db.rollback()
         print(f"[PINCENTRAL-SCAN] Error lock global: {e}")
         return False
+    finally:
+        db.close()
+
+
+def _pincentral_liberar_lock_global(lock_name='pincentral_restock_scan', owner=None):
+    if not owner:
+        return
+    db = get_db()
+    try:
+        db.execute("DELETE FROM app_locks WHERE nombre = ? AND owner = ?", (lock_name, owner))
+        db.commit()
+    except Exception as e:
+        print(f"[PINCENTRAL-SCAN] Error liberando lock global: {e}")
     finally:
         db.close()
 
@@ -2233,16 +2246,24 @@ def restock_pincentral_productos_bajo_minimo():
 
 def _worker_restock_pincentral_global():
     while True:
+        lock_owner = None
         try:
-            if _pincentral_adquirir_lock_global(
+            lock_owner = _pincentral_adquirir_lock_global(
                 lock_name='pincentral_restock_scan',
                 ttl_seg=PINCENTRAL_SCAN_LOCK_TTL_SECONDS,
-            ):
+            )
+            if lock_owner:
                 _pincentral_procesar_cola_capturas()
                 restock_pincentral_productos_bajo_minimo()
                 _pincentral_procesar_cola_capturas()
         except Exception as e:
             print(f"[PINCENTRAL-SCAN] Worker error: {e}")
+        finally:
+            if lock_owner:
+                _pincentral_liberar_lock_global(
+                    lock_name='pincentral_restock_scan',
+                    owner=lock_owner,
+                )
         time.sleep(max(15, int(PINCENTRAL_SCAN_INTERVAL_SECONDS or 60)))
 
 
