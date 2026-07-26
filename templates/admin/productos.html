@@ -95,27 +95,28 @@
                         <input type="number" name="canjes_por_compra" id="form-canjes" value="1" min="1" max="10" class="form-input" style="max-width:120px;">
                         <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Ej: 2 para 200 diamantes (2 canjes de 100). Por defecto: 1</small>
                     </div>
-                    <div style="margin-top:0.8rem; padding:0.8rem; background:var(--bg-primary); border-radius:8px; border:1px solid var(--border-color);">
-                        <label style="margin-bottom:0.5rem;display:block;"><i class="fas fa-sync-alt" style="color:#10b981;"></i> <strong>Restock Automático</strong></label>
-                        <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">Reabastecer pines automáticamente desde un producto Gift Card cuando el stock baje del mínimo</p>
+                </div>
+
+                <div style="margin-top:0.8rem; padding:0.8rem; background:var(--bg-primary); border-radius:8px; border:1px solid var(--border-color);">
+                    <label style="margin-bottom:0.5rem;display:block;"><i class="fas fa-sync-alt" style="color:#10b981;"></i> <strong>Restock Automático</strong></label>
+                    <p style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.5rem;">Reabastecer pines automáticamente desde un producto Gift Card o proveedor Jadh/PinCentral cuando el stock baje del mínimo</p>
+                    <div class="form-group">
+                        <label>Producto origen (Gift Card)</label>
+                        <select name="pin_origen_producto_id" id="form-pin-origen" class="form-select">
+                            <option value="0">-- Sin restock --</option>
+                            {% for gc in productos_giftcard|default([]) %}
+                            <option value="{{ gc.id }}">{{ gc.nombre }} (Stock: {{ gc.stock|default(0) }})</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="form-grid-2">
                         <div class="form-group">
-                            <label>Producto origen (Gift Card)</label>
-                            <select name="pin_origen_producto_id" id="form-pin-origen" class="form-select">
-                                <option value="0">-- Sin restock --</option>
-                                {% for gc in productos_giftcard|default([]) %}
-                                <option value="{{ gc.id }}">{{ gc.nombre }} (Stock: {{ gc.stock|default(0) }})</option>
-                                {% endfor %}
-                            </select>
+                            <label>Stock mínimo (activa restock)</label>
+                            <input type="number" name="stock_minimo" id="form-stock-minimo" value="0" min="0" class="form-input">
                         </div>
-                        <div class="form-grid-2">
-                            <div class="form-group">
-                                <label>Stock mínimo (activa restock)</label>
-                                <input type="number" name="stock_minimo" id="form-stock-minimo" value="0" min="0" class="form-input">
-                            </div>
-                            <div class="form-group">
-                                <label>Stock objetivo (reabastece hasta)</label>
-                                <input type="number" name="stock_objetivo" id="form-stock-objetivo" value="0" min="0" class="form-input">
-                            </div>
+                        <div class="form-group">
+                            <label>Stock objetivo (reabastece hasta)</label>
+                            <input type="number" name="stock_objetivo" id="form-stock-objetivo" value="0" min="0" class="form-input">
                         </div>
                     </div>
                 </div>
