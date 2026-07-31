@@ -3051,7 +3051,7 @@ def login():
         user = get_user_by_email(email)
         if user and check_password_hash(user['password'], password):
             email_verif = int((user['email_verificado'] if 'email_verificado' in user.keys() else 0) or 0)
-            aprobado = int((user['aprobado'] if 'aprobado' in user.keys() else 1) or 1)
+            aprobado = int(user['aprobado']) if 'aprobado' in user.keys() and user['aprobado'] is not None else 1
             if not aprobado:
                 if not email_verif:
                     flash('Tu cuenta aún no está verificada. Revisa tu correo e ingresa el código. Una vez verificada, comunícate con soporte al WhatsApp +573169183784 para la aprobación.', 'popup')
@@ -3136,7 +3136,7 @@ def verificar_email():
         db.execute("UPDATE usuarios SET email_verificado = 1 WHERE id = ?", (user['id'],))
         db.execute("UPDATE usuario_tokens SET usado = 1 WHERE id = ?", (row['id'],))
         db.commit()
-        aprobado = int((user['aprobado'] if 'aprobado' in user.keys() else 1) or 1)
+        aprobado = int(user['aprobado']) if 'aprobado' in user.keys() and user['aprobado'] is not None else 1
         db.close()
         if not aprobado:
             flash('Tu cuenta está en revisión. Comunícate con soporte al WhatsApp +573169183784 para la aprobación de tu usuario.', 'popup')
