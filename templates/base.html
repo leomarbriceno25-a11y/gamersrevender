@@ -9,6 +9,25 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
+    {% with popup_messages = get_flashed_messages(category_filter=['popup']) %}
+    {% if popup_messages %}
+    <div id="popup-modal" class="popup-modal" style="display:flex;">
+        <div class="popup-content">
+            <div class="popup-header"><i class="fas fa-user-clock"></i> Cuenta en revisión</div>
+            <div class="popup-body">
+                {% for msg in popup_messages %}
+                <p>{{ msg }}</p>
+                {% endfor %}
+                <a href="https://wa.me/573169183784" target="_blank" rel="noopener noreferrer" class="btn btn-primary btn-block">
+                    <i class="fab fa-whatsapp"></i> Escribir a soporte
+                </a>
+            </div>
+            <button type="button" class="popup-close" onclick="document.getElementById('popup-modal').style.display='none'">Cerrar</button>
+        </div>
+    </div>
+    {% endif %}
+    {% endwith %}
+
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
     {% for category, message in messages %}

@@ -3054,9 +3054,9 @@ def login():
             aprobado = int((user['aprobado'] if 'aprobado' in user.keys() else 1) or 1)
             if not aprobado:
                 if not email_verif:
-                    flash('Tu cuenta aún no está verificada. Revisa tu correo e ingresa el código de verificación.', 'error')
+                    flash('Tu cuenta aún no está verificada. Revisa tu correo e ingresa el código. Una vez verificada, comunícate con soporte al WhatsApp +573169183784 para la aprobación.', 'popup')
                 else:
-                    flash('Tu cuenta está en revisión. Comunícate con soporte al WhatsApp +573169183784 para ser aprobado.', 'error')
+                    flash('Tu cuenta está en revisión. Comunícate con soporte al WhatsApp +573169183784 para la aprobación de tu usuario.', 'popup')
                 return render_template('login.html')
             if not user['activo']:
                 flash('Tu cuenta está desactivada.', 'error')
@@ -3139,7 +3139,8 @@ def verificar_email():
         aprobado = int((user['aprobado'] if 'aprobado' in user.keys() else 1) or 1)
         db.close()
         if not aprobado:
-            return redirect(url_for('esperando_aprobacion', email=user['email']))
+            flash('Tu cuenta está en revisión. Comunícate con soporte al WhatsApp +573169183784 para la aprobación de tu usuario.', 'popup')
+            return redirect(url_for('login'))
         flash('Correo verificado correctamente.', 'success')
         if 'user_id' in session:
             return redirect(url_for('dashboard'))
