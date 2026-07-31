@@ -1472,7 +1472,7 @@ def _verificar_freefire_levelpass(player_id, levelpass_key, validar_id_tipo=None
         r = requests.get(
             f"{FREEFIRE_BP_BASE_URL}/api/freefire-bo/levelpass-check",
             params={'playerId': player_id, 'token': FREEFIRE_BP_TOKEN},
-            timeout=15,
+            timeout=60,
         )
         data = r.json() if r.status_code == 200 else {}
         if not isinstance(data, dict) or not data.get('success'):
@@ -1536,7 +1536,7 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
         if tipo == 'freefire':
             r = ext_requests.get(
                 f"https://tiendagiftven.net/conexion_api/api.php?action=ValidarParametros&id={player_id}",
-                timeout=10
+                timeout=60
             )
             data = r.json()
             if data.get('alerta') == 'green' and data.get('nickname'):
@@ -1546,7 +1546,7 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
         elif tipo == 'freefire_id':
             r = ext_requests.get(
                 f"https://freefire-api-six.vercel.app/get_player_personal_show?server=id&uid={player_id}",
-                timeout=15
+                timeout=60
             )
             if r.status_code == 200:
                 data = r.json()
@@ -3346,7 +3346,7 @@ def api_verificar_pases():
         r = requests.get(
             f"{FREEFIRE_BP_BASE_URL}/api/freefire-bo/levelpass-check",
             params={'playerId': player_id, 'token': FREEFIRE_BP_TOKEN},
-            timeout=15,
+            timeout=60,
         )
         api_data = r.json() if r.status_code == 200 else {}
     except Exception:
