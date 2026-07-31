@@ -668,7 +668,7 @@ button:disabled, button[disabled] { opacity: 0.5; cursor: not-allowed; }
     display: none;
     position: fixed;
     inset: 0;
-    z-index: 99999;
+    z-index: 1000000;
     background: rgba(0, 0, 0, 0.75);
     justify-content: center;
     align-items: center;
