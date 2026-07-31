@@ -3050,8 +3050,16 @@ def login():
         password = request.form.get('password', '')
         user = get_user_by_email(email)
         if user and check_password_hash(user['password'], password):
+            email_verif = int((user['email_verificado'] if 'email_verificado' in user.keys() else 0) or 0)
+            aprobado = int((user['aprobado'] if 'aprobado' in user.keys() else 1) or 1)
+            if not aprobado:
+                if not email_verif:
+                    flash('Tu cuenta aún no está verificada. Revisa tu correo e ingresa el código de verificación.', 'error')
+                else:
+                    flash('Tu cuenta está en revisión. Comunícate con soporte al WhatsApp +573169183784 para ser aprobado.', 'error')
+                return render_template('login.html')
             if not user['activo']:
-                flash('Tu cuenta está pendiente de aprobación. El administrador debe activarla antes de que puedas acceder.', 'error')
+                flash('Tu cuenta está desactivada.', 'error')
                 return render_template('login.html')
             session['user_id'] = user['id']
             session['user_nombre'] = user['nombre']
@@ -3060,7 +3068,7 @@ def login():
             db.execute("UPDATE usuarios SET ultimo_login = datetime('now','localtime') WHERE id = ?", (user['id'],))
             db.commit()
             db.close()
-            if not int((user['email_verificado'] if 'email_verificado' in user.keys() else 1) or 1):
+            if not email_verif:
                 flash('Por seguridad debes verificar tu correo electrónico. Actualiza tus datos y solicita el código.', 'error')
                 return redirect(url_for('actualizar_datos'))
             flash(f'Bienvenido, {user["nombre"]}!', 'success')
@@ -3128,12 +3136,23 @@ def verificar_email():
         db.execute("UPDATE usuarios SET email_verificado = 1 WHERE id = ?", (user['id'],))
         db.execute("UPDATE usuario_tokens SET usado = 1 WHERE id = ?", (row['id'],))
         db.commit()
+        aprobado = int((user['aprobado'] if 'aprobado' in user.keys() else 1) or 1)
         db.close()
+        if not aprobado:
+            return redirect(url_for('esperando_aprobacion', email=user['email']))
         flash('Correo verificado correctamente.', 'success')
         if 'user_id' in session:
             return redirect(url_for('dashboard'))
         return redirect(url_for('login'))
     return render_template('verificar_email.html', email=email)
+
+
+@app.route('/esperando-aprobacion')
+def esperando_aprobacion():
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    email = request.args.get('email', '').strip()
+    return render_template('esperando_aprobacion.html', email=email, whatsapp='+573169183784')
 
 
 @app.route('/reenviar-verificacion', methods=['POST'])
@@ -5534,13 +5553,16 @@ def admin_usuarios():
 @admin_required
 def admin_toggle_usuario(id):
     db = get_db()
-    user = db.execute("SELECT id, activo, rol FROM usuarios WHERE id = ?", (id,)).fetchone()
+    user = db.execute("SELECT id, activo, aprobado, rol FROM usuarios WHERE id = ?", (id,)).fetchone()
     if not user or user['rol'] == 'admin':
         db.close()
         flash('No se puede modificar este usuario.', 'error')
         return redirect(url_for('admin_usuarios'))
     nuevo_estado = 0 if user['activo'] else 1
-    db.execute("UPDATE usuarios SET activo = ? WHERE id = ?", (nuevo_estado, id))
+    if nuevo_estado:
+        db.execute("UPDATE usuarios SET activo = 1, aprobado = 1 WHERE id = ?", (id,))
+    else:
+        db.execute("UPDATE usuarios SET activo = 0 WHERE id = ?", (id,))
     db.commit()
     db.close()
     if nuevo_estado:

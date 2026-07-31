@@ -96,6 +96,7 @@ def init_db():
             telefono TEXT DEFAULT '',
             rol TEXT DEFAULT 'revendedor' CHECK(rol IN ('admin', 'revendedor')),
             activo INTEGER DEFAULT 1,
+            aprobado INTEGER DEFAULT 1,
             email_verificado INTEGER DEFAULT 0,
             api_key TEXT UNIQUE,
             api_compras_habilitadas INTEGER DEFAULT 1,
@@ -300,6 +301,11 @@ def init_db():
         db.execute("SELECT api_key_prefix FROM usuarios LIMIT 1")
     except Exception:
         db.execute("ALTER TABLE usuarios ADD COLUMN api_key_prefix TEXT DEFAULT ''")
+    try:
+        db.execute("SELECT aprobado FROM usuarios LIMIT 1")
+    except Exception:
+        db.execute("ALTER TABLE usuarios ADD COLUMN aprobado INTEGER DEFAULT 1")
+    db.execute("UPDATE usuarios SET aprobado = 1 WHERE aprobado IS NULL")
     # Restock automático de pines: producto origen (Gift Card), stock mínimo y objetivo
     try:
         db.execute("SELECT pin_origen_producto_id FROM productos LIMIT 1")
@@ -990,7 +996,7 @@ def create_user(nombre, email, password, telefono=''):
     api_key = generate_api_key()
     try:
         db.execute(
-            "INSERT INTO usuarios (nombre, email, password, telefono, api_key, api_key_hash, api_key_prefix, activo) VALUES (?, ?, ?, ?, ?, ?, ?, 1)",
+            "INSERT INTO usuarios (nombre, email, password, telefono, api_key, api_key_hash, api_key_prefix, activo, aprobado, email_verificado) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, 0)",
             (nombre, email, generate_password_hash(password), telefono, None, _hash_api_key(api_key), api_key[:8])
         )
         db.commit()

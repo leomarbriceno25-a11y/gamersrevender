@@ -11,10 +11,10 @@
 <section class="section">
     <div class="container">
 
-        {% set pendientes = usuarios|selectattr('activo', 'equalto', 0)|list %}
+        {% set pendientes = usuarios|selectattr('aprobado', 'equalto', 0)|list %}
         {% if pendientes|length > 0 %}
         <div class="card" style="padding:1.5rem; margin-bottom:1.5rem; border-left:4px solid #f59e0b; background:rgba(245,158,11,0.08);">
-            <h3 style="margin:0 0 1rem; color:#f59e0b;"><i class="fas fa-user-clock"></i> Solicitudes Pendientes ({{ pendientes|length }})</h3>
+            <h3 style="margin:0 0 1rem; color:#f59e0b;"><i class="fas fa-user-clock"></i> Solicitudes por aprobar ({{ pendientes|length }})</h3>
             <!-- Desktop -->
             <div class="table-responsive d-none-mobile">
                 <table class="table">
@@ -62,7 +62,7 @@
                         <td class="{{ 'text-green' if u.saldo > 0 else '' }}">${{ '%.4f'|format(u.saldo) }}</td>
                         <td>{% if u.suscripcion_hasta %}<span class="badge badge-completado"><i class="fas fa-crown"></i> {{ u.suscripcion_hasta }}</span>{% else %}<span style="color:var(--text-secondary);">-</span>{% endif %}</td>
                         <td><span class="badge badge-procesando"><i class="fas fa-list-check"></i> {{ (api_categorias_bloqueadas.get(u.id, []) if api_categorias_bloqueadas is defined else [])|length }} categorías</span></td>
-                        <td>{% if u.activo %}<span class="badge badge-completado">Activo</span>{% else %}<span class="badge badge-cancelado">Pendiente</span>{% endif %}</td>
+                        <td>{% if u.activo %}<span class="badge badge-completado">Activo</span>{% elif not u.aprobado %}<span class="badge badge-cancelado">Pendiente</span>{% else %}<span class="badge badge-cancelado">Desactivado</span>{% endif %}</td>
                         <td>{{ u.fecha_registro or '-' }}</td>
                         <td style="white-space:nowrap;">
                             <div style="display:flex;gap:0.3rem;flex-wrap:wrap;min-width:fit-content;">
@@ -72,8 +72,10 @@
                                 <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="display:inline;">
                                     {% if u.activo %}
                                     <button type="submit" class="btn btn-sm" style="background:#ef4444;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Desactivar" onclick="return confirm('¿Desactivar a {{ u.nombre }}?')"><i class="fas fa-ban"></i></button>
-                                    {% else %}
+                                    {% elif not u.aprobado %}
                                     <button type="submit" class="btn btn-sm btn-primary" title="Aprobar" onclick="return confirm('¿Aprobar a {{ u.nombre }}?')"><i class="fas fa-check"></i></button>
+                                    {% else %}
+                                    <button type="submit" class="btn btn-sm btn-primary" title="Activar" onclick="return confirm('¿Activar a {{ u.nombre }}?')"><i class="fas fa-check"></i></button>
                                     {% endif %}
                                 </form>
                                 <button type="button" class="btn btn-sm" style="background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:0.3rem 0.6rem;font-size:0.8rem;cursor:pointer;" title="Bloquear categorías completas vía API" onclick='abrirCategoriasApi({{ u.id }}, {{ u.nombre|tojson }}, {{ (api_categorias_bloqueadas.get(u.id, []) if api_categorias_bloqueadas is defined else [])|tojson }})'><i class="fas fa-list-check"></i></button>
@@ -100,7 +102,7 @@
             <div class="pedido-card usuario-card-item" data-email="{{ u.email|e }}" data-nombre="{{ u.nombre|e }}" data-rol="{{ u.rol|e }}">
                 <div class="pedido-card-header">
                     <span class="pedido-card-id">{{ u.nombre }}</span>
-                    <span class="badge badge-{{ 'completado' if u.activo else 'cancelado' }}">{{ 'Activo' if u.activo else 'Pendiente' }}</span>
+                    <span class="badge badge-{{ 'completado' if u.activo else ('cancelado' if not u.aprobado else 'cancelado') }}">{{ 'Activo' if u.activo else ('Pendiente' if not u.aprobado else 'Desactivado') }}</span>
                 </div>
                 <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.2rem;"><button type="button" class="btn btn-sm btn-secondary" onclick='verCorreo({{ u.nombre|tojson }}, {{ u.email|tojson }})'><i class="fas fa-envelope"></i> Ver correo</button></div>
                 <div class="pedido-card-body">
@@ -120,8 +122,10 @@
                     <form method="POST" action="{{ url_for('admin_toggle_usuario', id=u.id) }}" style="flex:1;">
                         {% if u.activo %}
                         <button type="submit" class="btn btn-sm" style="width:100%;background:#ef4444;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick="return confirm('¿Desactivar?')"><i class="fas fa-ban"></i> Desactivar</button>
-                        {% else %}
+                        {% elif not u.aprobado %}
                         <button type="submit" class="btn btn-sm btn-primary" style="width:100%;font-size:0.75rem;" onclick="return confirm('¿Aprobar?')"><i class="fas fa-check"></i> Aprobar</button>
+                        {% else %}
+                        <button type="submit" class="btn btn-sm btn-primary" style="width:100%;font-size:0.75rem;" onclick="return confirm('¿Activar?')"><i class="fas fa-check"></i> Activar</button>
                         {% endif %}
                     </form>
                     <button type="button" class="btn btn-sm" style="flex:1;background:#3b82f6;color:#fff;border:none;border-radius:6px;font-size:0.75rem;padding:0.3rem;cursor:pointer;" onclick='abrirCategoriasApi({{ u.id }}, {{ u.nombre|tojson }}, {{ (api_categorias_bloqueadas.get(u.id, []) if api_categorias_bloqueadas is defined else [])|tojson }})'><i class="fas fa-list-check"></i> Categorías API</button>
