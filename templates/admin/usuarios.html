@@ -46,15 +46,27 @@
             <input type="text" id="filtroUsuarios" class="form-input" placeholder="Buscar por nombre, email, rol..." style="max-width:400px;" oninput="filtrarUsuarios()">
         </div>
 
+        <div class="card" style="padding:1rem; margin-bottom:1.5rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:1rem; border-left:4px solid #10b981;">
+            <div>
+                <h3 style="margin:0; font-size:0.95rem; color:var(--text-secondary);"><i class="fas fa-calculator"></i> Saldo total (sin usuarios de prueba)</h3>
+                <div style="font-size:1.8rem; font-weight:800; color:#10b981;" id="saldo-total">$0.0000</div>
+            </div>
+            <div style="text-align:right; font-size:0.9rem;">
+                <div><i class="fas fa-user-slash"></i> Usuarios excluidos: <strong id="conteo-excluidos">0</strong></div>
+                <div style="font-size:0.78rem; color:var(--text-secondary);">Marca "No sumar" en los usuarios de prueba</div>
+            </div>
+        </div>
+
         <!-- Desktop table -->
         <div class="table-responsive d-none-mobile">
             <table class="table" id="tablaUsuarios">
                 <thead>
-                    <tr><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Suscripción</th><th>Bloqueos API</th><th>Estado</th><th>Registro</th><th style="min-width:240px;">Acciones</th></tr>
+                    <tr><th><input type="checkbox" id="excluir-todos" title="No sumar ninguno"></th><th>ID</th><th>Nombre</th><th>Email</th><th>Rol</th><th>Saldo</th><th>Suscripción</th><th>Bloqueos API</th><th>Estado</th><th>Registro</th><th style="min-width:240px;">Acciones</th></tr>
                 </thead>
                 <tbody>
                     {% for u in usuarios %}
                     <tr data-email="{{ u.email|e }}" data-nombre="{{ u.nombre|e }}" data-rol="{{ u.rol|e }}">
+                        <td><input type="checkbox" class="excluir-saldo" data-id="{{ u.id }}" data-saldo="{{ u.saldo|default(0, true) }}"></td>
                         <td>{{ u.id }}</td>
                         <td>{{ u.nombre }}</td>
                         <td><button type="button" class="btn btn-sm btn-secondary" style="white-space:nowrap;" onclick='verCorreo({{ u.nombre|tojson }}, {{ u.email|tojson }})'><i class="fas fa-envelope"></i> Ver correo</button></td>
@@ -103,6 +115,9 @@
                 <div class="pedido-card-header">
                     <span class="pedido-card-id">{{ u.nombre }}</span>
                     <span class="badge badge-{{ 'completado' if u.activo else ('cancelado' if not u.aprobado else 'cancelado') }}">{{ 'Activo' if u.activo else ('Pendiente' if not u.aprobado else 'Desactivado') }}</span>
+                    <label style="font-size:0.75rem;color:var(--text-secondary);display:flex;align-items:center;gap:0.3rem;margin-left:auto;">
+                        <input type="checkbox" class="excluir-saldo" data-id="{{ u.id }}" data-saldo="{{ u.saldo|default(0, true) }}"> No sumar
+                    </label>
                 </div>
                 <div style="font-size:0.8rem;color:var(--text-secondary);margin-bottom:0.2rem;"><button type="button" class="btn btn-sm btn-secondary" onclick='verCorreo({{ u.nombre|tojson }}, {{ u.email|tojson }})'><i class="fas fa-envelope"></i> Ver correo</button></div>
                 <div class="pedido-card-body">
@@ -287,5 +302,66 @@ function filtrarUsuarios() {
     document.querySelectorAll('#tablaUsuarios tbody tr').forEach(function(f){ f.style.display = coincide(f) ? '' : 'none'; });
     document.querySelectorAll('.usuario-card-item').forEach(function(c){ c.style.display = coincide(c) ? '' : 'none'; });
 }
+
+(function() {
+    var totalEl = document.getElementById('saldo-total');
+    var conteoEl = document.getElementById('conteo-excluidos');
+    var STORAGE_KEY = 'admin_usuarios_excluir_saldo';
+    function formatear(valor) {
+        return '$' + parseFloat(valor).toFixed(4);
+    }
+    function guardarSeleccion() {
+        var ids = [];
+        document.querySelectorAll('.excluir-saldo:checked').forEach(function(chk) { ids.push(chk.dataset.id); });
+        try { localStorage.setItem(STORAGE_KEY, JSON.stringify(ids)); } catch(e) {}
+    }
+    function cargarSeleccion() {
+        try {
+            var ids = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
+            document.querySelectorAll('.excluir-saldo').forEach(function(chk) {
+                chk.checked = ids.indexOf(chk.dataset.id) !== -1;
+            });
+        } catch(e) {}
+    }
+    function actualizarTotal() {
+        var checkboxes = document.querySelectorAll('.excluir-saldo');
+        var idsUnicos = new Set();
+        var excluidos = new Set();
+        checkboxes.forEach(function(chk) {
+            idsUnicos.add(chk.dataset.id);
+            if (chk.checked) excluidos.add(chk.dataset.id);
+        });
+        var total = 0;
+        var vistos = new Set();
+        checkboxes.forEach(function(chk) {
+            var id = chk.dataset.id;
+            if (vistos.has(id)) return;
+            vistos.add(id);
+            if (!excluidos.has(id)) {
+                total += parseFloat(chk.dataset.saldo || 0);
+            }
+        });
+        totalEl.textContent = formatear(total);
+        conteoEl.textContent = excluidos.size;
+        guardarSeleccion();
+        var headerChk = document.getElementById('excluir-todos');
+        if (headerChk) {
+            headerChk.checked = idsUnicos.size > 0 && excluidos.size === idsUnicos.size;
+            headerChk.indeterminate = excluidos.size > 0 && excluidos.size < idsUnicos.size;
+        }
+    }
+    var headerChk = document.getElementById('excluir-todos');
+    if (headerChk) {
+        headerChk.addEventListener('change', function() {
+            document.querySelectorAll('.excluir-saldo').forEach(function(chk) { chk.checked = headerChk.checked; });
+            actualizarTotal();
+        });
+    }
+    document.querySelectorAll('.excluir-saldo').forEach(function(chk) {
+        chk.addEventListener('change', actualizarTotal);
+    });
+    cargarSeleccion();
+    actualizarTotal();
+})();
 </script>
 {% endblock %}
