@@ -8,7 +8,7 @@
         <p class="auth-subtitle">Tu correo <strong>{{ email }}</strong> fue verificado correctamente.</p>
         <p>Tu usuario está en revisión para ser aprobado por el administrador.</p>
         <p>Para agilizar tu aprobación, comunícate con soporte:</p>
-        <a href="https://wa.me/{{ whatsapp.replace('+', '') }}" class="btn btn-primary btn-block" target="_blank" rel="noopener">
+        <a href="https://wa.me/{{ whatsapp.replace('+', '') }}?text={{ 'Hola, soy nuevo usuario de la tienda tiendagiftven para revendedores.'|urlencode }}" class="btn btn-primary btn-block" target="_blank" rel="noopener">
             <i class="fab fa-whatsapp"></i> WhatsApp {{ whatsapp }}
         </a>
         <p class="auth-link">¿Ya aprobaron tu cuenta? <a href="{{ url_for('login') }}">Inicia sesión</a></p>
