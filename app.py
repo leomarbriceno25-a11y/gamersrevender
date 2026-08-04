@@ -7671,7 +7671,8 @@ def api_comprar():
                 product_id=gp_product_id,
                 fields=gp_fields,
                 package_id=gp_package_id,
-                merchant_code=merchant_code
+                merchant_code=merchant_code,
+                wait=False
             )
             db2 = get_db()
             if resultado_api.get('ok'):
