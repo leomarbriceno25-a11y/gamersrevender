@@ -8393,16 +8393,103 @@ def api_webhook():
 
 
 def enviar_webhook(usuario_id, pedido_data):
-    """Envía notificación webhook al revendedor si tiene URL configurada."""
+    """Envía notificación webhook al revendedor si tiene URL configurada.
+    Se ejecuta en segundo plano, guarda logs y reintenta ante fallos."""
+    import json
+    import threading
+    import time
+    import requests as req
+
+    def _do_send():
+        db = None
+        try:
+            db = get_db()
+            db.executescript("""
+                CREATE TABLE IF NOT EXISTS webhook_logs (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    usuario_id INTEGER NOT NULL,
+                    pedido_id INTEGER,
+                    url TEXT NOT NULL,
+                    payload TEXT DEFAULT '',
+                    exitoso INTEGER DEFAULT 0,
+                    intentos INTEGER DEFAULT 0,
+                    status_code INTEGER DEFAULT 0,
+                    respuesta TEXT DEFAULT '',
+                    error TEXT DEFAULT '',
+                    fecha TEXT DEFAULT (datetime('now','localtime'))
+                );
+                CREATE INDEX IF NOT EXISTS idx_webhook_logs_usuario ON webhook_logs(usuario_id);
+                CREATE INDEX IF NOT EXISTS idx_webhook_logs_pedido ON webhook_logs(pedido_id);
+                CREATE INDEX IF NOT EXISTS idx_webhook_logs_fecha ON webhook_logs(fecha);
+            """)
+            user = db.execute("SELECT webhook_url FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
+            webhook_url = (user['webhook_url'] or '') if user else ''
+            if not webhook_url:
+                db.close()
+                return
+
+            payload_str = json.dumps(pedido_data)
+            timeout = int(os.environ.get('WEBHOOK_TIMEOUT_SECONDS', '30'))
+            max_intentos = max(1, int(os.environ.get('WEBHOOK_MAX_RETRIES', '3')))
+            intentos = 0
+            exitoso = 0
+            status_code = 0
+            respuesta = ''
+            error_str = ''
+
+            while intentos < max_intentos and not exitoso:
+                intentos += 1
+                try:
+                    r = req.post(
+                        webhook_url,
+                        json=pedido_data,
+                        timeout=timeout,
+                        headers={'User-Agent': 'tiendagiftven-webhook/1.0'},
+                    )
+                    status_code = r.status_code
+                    try:
+                        respuesta = r.text[:2000]
+                    except Exception:
+                        respuesta = ''
+                    if 200 <= status_code < 300:
+                        exitoso = 1
+                        break
+                    error_str = f'HTTP {status_code}'
+                    # No reintentar errores 4xx del cliente
+                    if status_code < 500:
+                        break
+                except Exception as e:
+                    error_str = str(e)
+                    respuesta = ''
+                if intentos < max_intentos and not exitoso:
+                    time.sleep(2)
+
+            db.execute(
+                "INSERT INTO webhook_logs (usuario_id, pedido_id, url, payload, exitoso, intentos, status_code, respuesta, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (
+                    usuario_id,
+                    pedido_data.get('pedido_id'),
+                    webhook_url,
+                    payload_str,
+                    1 if exitoso else 0,
+                    intentos,
+                    status_code,
+                    respuesta,
+                    error_str,
+                ),
+            )
+            db.commit()
+        except Exception:
+            pass
+        finally:
+            if db:
+                try:
+                    db.close()
+                except Exception:
+                    pass
+
     try:
-        db = get_db()
-        user = db.execute("SELECT webhook_url FROM usuarios WHERE id = ?", (usuario_id,)).fetchone()
-        db.close()
-        webhook_url = (user['webhook_url'] or '') if user else ''
-        if not webhook_url:
-            return
-        import requests as req
-        req.post(webhook_url, json=pedido_data, timeout=10)
+        threading.Thread(target=_do_send, daemon=True).start()
     except Exception:
         pass
 

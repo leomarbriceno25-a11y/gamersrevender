@@ -671,6 +671,29 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_precios_refresh_cambios_producto ON precios_refresh_cambios(producto_id);
         """)
 
+    # Logs de envío de webhooks a revendedores
+    try:
+        db.execute("SELECT id FROM webhook_logs LIMIT 1")
+    except Exception:
+        db.executescript("""
+            CREATE TABLE IF NOT EXISTS webhook_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                usuario_id INTEGER NOT NULL,
+                pedido_id INTEGER,
+                url TEXT NOT NULL,
+                payload TEXT DEFAULT '',
+                exitoso INTEGER DEFAULT 0,
+                intentos INTEGER DEFAULT 0,
+                status_code INTEGER DEFAULT 0,
+                respuesta TEXT DEFAULT '',
+                error TEXT DEFAULT '',
+                fecha TEXT DEFAULT (datetime('now','localtime'))
+            );
+            CREATE INDEX IF NOT EXISTS idx_webhook_logs_usuario ON webhook_logs(usuario_id);
+            CREATE INDEX IF NOT EXISTS idx_webhook_logs_pedido ON webhook_logs(pedido_id);
+            CREATE INDEX IF NOT EXISTS idx_webhook_logs_fecha ON webhook_logs(fecha);
+        """)
+
     # Verificación de nombre de jugador por categoría
     try:
         db.execute("SELECT verificar_nombre FROM categorias LIMIT 1")
