@@ -7381,9 +7381,9 @@ def api_comprar():
         db.close()
         return jsonify({'ok': False, 'error': 'Se requiere id_juego (Player ID)'}), 400
 
-    # Validar ID del jugador vía API si la categoría lo exige
+    # Validar ID del jugador vía API si la categoría lo exige (no para pases de nivel)
     nombre_jugador_api = ''
-    if int((prod['validar_id_api'] if 'validar_id_api' in prod.keys() else 0) or 0) and id_juego:
+    if int((prod['validar_id_api'] if 'validar_id_api' in prod.keys() else 0) or 0) and id_juego and not freefire_levelpass:
         tipo_val = str((prod['validar_id_api_tipo'] if 'validar_id_api_tipo' in prod.keys() else '') or '').strip() or 'freefire'
         val_api = verificar_nombre_jugador(tipo_val, id_juego, str(input2 or ''))
         if not val_api.get('ok'):
@@ -7396,7 +7396,7 @@ def api_comprar():
         if cached:
             lp_check = {'ok': True, 'available': cached.get('available')}
         else:
-            lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass, validar_id_tipo='freefire')
+            lp_check = _verificar_freefire_levelpass(id_juego, freefire_levelpass, validar_id_tipo=None)
             if lp_check.get('ok'):
                 _set_cached_levelpass(id_juego, producto_id, lp_check.get('available'), lp_check.get('nombre'))
         if not lp_check.get('ok') or not lp_check.get('available'):
