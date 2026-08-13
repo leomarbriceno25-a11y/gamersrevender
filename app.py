@@ -1512,13 +1512,24 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
     import requests as ext_requests
     try:
         if tipo == 'freefire':
+            api_url = (config.FREEFIRE_VALIDATE_API_URL or 'https://tiendagiftvenhost.com/api/game/free-fire-us').rstrip('/')
+            api_key = config.FREEFIRE_VALIDATE_API_KEY or ''
+            if not api_key:
+                return {'ok': False, 'error': 'API key de validación Free Fire no configurada'}
             r = ext_requests.get(
-                f"https://tiendagiftven.net/conexion_api/api.php?action=ValidarParametros&id={player_id}",
+                f"{api_url}?key={api_key}&uid={player_id}&zoneId=",
                 timeout=60
             )
             data = r.json()
-            if data.get('alerta') == 'green' and data.get('nickname'):
-                return {'ok': True, 'nombre': data['nickname']}
+            if data.get('status') and data.get('code') == 200:
+                ff_data = data.get('data', {})
+                region = str(ff_data.get('region', '') or '').upper()
+                username = ff_data.get('username', '')
+                if region != 'US':
+                    return {'ok': False, 'error': f'ID no válido: region {region or "desconocida"}'}
+                if username:
+                    return {'ok': True, 'nombre': username}
+                return {'ok': False, 'error': 'ID no encontrado'}
             return {'ok': False, 'error': 'ID no encontrado'}
 
         elif tipo == 'freefire_id':

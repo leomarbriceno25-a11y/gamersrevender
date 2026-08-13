@@ -57,6 +57,10 @@ MOOGOLD_PARTNER_ID = os.environ.get('MOOGOLD_PARTNER_ID', '')
 MOOGOLD_SECRET_KEY = os.environ.get('MOOGOLD_SECRET_KEY', '')
 MOOGOLD_CALLBACK_TOKEN = os.environ.get('MOOGOLD_CALLBACK_TOKEN', '')
 
+# Free Fire ID validation API (tiendagiftvenhost)
+FREEFIRE_VALIDATE_API_URL = os.environ.get('FREEFIRE_VALIDATE_API_URL', 'https://tiendagiftvenhost.com/api/game/free-fire-us')
+FREEFIRE_VALIDATE_API_KEY = os.environ.get('FREEFIRE_VALIDATE_API_KEY', '')
+
 # Jadh Shop API (compra de pines Free Fire Chile)
 JADH_BASE_URL = os.environ.get('JADH_BASE_URL', 'https://jadh.shop')
 JADH_EMAIL = os.environ.get('JADH_EMAIL', '')
