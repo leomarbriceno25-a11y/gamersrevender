@@ -1332,40 +1332,10 @@ def _es_binance(metodo_pago):
     return 'binance' in m
 
 
-def _obtener_movimientos_binance():
-    api_url = (config.BINANCE_MOV_API_URL or '').strip()
-    token = (config.BINANCE_MOV_API_TOKEN or '').strip()
-    if not api_url or not token:
-        return {'ok': False, 'error': 'API de verificación Binance no configurada', 'movimientos': []}
-
-    try:
-        resp = requests.get(
-            api_url,
-            params={'token': token},
-            timeout=30,
-            verify=config.BINANCE_MOV_VERIFY_SSL,
-        )
-        data = resp.json()
-    except Exception as e:
-        return {'ok': False, 'error': f'Error consultando API Binance: {e}', 'movimientos': []}
-
-    if not isinstance(data, dict):
-        return {'ok': False, 'error': 'Respuesta inválida de API Binance', 'movimientos': []}
-
-    movimientos = data.get('movimientos', [])
-    if not isinstance(movimientos, list):
-        movimientos = []
-
-    return {
-        'ok': True,
-        'movimientos': movimientos,
-        'mensaje': data.get('mensaje', ''),
-        'fecha_corte': data.get('fecha_corte', ''),
-    }
-
-
 def _verificar_pago_binance_solicitud(db, sol):
-    """Verifica pago por Binance con monto exacto USDT + coincidencia últimos 8 dígitos referencia."""
+    """Verifica pago por Binance usando la API de Recargas Homero.
+    La API inactiva (reclama) el pago automáticamente si es válido.
+    Solo se aceptan pagos en USDT."""
     referencia_ingresada = str(sol['referencia'] or '').strip()
     ref_digits = _extraer_digitos(referencia_ingresada)
     if len(ref_digits) < 8:
@@ -1373,70 +1343,78 @@ def _verificar_pago_binance_solicitud(db, sol):
             'ok': False,
             'error': 'La referencia debe contener al menos 8 dígitos para verificar pago Binance.',
         }
-    suffix8 = ref_digits[-8:]
 
     try:
         monto_objetivo = Decimal(str(sol['monto']))
     except (InvalidOperation, TypeError):
         return {'ok': False, 'error': 'Monto de solicitud inválido para verificación Binance.'}
 
-    api = _obtener_movimientos_binance()
-    if not api.get('ok'):
-        return {'ok': False, 'error': api.get('error') or 'No se pudo consultar API Binance.'}
+    api_url = (config.BINANCE_MOV_API_URL or '').strip()
+    api_key = (config.BINANCE_MOV_API_TOKEN or '').strip()
+    if not api_url or not api_key:
+        return {'ok': False, 'error': 'API de verificación Binance no configurada'}
 
-    match = None
-    moneda_no_usdt_detectada = None
-    for mov in api.get('movimientos', []):
-        if not isinstance(mov, dict):
-            continue
-        if str(mov.get('tipo', '')).strip().lower() != 'credito':
-            continue
+    try:
+        resp = requests.post(
+            api_url,
+            json={
+                'api_key': api_key,
+                'metodo': 'binance',
+                'referencia': ref_digits,
+            },
+            headers={'Content-Type': 'application/json'},
+            timeout=30,
+            verify=config.BINANCE_MOV_VERIFY_SSL,
+        )
+        data = resp.json() if resp.text else {}
+    except Exception as e:
+        return {'ok': False, 'error': f'Error consultando API Binance: {e}'}
 
-        referencia_full = str(mov.get('referencia', '') or '').strip()
-        ref_full_digits = _extraer_digitos(referencia_full)
-        if not ref_full_digits or not ref_full_digits.endswith(suffix8):
-            continue
+    if not isinstance(data, dict):
+        return {'ok': False, 'error': 'Respuesta inválida de API Binance'}
 
-        try:
-            monto_mov = Decimal(str(mov.get('monto', '0')))
-        except (InvalidOperation, TypeError):
-            continue
-        if monto_mov != monto_objetivo:
-            continue
+    estado = str(data.get('status', '') or '').strip().lower()
+    if estado == 'unauthorized':
+        return {'ok': False, 'error': 'API key inválida o inactiva.'}
+    if estado == 'not_found':
+        return {'ok': False, 'error': f'No se encontró pago Binance con referencia {ref_digits}.'}
+    if estado == 'claimed':
+        return {'ok': False, 'error': 'Esta transacción ya fue reclamada anteriormente.'}
+    if estado != 'valid':
+        return {'ok': False, 'error': data.get('message', 'Respuesta inesperada de la API de pagos.')}
 
-        moneda_mov = str(mov.get('moneda', '') or '').strip().upper()
-        if moneda_mov != 'USDT':
-            moneda_no_usdt_detectada = moneda_mov or 'DESCONOCIDA'
-            continue
+    data_obj = data.get('data') or {}
+    referencia_full = str(data_obj.get('referencia', '') or ref_digits).strip()
+    moneda = str(data_obj.get('moneda', '') or '').strip().upper()
+    if moneda != 'USDT':
+        return {'ok': False, 'error': f'La transacción está en {moneda or "moneda desconocida"}, solo se acepta USDT.'}
 
-        match = {
-            'referencia_full': referencia_full,
-            'referencia_suffix8': suffix8,
-            'monto': float(monto_mov),
-            'fecha': str(mov.get('fecha', '') or ''),
-        }
-        break
+    try:
+        monto_real = Decimal(str(data_obj.get('monto_real_num', '0')))
+    except (InvalidOperation, TypeError):
+        return {'ok': False, 'error': 'Monto real inválido devuelto por la API de pagos.'}
 
-    if moneda_no_usdt_detectada and not match:
+    if monto_real != monto_objetivo:
         return {
             'ok': False,
-            'error': f'Se encontró movimiento con referencia *{suffix8} y monto {monto_objetivo}, pero en moneda {moneda_no_usdt_detectada}. Solo se acepta USDT.',
-        }
-
-    if not match:
-        return {
-            'ok': False,
-            'error': f'No se encontró movimiento Binance que coincida con monto exacto {monto_objetivo} USDT y referencia *{suffix8}.',
+            'error': f'El monto del pago ({monto_real} USDT) no coincide con el monto solicitado ({monto_objetivo} USDT).',
         }
 
     usada = db.execute(
         "SELECT id, usuario_id FROM referencias_pago_usadas WHERE referencia_full = ? LIMIT 1",
-        (match['referencia_full'],),
+        (referencia_full,),
     ).fetchone()
     if usada:
         if int(usada['usuario_id']) != int(sol['usuario_id']):
             return {'ok': False, 'error': 'Esta referencia ya fue utilizada por otro cliente.'}
         return {'ok': False, 'error': 'Esta referencia ya fue utilizada anteriormente.'}
+
+    match = {
+        'referencia_full': referencia_full,
+        'referencia_suffix8': ref_digits[-8:],
+        'monto': float(monto_real),
+        'fecha': str(data_obj.get('fecha', '') or ''),
+    }
 
     db.execute(
         "INSERT INTO referencias_pago_usadas (solicitud_id, usuario_id, referencia_ingresada, referencia_suffix8, referencia_full, monto, moneda, fecha_movimiento) "

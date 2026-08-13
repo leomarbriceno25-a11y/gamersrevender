@@ -41,10 +41,10 @@ PINCENTRAL_API_KEY = os.environ.get('PINCENTRAL_API_KEY', '')
 PINCENTRAL_API_SECRET = os.environ.get('PINCENTRAL_API_SECRET', '')
 PINCENTRAL_VERIFY_SSL = os.environ.get('PINCENTRAL_VERIFY_SSL', '1') == '1'
 
-# API verificación pagos Binance (movimientos)
-BINANCE_MOV_API_URL = os.environ.get('BINANCE_MOV_API_URL', 'https://pagonorte.net/apis/movimientos_binance.jsp')
+# API verificación pagos Binance (Recargas Homero)
+BINANCE_MOV_API_URL = os.environ.get('BINANCE_MOV_API_URL', 'http://15.204.10.242/api/v1/payments/verify-external')
 BINANCE_MOV_API_TOKEN = os.environ.get('BINANCE_MOV_API_TOKEN', '')
-BINANCE_MOV_VERIFY_SSL = os.environ.get('BINANCE_MOV_VERIFY_SSL', '1') == '1'
+BINANCE_MOV_VERIFY_SSL = os.environ.get('BINANCE_MOV_VERIFY_SSL', '0') == '1'
 
 # GamePoint Club API
 GAMEPOINT_PARTNER_ID = os.environ.get('GAMEPOINT_PARTNER_ID', '')
