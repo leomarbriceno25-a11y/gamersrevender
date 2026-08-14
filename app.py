@@ -1525,7 +1525,7 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
                 ff_data = data.get('data', {})
                 region = str(ff_data.get('region', '') or '').upper()
                 username = ff_data.get('username', '')
-                if region not in ('US', 'SAC'):
+                if region not in ('US', 'SAC', 'NA'):
                     return {'ok': False, 'error': f'ID no válido: region {region or "desconocida"}'}
                 if username:
                     return {'ok': True, 'nombre': username}
