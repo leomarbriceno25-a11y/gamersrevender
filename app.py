@@ -1532,6 +1532,16 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
                 return {'ok': False, 'error': 'ID no encontrado'}
             return {'ok': False, 'error': 'ID no encontrado'}
 
+        elif tipo == 'freefire_tgv':
+            r = ext_requests.get(
+                f"https://tiendagiftven.net/conexion_api/api.php?action=ValidarParametros&id={player_id}",
+                timeout=60
+            )
+            data = r.json()
+            if data.get('alerta') == 'green' and data.get('nickname'):
+                return {'ok': True, 'nombre': data['nickname']}
+            return {'ok': False, 'error': 'ID no encontrado'}
+
         elif tipo == 'freefire_id':
             r = ext_requests.get(
                 f"https://freefire-api-six.vercel.app/get_player_personal_show?server=id&uid={player_id}",
