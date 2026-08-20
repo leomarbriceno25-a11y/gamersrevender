@@ -235,6 +235,9 @@ if (montoInput) {
             e.preventDefault();
         }
     });
+    montoInput.addEventListener('wheel', function(e) {
+        e.preventDefault();
+    }, { passive: false });
 }
 </script>
 {% endblock %}
