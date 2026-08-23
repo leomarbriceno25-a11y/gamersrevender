@@ -1553,7 +1553,7 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
     session = ext_requests.Session()
     session.mount('https://', HTTPAdapter(max_retries=0))
     session.mount('http://', HTTPAdapter(max_retries=0))
-    API_TIMEOUT = 10
+    API_TIMEOUT = 15
     result = None
 
     try:
