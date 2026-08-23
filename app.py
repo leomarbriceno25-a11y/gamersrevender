@@ -53,6 +53,11 @@ RECARGA_STATUS_CACHE_MAX_ITEMS = max(100, int(os.environ.get('RECARGA_STATUS_CAC
 RECARGA_STATUS_CACHE = {}
 RECARGA_STATUS_CACHE_LOCK = threading.Lock()
 
+# Cache global para verificacion de nombres de jugador (evita saturar APIs externas)
+NOMBRE_JUGADOR_CACHE_TTL_SECONDS = max(15, int(os.environ.get('NOMBRE_JUGADOR_CACHE_TTL_SECONDS', '60')))
+NOMBRE_JUGADOR_CACHE = {}
+NOMBRE_JUGADOR_CACHE_LOCK = threading.Lock()
+
 FREEFIRE_BP_BASE_URL = os.environ.get('FREEFIRE_BP_BASE_URL', 'http://2.24.197.52').rstrip('/')
 FREEFIRE_BP_TOKEN = os.environ.get('FREEFIRE_BP_TOKEN', '')
 
@@ -1450,7 +1455,7 @@ def _verificar_freefire_levelpass(player_id, levelpass_key, validar_id_tipo=None
         r = requests.get(
             f"{FREEFIRE_BP_BASE_URL}/api/freefire-bo/levelpass-check",
             params={'playerId': player_id, 'token': FREEFIRE_BP_TOKEN},
-            timeout=60,
+            timeout=15,
         )
         data = r.json() if r.status_code == 200 else {}
         if not isinstance(data, dict) or not data.get('success'):
@@ -1507,85 +1512,141 @@ def _clear_cached_levelpass(player_id, producto_id=None):
     session['levelpass_cache'] = cache
 
 
+def _cache_key_nombre_jugador(tipo, player_id, zone_id):
+    return f"{tipo or ''}:{player_id or ''}:{zone_id or ''}"
+
+
+def _get_cached_nombre_jugador(tipo, player_id, zone_id):
+    with NOMBRE_JUGADOR_CACHE_LOCK:
+        item = NOMBRE_JUGADOR_CACHE.get(_cache_key_nombre_jugador(tipo, player_id, zone_id))
+        if not item:
+            return None
+        try:
+            ts = datetime.fromisoformat(item.get('ts'))
+            if datetime.utcnow() - ts > timedelta(seconds=NOMBRE_JUGADOR_CACHE_TTL_SECONDS):
+                NOMBRE_JUGADOR_CACHE.pop(_cache_key_nombre_jugador(tipo, player_id, zone_id), None)
+                return None
+        except Exception:
+            return None
+        return item.get('data')
+
+
+def _set_cached_nombre_jugador(tipo, player_id, zone_id, data):
+    with NOMBRE_JUGADOR_CACHE_LOCK:
+        NOMBRE_JUGADOR_CACHE[_cache_key_nombre_jugador(tipo, player_id, zone_id)] = {
+            'data': data,
+            'ts': datetime.utcnow().isoformat(),
+        }
+
+
 def verificar_nombre_jugador(tipo, player_id, zone_id=''):
-    """Consulta APIs externas para obtener el nombre del jugador según el tipo de juego."""
+    """Consulta APIs externas para obtener el nombre del jugador según el tipo de juego.
+    Utiliza cache en memoria y timeouts cortos para no bloquear workers de Gunicorn."""
     import requests as ext_requests
+    from requests.adapters import HTTPAdapter
+
+    cached = _get_cached_nombre_jugador(tipo, player_id, zone_id)
+    if cached is not None:
+        return cached
+
+    # Sesión sin reintentos y con timeout corto para evitar saturar workers
+    session = ext_requests.Session()
+    session.mount('https://', HTTPAdapter(max_retries=0))
+    session.mount('http://', HTTPAdapter(max_retries=0))
+    API_TIMEOUT = 10
+    result = None
+
     try:
-        if tipo == 'freefire':
-            api_url = (config.FREEFIRE_VALIDATE_API_URL or 'https://tiendagiftvenhost.com/api/game/free-fire-us').rstrip('/')
-            api_key = config.FREEFIRE_VALIDATE_API_KEY or ''
-            if not api_key:
-                return {'ok': False, 'error': 'API key de validación Free Fire no configurada'}
-            r = ext_requests.get(
-                f"{api_url}?key={api_key}&uid={player_id}&zoneId=",
-                timeout=60
-            )
-            data = r.json()
-            if data.get('status') and data.get('code') == 200:
-                ff_data = data.get('data', {})
-                region = str(ff_data.get('region', '') or '').upper()
-                username = ff_data.get('username', '')
-                if region not in ('US', 'SAC', 'NA'):
-                    return {'ok': False, 'error': f'ID no válido: region {region or "desconocida"}'}
-                if username:
-                    return {'ok': True, 'nombre': username}
-                return {'ok': False, 'error': 'ID no encontrado'}
-            return {'ok': False, 'error': 'ID no encontrado'}
+        with session:
+            if tipo == 'freefire':
+                api_url = (config.FREEFIRE_VALIDATE_API_URL or 'https://tiendagiftvenhost.com/api/game/free-fire-us').rstrip('/')
+                api_key = config.FREEFIRE_VALIDATE_API_KEY or ''
+                if not api_key:
+                    result = {'ok': False, 'error': 'API key de validación Free Fire no configurada'}
+                else:
+                    r = session.get(
+                        f"{api_url}?key={api_key}&uid={player_id}&zoneId=",
+                        timeout=API_TIMEOUT,
+                    )
+                    data = r.json()
+                    if data.get('status') and data.get('code') == 200:
+                        ff_data = data.get('data', {})
+                        region = str(ff_data.get('region', '') or '').upper()
+                        username = ff_data.get('username', '')
+                        if region not in ('US', 'SAC', 'NA'):
+                            result = {'ok': False, 'error': f'ID no válido: region {region or "desconocida"}'}
+                        elif username:
+                            result = {'ok': True, 'nombre': username}
+                        else:
+                            result = {'ok': False, 'error': 'ID no encontrado'}
+                    else:
+                        result = {'ok': False, 'error': 'ID no encontrado'}
 
-        elif tipo == 'freefire_tgv':
-            r = ext_requests.get(
-                f"https://tiendagiftven.net/conexion_api/api.php?action=ValidarParametros&id={player_id}",
-                timeout=60
-            )
-            data = r.json()
-            if data.get('alerta') == 'green' and data.get('nickname'):
-                return {'ok': True, 'nombre': data['nickname']}
-            return {'ok': False, 'error': 'ID no encontrado'}
-
-        elif tipo == 'freefire_id':
-            r = ext_requests.get(
-                f"https://freefire-api-six.vercel.app/get_player_personal_show?server=id&uid={player_id}",
-                timeout=60
-            )
-            if r.status_code == 200:
+            elif tipo == 'freefire_tgv':
+                r = session.get(
+                    f"https://tiendagiftven.net/conexion_api/api.php?action=ValidarParametros&id={player_id}",
+                    timeout=API_TIMEOUT,
+                )
                 data = r.json()
-                basic = data.get('basicinfo', {})
-                nickname = basic.get('nickname', '')
-                if nickname:
-                    return {'ok': True, 'nombre': nickname}
-            return {'ok': False, 'error': 'ID no encontrado en servidor Indonesia'}
+                if data.get('alerta') == 'green' and data.get('nickname'):
+                    result = {'ok': True, 'nombre': data['nickname']}
+                else:
+                    result = {'ok': False, 'error': 'ID no encontrado'}
 
-        elif tipo == 'bloodstrike':
-            r = ext_requests.get(
-                f"https://pay.neteasegames.com/gameclub/bloodstrike/-1/login-role?roleid={player_id}&client_type=gameclub",
-                timeout=10
-            )
-            data = r.json()
-            if data.get('code') == '0000' and data.get('data', {}).get('rolename'):
-                return {'ok': True, 'nombre': data['data']['rolename']}
-            return {'ok': False, 'error': 'ID no encontrado'}
+            elif tipo == 'freefire_id':
+                r = session.get(
+                    f"https://freefire-api-six.vercel.app/get_player_personal_show?server=id&uid={player_id}",
+                    timeout=API_TIMEOUT,
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    basic = data.get('basicinfo', {})
+                    nickname = basic.get('nickname', '')
+                    if nickname:
+                        result = {'ok': True, 'nombre': nickname}
+                    else:
+                        result = {'ok': False, 'error': 'ID no encontrado en servidor Indonesia'}
+                else:
+                    result = {'ok': False, 'error': 'ID no encontrado en servidor Indonesia'}
 
-        elif tipo == 'mobilelegends':
-            if not zone_id:
-                return {'ok': False, 'error': 'Se requiere el Zone ID (Server ID)'}
-            r = ext_requests.get(
-                f"https://api.isan.eu.org/nickname/ml?id={player_id}&zone={zone_id}",
-                timeout=10
-            )
-            if r.status_code != 200:
-                return {'ok': False, 'error': 'Verificación de Mobile Legends no disponible temporalmente. Intenta más tarde.'}
-            try:
+            elif tipo == 'bloodstrike':
+                r = session.get(
+                    f"https://pay.neteasegames.com/gameclub/bloodstrike/-1/login-role?roleid={player_id}&client_type=gameclub",
+                    timeout=API_TIMEOUT,
+                )
                 data = r.json()
-            except Exception:
-                return {'ok': False, 'error': 'Verificación de Mobile Legends no disponible temporalmente. Intenta más tarde.'}
-            if data.get('success') and data.get('name'):
-                return {'ok': True, 'nombre': data['name']}
-            return {'ok': False, 'error': 'ID o Zone ID no encontrado'}
+                if data.get('code') == '0000' and data.get('data', {}).get('rolename'):
+                    result = {'ok': True, 'nombre': data['data']['rolename']}
+                else:
+                    result = {'ok': False, 'error': 'ID no encontrado'}
 
-        else:
-            return {'ok': False, 'error': f'Tipo de verificación no soportado: {tipo}'}
+            elif tipo == 'mobilelegends':
+                if not zone_id:
+                    result = {'ok': False, 'error': 'Se requiere el Zone ID (Server ID)'}
+                else:
+                    r = session.get(
+                        f"https://api.isan.eu.org/nickname/ml?id={player_id}&zone={zone_id}",
+                        timeout=API_TIMEOUT,
+                    )
+                    if r.status_code != 200:
+                        result = {'ok': False, 'error': 'Verificación de Mobile Legends no disponible temporalmente. Intenta más tarde.'}
+                    else:
+                        try:
+                            data = r.json()
+                        except Exception:
+                            data = {}
+                        if data.get('success') and data.get('name'):
+                            result = {'ok': True, 'nombre': data['name']}
+                        else:
+                            result = {'ok': False, 'error': 'ID o Zone ID no encontrado'}
+
+            else:
+                result = {'ok': False, 'error': f'Tipo de verificación no soportado: {tipo}'}
     except Exception as e:
-        return {'ok': False, 'error': f'Error de conexión: {str(e)}'}
+        result = {'ok': False, 'error': f'Error de conexión: {str(e)}'}
+
+    _set_cached_nombre_jugador(tipo, player_id, zone_id, result)
+    return result
 
 
 def restock_pines(producto_id=None):
@@ -3345,7 +3406,7 @@ def api_verificar_pases():
         r = requests.get(
             f"{FREEFIRE_BP_BASE_URL}/api/freefire-bo/levelpass-check",
             params={'playerId': player_id, 'token': FREEFIRE_BP_TOKEN},
-            timeout=60,
+            timeout=15,
         )
         api_data = r.json() if r.status_code == 200 else {}
     except Exception:
