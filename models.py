@@ -480,6 +480,8 @@ def init_db():
     db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('popup_publicitario_version', '1')")
     db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('suscripcion_mensual_precio', '0')")
     db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('admin_public_base_url', '')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('pincentral_margin_percent', '6')")
+    db.execute("INSERT OR IGNORE INTO configuracion (clave, valor) VALUES ('pincentral_margin_percent_subscriber', '3')")
 
     # Conteo de vistas de popup publicitario por usuario/version
     try:

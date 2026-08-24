@@ -454,21 +454,21 @@ def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje
 def _snapshot_precios_proveedores(db):
     rows = db.execute(
         "SELECT p.id, p.nombre, p.precio, p.precio_suscriptor, p.gamepoint_product_id, p.moogold_product_id, "
-        "c.nombre as categoria_nombre "
+        "p.usa_pincentral, p.pincentral_product_code, c.nombre as categoria_nombre "
         "FROM productos p "
         "LEFT JOIN categorias c ON c.id = p.categoria_id "
-        "WHERE (p.gamepoint_product_id > 0 OR p.moogold_product_id > 0)"
+        "WHERE (p.gamepoint_product_id > 0 OR p.moogold_product_id > 0 OR (p.usa_pincentral = 1 AND p.pincentral_product_code != ''))"
     ).fetchall()
     snap = {}
     for r in rows:
-        if int(r['gamepoint_product_id'] or 0) > 0 and int(r['moogold_product_id'] or 0) > 0:
-            proveedor = 'GamePoint/MooGold'
-        elif int(r['gamepoint_product_id'] or 0) > 0:
-            proveedor = 'GamePoint'
-        elif int(r['moogold_product_id'] or 0) > 0:
-            proveedor = 'MooGold'
-        else:
-            proveedor = '-'
+        proveedores = []
+        if int(r['gamepoint_product_id'] or 0) > 0:
+            proveedores.append('GamePoint')
+        if int(r['moogold_product_id'] or 0) > 0:
+            proveedores.append('MooGold')
+        if int(r['usa_pincentral'] or 0) == 1 and str(r['pincentral_product_code'] or '').strip():
+            proveedores.append('PinCentral')
+        proveedor = '/'.join(proveedores) if proveedores else '-'
         snap[int(r['id'])] = {
             'producto_id': int(r['id']),
             'producto_nombre': r['nombre'] or '',
@@ -486,12 +486,16 @@ def _ejecutar_refresh_precios_proveedores(db, origen='manual'):
     gp_sub_margin_txt = str(_config_get(db, 'gamepoint_margin_percent_subscriber', gp_margin_txt or '6') or '').strip().replace(',', '.')
     mg_margin_txt = str(_config_get(db, 'moogold_margin_percent', '6') or '').strip().replace(',', '.')
     mg_sub_margin_txt = str(_config_get(db, 'moogold_margin_percent_subscriber', mg_margin_txt or '6') or '').strip().replace(',', '.')
+    pc_margin_txt = str(_config_get(db, 'pincentral_margin_percent', '6') or '').strip().replace(',', '.')
+    pc_sub_margin_txt = str(_config_get(db, 'pincentral_margin_percent_subscriber', pc_margin_txt or '3') or '').strip().replace(',', '.')
 
     tasa_myr_usd = _to_decimal(tasa_txt)
     gp_margin = _to_decimal(gp_margin_txt, Decimal('0'))
     gp_sub_margin = _to_decimal(gp_sub_margin_txt, Decimal('0'))
     mg_margin = _to_decimal(mg_margin_txt, Decimal('0'))
     mg_sub_margin = _to_decimal(mg_sub_margin_txt, Decimal('0'))
+    pc_margin = _to_decimal(pc_margin_txt, Decimal('0'))
+    pc_sub_margin = _to_decimal(pc_sub_margin_txt, Decimal('0'))
 
     if tasa_myr_usd is None or tasa_myr_usd <= 0:
         return {'ok': False, 'error': 'Tasa GamePoint inválida'}
@@ -499,6 +503,8 @@ def _ejecutar_refresh_precios_proveedores(db, origen='manual'):
         return {'ok': False, 'error': 'Margen GamePoint inválido'}
     if mg_margin is None or mg_margin < 0 or mg_sub_margin is None or mg_sub_margin < 0:
         return {'ok': False, 'error': 'Margen MooGold inválido'}
+    if pc_margin is None or pc_margin < 0 or pc_sub_margin is None or pc_sub_margin < 0:
+        return {'ok': False, 'error': 'Margen PinCentral inválido'}
 
     before = _snapshot_precios_proveedores(db)
 
@@ -520,6 +526,9 @@ def _ejecutar_refresh_precios_proveedores(db, origen='manual'):
 
     mg_normal = _actualizar_precios_moogold_desde_margen(db, mg_margin, target_column='precio')
     mg_sub = _actualizar_precios_moogold_desde_margen(db, mg_sub_margin, target_column='precio_suscriptor')
+
+    pc_normal = _actualizar_precios_pincentral(db, pc_margin, target_column='precio')
+    pc_sub = _actualizar_precios_pincentral(db, pc_sub_margin, target_column='precio_suscriptor')
 
     after = _snapshot_precios_proveedores(db)
     cambios = []
@@ -546,6 +555,8 @@ def _ejecutar_refresh_precios_proveedores(db, origen='manual'):
         'gamepoint_suscriptor': gp_sub,
         'moogold_normal': mg_normal,
         'moogold_suscriptor': mg_sub,
+        'pincentral_normal': pc_normal,
+        'pincentral_suscriptor': pc_sub,
     }
 
     cur = db.execute(
@@ -780,6 +791,132 @@ def _actualizar_precios_moogold_desde_margen(db, margen_porcentaje, target_colum
             errores.append(f"{prod['nombre']}: {result.get('error', 'sin detalle')}")
             continue
 
+        actualizados += 1
+
+    return {
+        'total': len(productos),
+        'actualizados': actualizados,
+        'omitidos': omitidos,
+        'errores': errores,
+    }
+
+
+def _parse_pincentral_price(product_dict):
+    """Extrae el precio/costo de un producto devuelto por PinCentral."""
+    if not isinstance(product_dict, dict):
+        return None
+    for campo in ('price', 'amount', 'cost', 'unit_price', 'unitPrice', 'sale_price'):
+        val = product_dict.get(campo)
+        if val is not None:
+            try:
+                return _to_decimal(val)
+            except Exception:
+                continue
+    return None
+
+
+def _productos_pincentral_dict(lista=None):
+    """Devuelve un diccionario {code_lower: producto} con cache de la lista PinCentral."""
+    from pincentral_api import listar_productos
+    if lista is None:
+        res = listar_productos()
+        if not res.get('ok'):
+            return {'ok': False, 'error': res.get('error', 'Error API PinCentral'), 'productos': {}}
+        data = res.get('data')
+        if isinstance(data, dict):
+            lista = data.get('products') or data.get('data') or []
+        elif isinstance(data, list):
+            lista = data
+        else:
+            return {'ok': False, 'error': 'Formato de productos PinCentral inválido', 'productos': {}}
+    productos = {}
+    for p in lista or []:
+        if not isinstance(p, dict):
+            continue
+        for key in ('code', 'product', 'id', 'sku'):
+            code = str(p.get(key) or '').strip().lower()
+            if code:
+                productos[code] = p
+    return {'ok': True, 'productos': productos}
+
+
+def _actualizar_precio_pincentral_producto(db, margin_percent, target_column='precio', prod_id=0, prod_row=None, pincentral_dict=None):
+    """Actualiza precio/precio_suscriptor de un producto usando el costo de PinCentral y margen dado."""
+    if prod_row is None and prod_id > 0:
+        prod_row = db.execute(
+            "SELECT id, nombre, pincentral_product_code, precio, precio_suscriptor FROM productos "
+            "WHERE id = ? AND usa_pincentral = 1 AND pincentral_product_code != ''",
+            (int(prod_id),)
+        ).fetchone()
+    if not prod_row:
+        return {'ok': False, 'error': 'Producto no encontrado o sin PinCentral configurado'}
+
+    code = str(prod_row['pincentral_product_code'] or '').strip()
+    if not code:
+        return {'ok': False, 'error': 'Producto sin código PinCentral'}
+
+    if pincentral_dict is None:
+        pincentral_dict = _productos_pincentral_dict()
+    if not pincentral_dict.get('ok'):
+        return {'ok': False, 'error': pincentral_dict.get('error', 'No se pudo consultar PinCentral')}
+
+    p_data = (pincentral_dict.get('productos') or {}).get(code.lower())
+    if not p_data:
+        return {'ok': False, 'error': f'Código {code} no encontrado en catálogo PinCentral'}
+
+    costo = _parse_pincentral_price(p_data)
+    if costo is None or costo <= 0:
+        return {'ok': False, 'error': f'Costo inválido para {code}'}
+
+    factor = Decimal('1') + (margin_percent / Decimal('100'))
+    precio_venta = (costo * factor).quantize(Decimal('0.00000001'))
+
+    target_column = str(target_column or 'precio').strip().lower()
+    if target_column not in ('precio', 'precio_suscriptor'):
+        target_column = 'precio'
+
+    if target_column == 'precio_suscriptor':
+        db.execute("UPDATE productos SET precio_suscriptor = ? WHERE id = ?", (float(precio_venta), int(prod_row['id'])))
+    else:
+        db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_venta), int(prod_row['id'])))
+
+    return {
+        'ok': True,
+        'precio': float(precio_venta),
+        'costo': float(costo),
+        'producto_id': int(prod_row['id']),
+        'target': target_column,
+    }
+
+
+def _actualizar_precios_pincentral(db, margin_percent, target_column='precio'):
+    """Actualiza precios de todos los productos activos con PinCentral."""
+    productos = db.execute(
+        "SELECT id, nombre, pincentral_product_code FROM productos WHERE usa_pincentral = 1 AND pincentral_product_code != ''"
+    ).fetchall()
+    if not productos:
+        return {'total': 0, 'actualizados': 0, 'omitidos': 0, 'errores': []}
+
+    pincentral_dict = _productos_pincentral_dict()
+    if not pincentral_dict.get('ok'):
+        return {'total': len(productos), 'actualizados': 0, 'omitidos': len(productos), 'errores': [pincentral_dict.get('error', 'Error API')]}
+
+    errores = []
+    actualizados = 0
+    omitidos = 0
+    for prod in productos:
+        result = _actualizar_precio_pincentral_producto(
+            db,
+            margin_percent,
+            target_column,
+            prod_id=prod['id'],
+            prod_row=prod,
+            pincentral_dict=pincentral_dict,
+        )
+        if not result.get('ok'):
+            omitidos += 1
+            errores.append(f"{prod['nombre']}: {result.get('error', 'sin detalle')}")
+            continue
         actualizados += 1
 
     return {
@@ -5844,6 +5981,18 @@ def admin_productos():
             if mg_margin_sub is not None and mg_margin_sub >= 0:
                 _config_set(db, 'moogold_margin_percent_subscriber', str(mg_margin_sub))
 
+        pc_margin_txt = str(request.form.get('pincentral_margin_percent', '') or '').strip().replace(',', '.')
+        if pc_margin_txt:
+            pc_margin = _to_decimal(pc_margin_txt)
+            if pc_margin is not None and pc_margin >= 0:
+                _config_set(db, 'pincentral_margin_percent', str(pc_margin))
+
+        pc_margin_sub_txt = str(request.form.get('pincentral_margin_percent_subscriber', '') or '').strip().replace(',', '.')
+        if pc_margin_sub_txt:
+            pc_margin_sub = _to_decimal(pc_margin_sub_txt)
+            if pc_margin_sub is not None and pc_margin_sub >= 0:
+                _config_set(db, 'pincentral_margin_percent_subscriber', str(pc_margin_sub))
+
         accion = request.form.get('accion')
         if accion == 'crear':
             nombre = request.form.get('nombre', '').strip()
@@ -6008,6 +6157,8 @@ def admin_productos():
         productos_giftcard.append({'id': gc['id'], 'nombre': gc['nombre'], 'stock': stock})
     moogold_margin_percent = _config_get(db, 'moogold_margin_percent', '6')
     moogold_margin_percent_subscriber = _config_get(db, 'moogold_margin_percent_subscriber', moogold_margin_percent)
+    pincentral_margin_percent = _config_get(db, 'pincentral_margin_percent', '6')
+    pincentral_margin_percent_subscriber = _config_get(db, 'pincentral_margin_percent_subscriber', pincentral_margin_percent)
     db.close()
     return render_template(
         'admin/productos.html',
@@ -6017,6 +6168,8 @@ def admin_productos():
         categorias_moogold=_moogold_category_catalogo(),
         moogold_margin_percent=moogold_margin_percent,
         moogold_margin_percent_subscriber=moogold_margin_percent_subscriber,
+        pincentral_margin_percent=pincentral_margin_percent,
+        pincentral_margin_percent_subscriber=pincentral_margin_percent_subscriber,
     )
 
 
@@ -6427,8 +6580,16 @@ def admin_pincentral_catalogo():
         "LEFT JOIN productos p ON p.id = i.producto_id "
         "ORDER BY i.id DESC LIMIT 30"
     ).fetchall()
+    pincentral_margin_percent = _config_get(db, 'pincentral_margin_percent', '6')
+    pincentral_margin_percent_subscriber = _config_get(db, 'pincentral_margin_percent_subscriber', pincentral_margin_percent)
     db.close()
-    return render_template('admin/pincentral.html', productos_locales=productos_locales, incidentes=incidentes)
+    return render_template(
+        'admin/pincentral.html',
+        productos_locales=productos_locales,
+        incidentes=incidentes,
+        pincentral_margin_percent=pincentral_margin_percent,
+        pincentral_margin_percent_subscriber=pincentral_margin_percent_subscriber,
+    )
 
 
 @app.route('/admin/pincentral/productos', methods=['GET'])
@@ -6442,6 +6603,62 @@ def admin_pincentral_productos():
         stock = consultar_stock(product_code)
         return jsonify({'productos': productos, 'stock': stock})
     return jsonify({'productos': productos})
+
+
+@app.route('/admin/pincentral/actualizar-precios', methods=['POST'])
+@admin_required
+def admin_pincentral_actualizar_precios():
+    db = get_db()
+    try:
+        target = str(request.form.get('target', 'precio') or 'precio').strip().lower()
+        if target not in ('precio', 'precio_suscriptor'):
+            target = 'precio'
+
+        margin_field = 'pincentral_margin_percent_subscriber' if target == 'precio_suscriptor' else 'pincentral_margin_percent'
+
+        margen_txt = str(request.form.get(margin_field, '') or '').strip().replace(',', '.')
+        if not margen_txt:
+            margen_txt = _config_get(db, margin_field, '6')
+
+        margen_porcentaje = _to_decimal(margen_txt, Decimal('0'))
+        if margen_porcentaje is None or margen_porcentaje < 0:
+            return jsonify({'ok': False, 'error': 'Margen inválido. Debe ser mayor o igual a 0.'}), 400
+
+        _config_set(db, margin_field, str(margen_porcentaje))
+
+        prod_id = int(request.form.get('producto_id', 0) or 0)
+        if prod_id > 0:
+            resultado = _actualizar_precio_pincentral_producto(
+                db,
+                margen_porcentaje,
+                target_column=target,
+                prod_id=prod_id,
+            )
+            if not resultado.get('ok'):
+                return jsonify({'ok': False, 'error': resultado.get('error', 'No se pudo actualizar el precio')}), 400
+
+            db.commit()
+            return jsonify({
+                'ok': True,
+                'actualizado': 1,
+                'producto_id': prod_id,
+                'target': target,
+                'precio': resultado.get('precio'),
+                'costo': resultado.get('costo'),
+                'margin_percent': str(margen_porcentaje),
+            })
+
+        if str(request.form.get('apply_all', '') or '').strip() != '1':
+            return jsonify({'ok': False, 'error': 'Para actualización masiva debes confirmar apply_all=1.'}), 400
+
+        resumen = _actualizar_precios_pincentral(db, margen_porcentaje, target_column=target)
+        db.commit()
+        return jsonify({'ok': True, 'resumen': resumen, 'target': target, 'margin_percent': str(margen_porcentaje)})
+    except Exception as e:
+        db.rollback()
+        return jsonify({'ok': False, 'error': str(e)}), 500
+    finally:
+        db.close()
 
 
 @app.route('/admin/gamepoint/productos', methods=['GET'])

@@ -57,6 +57,29 @@
         </div>
 
         <div class="admin-card" style="margin-bottom:1rem;">
+            <h2 style="margin-bottom:0.75rem;"><i class="fas fa-percent"></i> Margen y actualización de precios PinCentral</h2>
+            <div class="form-grid-2" style="margin-bottom:0.75rem;">
+                <div class="form-group">
+                    <label>Margen normal (%)</label>
+                    <input type="number" id="pc-margin-normal" class="form-input" value="{{ pincentral_margin_percent|default('6') }}" min="0" step="0.01">
+                    <small style="color:var(--text-secondary);">Se usa para calcular <code>precio</code> desde el costo de PinCentral.</small>
+                </div>
+                <div class="form-group">
+                    <label>Margen suscriptor (%)</label>
+                    <input type="number" id="pc-margin-subscriber" class="form-input" value="{{ pincentral_margin_percent_subscriber|default('3') }}" min="0" step="0.01">
+                    <small style="color:var(--text-secondary);">Se usa para calcular <code>precio_suscriptor</code> desde el costo de PinCentral.</small>
+                </div>
+            </div>
+            <button class="btn btn-primary" id="btn-pc-actualizar-precios" onclick="actualizarPreciosPinCentral()">
+                <i class="fas fa-sync"></i> Actualizar precios de todos los productos PinCentral ahora
+            </button>
+            <div id="pc-precios-resultado" style="margin-top:0.75rem; font-size:0.85rem;"></div>
+            <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.5rem;">
+                También se actualizan automáticamente por el cron de <code>/cron/refresh-precios</code> si lo tienes programado.
+            </p>
+        </div>
+
+        <div class="admin-card" style="margin-bottom:1rem;">
             <h2 style="margin-bottom:0.75rem;"><i class="fas fa-triangle-exclamation"></i> Incidentes PinCentral (últimos 30)</h2>
             {% if incidentes %}
             <div class="table-responsive">
@@ -247,6 +270,50 @@ function consultarStock(idx, code) {
         .catch(function(e) {
             celda.innerHTML = '<span style="color:#ef4444;">' + e.message + '</span>';
         });
+}
+
+function actualizarPreciosPinCentral() {
+    var marginNormal = String(document.getElementById('pc-margin-normal').value || '').trim().replace(',', '.');
+    var marginSubscriber = String(document.getElementById('pc-margin-subscriber').value || '').trim().replace(',', '.');
+    var btn = document.getElementById('btn-pc-actualizar-precios');
+    var res = document.getElementById('pc-precios-resultado');
+
+    if (!marginNormal || !marginSubscriber || isNaN(parseFloat(marginNormal)) || isNaN(parseFloat(marginSubscriber))) {
+        res.innerHTML = '<span style="color:#ef4444;">Ingresa ambos márgenes válidos.</span>';
+        return;
+    }
+
+    btn.disabled = true;
+    res.innerHTML = '<span style="color:var(--text-secondary);">Actualizando precios PinCentral, por favor espera...</span>';
+
+    function doUpdate(target, margin) {
+        var formData = new FormData();
+        formData.append('target', target);
+        formData.append(target === 'precio_suscriptor' ? 'pincentral_margin_percent_subscriber' : 'pincentral_margin_percent', margin);
+        formData.append('apply_all', '1');
+        return fetch('/admin/pincentral/actualizar-precios', { method: 'POST', body: formData }).then(function(r) { return r.json(); });
+    }
+
+    Promise.all([
+        doUpdate('precio', marginNormal),
+        doUpdate('precio_suscriptor', marginSubscriber),
+    ]).then(function(results) {
+        btn.disabled = false;
+        var html = '';
+        results.forEach(function(data) {
+            var label = data.target === 'precio_suscriptor' ? 'Suscriptor' : 'Normal';
+            if (data.ok) {
+                var r = data.resumen || {};
+                html += '<div style="color:#22c55e;"><strong>' + label + ':</strong> ' + (r.actualizados || 0) + ' actualizados, ' + (r.omitidos || 0) + ' omitidos, total ' + (r.total || 0) + '</div>';
+            } else {
+                html += '<div style="color:#ef4444;"><strong>' + label + ':</strong> ' + (data.error || 'Error') + '</div>';
+            }
+        });
+        res.innerHTML = html;
+    }).catch(function(e) {
+        btn.disabled = false;
+        res.innerHTML = '<span style="color:#ef4444;">Error de conexión: ' + e.message + '</span>';
+    });
 }
 
 cargarProductos();

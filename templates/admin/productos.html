@@ -180,6 +180,24 @@
                     <label><i class="fas fa-barcode" style="color:#14b8a6;"></i> Código producto PinCentral</label>
                     <input type="text" name="pincentral_product_code" id="form-pincentral-code" class="form-input" placeholder="Ej: RZRG100">
                     <p style="color:var(--text-secondary); font-size:0.8rem; margin-top:0.4rem;">Se usa para PINes remotos o recarga directa en PinCentral.</p>
+                    <div class="form-grid-2">
+                        <div class="form-group">
+                            <label><i class="fas fa-percent" style="color:#14b8a6;"></i> Margen PinCentral (%)</label>
+                            <input type="number" name="pincentral_margin_percent" id="form-pc-margin" value="{{ pincentral_margin_percent|default('6') }}" min="0" step="0.01" placeholder="Ej: 6">
+                            <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Se usa para calcular el precio de venta desde el costo de PinCentral.</small>
+                            <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.45rem;" onclick="actualizarPrecioPinCentral('precio')">
+                                <i class="fas fa-sync"></i> Actualizar precio de este producto
+                            </button>
+                        </div>
+                        <div class="form-group">
+                            <label><i class="fas fa-crown" style="color:#f59e0b;"></i> Margen suscriptor PinCentral (%)</label>
+                            <input type="number" name="pincentral_margin_percent_subscriber" id="form-pc-margin-subscriber" value="{{ pincentral_margin_percent_subscriber|default(pincentral_margin_percent|default('3')) }}" min="0" step="0.01" placeholder="Ej: 3">
+                            <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Calcula y actualiza <code>precio_suscriptor</code> para este producto desde el costo PinCentral.</small>
+                            <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.45rem;" onclick="actualizarPrecioPinCentral('precio_suscriptor')">
+                                <i class="fas fa-crown"></i> Actualizar precio suscriptor
+                            </button>
+                        </div>
+                    </div>
                     <label class="checkbox-label" style="margin-top:0.5rem;">
                         <input type="checkbox" name="pincentral_entrega_directa" id="form-pincentral-directo" onchange="syncPinCentralModes('pin')"> Entrega directa al cliente (solo Gift Card, 1 PIN por pedido, sin guardar en almacén)
                     </label>
@@ -985,6 +1003,68 @@ function actualizarPrecioSuscriptorMooGold() {
         })
         .catch(function(e) {
             alert('No se pudo actualizar precio suscriptor MooGold: ' + e.message);
+        });
+}
+
+function actualizarPrecioPinCentral(target) {
+    target = (target || 'precio').toLowerCase();
+    var isSubscriber = target === 'precio_suscriptor';
+    var marginId = isSubscriber ? 'form-pc-margin-subscriber' : 'form-pc-margin';
+    var margen = String(document.getElementById(marginId).value || '').trim();
+    var margenNum = parseFloat(margen || '0');
+    var code = String(document.getElementById('form-pincentral-code').value || '').trim();
+    var accion = String(document.getElementById('form-accion').value || '').trim();
+    var prodId = parseInt(document.getElementById('form-producto-id').value || '0', 10) || 0;
+
+    if (!isFinite(margenNum) || margenNum < 0) {
+        alert('Margen inválido. Debe ser mayor o igual a 0.');
+        return;
+    }
+    if (!code) {
+        alert('Ingresa el código producto PinCentral primero.');
+        return;
+    }
+
+    if (accion !== 'editar' || prodId <= 0) {
+        alert('Guarda el producto primero. Al guardar se persistirán el margen y el código.');
+        return;
+    }
+
+    var formData = new FormData();
+    formData.append('target', target);
+    formData.append(isSubscriber ? 'pincentral_margin_percent_subscriber' : 'pincentral_margin_percent', margen);
+    formData.append('producto_id', String(prodId));
+    formData.append('pincentral_product_code', code);
+    fetch('/admin/pincentral/actualizar-precios', {
+        method: 'POST',
+        body: formData
+    })
+        .then(function(r) { return r.json(); })
+        .then(function(data) {
+            if (!data.ok) {
+                alert('Error al actualizar precio PinCentral: ' + (data.error || 'sin detalle'));
+                return;
+            }
+            var precio = parseFloat(data.precio || '0');
+            if (isFinite(precio) && precio > 0) {
+                if (isSubscriber) {
+                    document.getElementById('form-precio-suscriptor').value = precio.toFixed(4);
+                    var row = document.getElementById('row-' + prodId);
+                    if (row) row.setAttribute('data-precio-suscriptor', precio.toFixed(4));
+                } else {
+                    document.getElementById('form-precio').value = precio.toFixed(4);
+                    var row = document.getElementById('row-' + prodId);
+                    if (row) {
+                        row.setAttribute('data-precio', precio.toFixed(4));
+                        var inp = row.querySelector('.edit-precio');
+                        if (inp) inp.value = precio.toFixed(4);
+                    }
+                }
+            }
+            alert('Precio PinCentral actualizado: ' + (isSubscriber ? 'suscriptor' : 'normal') + ' = $' + precio.toFixed(4));
+        })
+        .catch(function(e) {
+            alert('No se pudo actualizar precio PinCentral: ' + e.message);
         });
 }
 
