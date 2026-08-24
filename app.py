@@ -503,8 +503,8 @@ def _ejecutar_refresh_precios_proveedores(db, origen='manual'):
         return {'ok': False, 'error': 'Margen GamePoint inválido'}
     if mg_margin is None or mg_margin < 0 or mg_sub_margin is None or mg_sub_margin < 0:
         return {'ok': False, 'error': 'Margen MooGold inválido'}
-    if pc_margin is None or pc_margin < 0 or pc_sub_margin is None or pc_sub_margin < 0:
-        return {'ok': False, 'error': 'Margen PinCentral inválido'}
+    if pc_margin is None or pc_margin < -100 or pc_sub_margin is None or pc_sub_margin < -100:
+        return {'ok': False, 'error': 'Margen PinCentral inválido. Debe ser mayor o igual a -100.'}
 
     before = _snapshot_precios_proveedores(db)
 
@@ -5991,13 +5991,13 @@ def admin_productos():
         pc_margin_txt = str(request.form.get('pincentral_margin_percent', '') or '').strip().replace(',', '.')
         if pc_margin_txt:
             pc_margin = _to_decimal(pc_margin_txt)
-            if pc_margin is not None and pc_margin >= 0:
+            if pc_margin is not None and pc_margin >= -100:
                 _config_set(db, 'pincentral_margin_percent', str(pc_margin))
 
         pc_margin_sub_txt = str(request.form.get('pincentral_margin_percent_subscriber', '') or '').strip().replace(',', '.')
         if pc_margin_sub_txt:
             pc_margin_sub = _to_decimal(pc_margin_sub_txt)
-            if pc_margin_sub is not None and pc_margin_sub >= 0:
+            if pc_margin_sub is not None and pc_margin_sub >= -100:
                 _config_set(db, 'pincentral_margin_percent_subscriber', str(pc_margin_sub))
 
         accion = request.form.get('accion')
@@ -6628,8 +6628,8 @@ def admin_pincentral_actualizar_precios():
             margen_txt = _config_get(db, margin_field, '6')
 
         margen_porcentaje = _to_decimal(margen_txt, Decimal('0'))
-        if margen_porcentaje is None or margen_porcentaje < 0:
-            return jsonify({'ok': False, 'error': 'Margen inválido. Debe ser mayor o igual a 0.'}), 400
+        if margen_porcentaje is None or margen_porcentaje < -100:
+            return jsonify({'ok': False, 'error': 'Margen inválido. Debe ser mayor o igual a -100.'}), 400
 
         _config_set(db, margin_field, str(margen_porcentaje))
 

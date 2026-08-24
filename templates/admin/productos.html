@@ -183,16 +183,16 @@
                     <div class="form-grid-2">
                         <div class="form-group">
                             <label><i class="fas fa-percent" style="color:#14b8a6;"></i> Margen PinCentral (%)</label>
-                            <input type="number" name="pincentral_margin_percent" id="form-pc-margin" value="{{ pincentral_margin_percent|default('6') }}" min="0" step="0.01" placeholder="Ej: 6">
-                            <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Se usa para calcular el precio de venta desde el costo de PinCentral.</small>
+                            <input type="number" name="pincentral_margin_percent" id="form-pc-margin" value="{{ pincentral_margin_percent|default('6') }}" min="-100" step="0.01" placeholder="Ej: 6">
+                            <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Se usa para calcular el precio de venta desde el costo de PinCentral. Puede ser negativo (mínimo -100).</small>
                             <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.45rem;" onclick="actualizarPrecioPinCentral('precio')">
                                 <i class="fas fa-sync"></i> Actualizar precio de este producto
                             </button>
                         </div>
                         <div class="form-group">
                             <label><i class="fas fa-crown" style="color:#f59e0b;"></i> Margen suscriptor PinCentral (%)</label>
-                            <input type="number" name="pincentral_margin_percent_subscriber" id="form-pc-margin-subscriber" value="{{ pincentral_margin_percent_subscriber|default(pincentral_margin_percent|default('3')) }}" min="0" step="0.01" placeholder="Ej: 3">
-                            <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Calcula y actualiza <code>precio_suscriptor</code> para este producto desde el costo PinCentral.</small>
+                            <input type="number" name="pincentral_margin_percent_subscriber" id="form-pc-margin-subscriber" value="{{ pincentral_margin_percent_subscriber|default(pincentral_margin_percent|default('3')) }}" min="-100" step="0.01" placeholder="Ej: 3">
+                            <small style="color:var(--text-secondary);display:block;margin-top:0.2rem;">Calcula y actualiza <code>precio_suscriptor</code> para este producto desde el costo PinCentral. Puede ser negativo (mínimo -100).</small>
                             <button type="button" class="btn btn-sm btn-secondary" style="margin-top:0.45rem;" onclick="actualizarPrecioPinCentral('precio_suscriptor')">
                                 <i class="fas fa-crown"></i> Actualizar precio suscriptor
                             </button>
@@ -1016,8 +1016,8 @@ function actualizarPrecioPinCentral(target) {
     var accion = String(document.getElementById('form-accion').value || '').trim();
     var prodId = parseInt(document.getElementById('form-producto-id').value || '0', 10) || 0;
 
-    if (!isFinite(margenNum) || margenNum < 0) {
-        alert('Margen inválido. Debe ser mayor o igual a 0.');
+    if (!isFinite(margenNum) || margenNum < -100) {
+        alert('Margen inválido. Debe ser mayor o igual a -100.');
         return;
     }
     if (!code) {
