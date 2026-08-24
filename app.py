@@ -32,8 +32,8 @@ PINCENTRAL_RESTOCK_LOCK = threading.Lock()
 JADH_RESTOCK_LOCK = threading.Lock()
 PINCENTRAL_SCAN_THREAD_GUARD = threading.Lock()
 PINCENTRAL_SCAN_THREAD_STARTED = False
-PINCENTRAL_SCAN_INTERVAL_SECONDS = 30
-PINCENTRAL_SCAN_LOCK_TTL_SECONDS = 180
+PINCENTRAL_SCAN_INTERVAL_SECONDS = 300
+PINCENTRAL_SCAN_LOCK_TTL_SECONDS = 60
 PINCENTRAL_RESTOCK_CAPTURE_MAX_ATTEMPTS = 3
 PINCENTRAL_RESTOCK_CAPTURE_RETRY_DELAY_SECONDS = 2
 PINCENTRAL_RESTOCK_BETWEEN_PINS_SECONDS = max(0, int(os.environ.get('PINCENTRAL_RESTOCK_BETWEEN_PINS_SECONDS', '2')))
@@ -2252,9 +2252,9 @@ def restock_pincentral_almacen(producto_id):
                     continue
                 ok_insert, _ = _insertar_pin_disponible(db, producto_id, key)
                 if ok_insert:
+                    db.commit()
                     nuevos += 1
 
-            db.commit()
             agregados += nuevos
             necesarios -= nuevos
             if nuevos == 0:
@@ -2334,8 +2334,8 @@ def restock_jadh_almacen(producto_id):
             for pin in pins:
                 ok_insert, _ = _insertar_pin_disponible(db, producto_id, pin, lote_id=lote_id)
                 if ok_insert:
+                    db.commit()
                     agregados += 1
-            db.commit()
             db.close()
             if agregados > 0:
                 print(f"[JADH-RESTOCK] {agregados} PIN(s) agregados a '{prod['nombre']}'")

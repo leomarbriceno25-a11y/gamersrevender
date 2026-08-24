@@ -76,12 +76,23 @@ def mask_pin(pin, head=4, tail=2):
     return f"{raw[:head]}{'*' * (len(raw) - head - tail)}{raw[-tail:]}"
 
 
+_wal_configured = False
+
 def get_db():
+    global _wal_configured
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH, timeout=30)
+    conn = sqlite3.connect(DB_PATH, timeout=60, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
-    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 60000")
+    if not _wal_configured:
+        try:
+            cur = conn.execute("PRAGMA journal_mode")
+            if cur.fetchone()[0].lower() != 'wal':
+                conn.execute("PRAGMA journal_mode = WAL")
+            _wal_configured = True
+        except Exception:
+            pass
     return conn
 
 
