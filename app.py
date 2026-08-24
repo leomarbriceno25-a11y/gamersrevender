@@ -844,7 +844,7 @@ def _actualizar_precio_pincentral_producto(db, margin_percent, target_column='pr
     """Actualiza precio/precio_suscriptor de un producto usando el costo de PinCentral y margen dado."""
     if prod_row is None and prod_id > 0:
         prod_row = db.execute(
-            "SELECT id, nombre, pincentral_product_code, precio, precio_suscriptor FROM productos "
+            "SELECT id, nombre, pincentral_product_code, pincentral_recarga_cantidad, precio, precio_suscriptor FROM productos "
             "WHERE id = ? AND usa_pincentral = 1 AND pincentral_product_code != ''",
             (int(prod_id),)
         ).fetchone()
@@ -855,6 +855,10 @@ def _actualizar_precio_pincentral_producto(db, margin_percent, target_column='pr
     if not code:
         return {'ok': False, 'error': 'Producto sin código PinCentral'}
 
+    cantidad = int(prod_row['pincentral_recarga_cantidad'] or 1)
+    if cantidad < 1:
+        cantidad = 1
+
     if pincentral_dict is None:
         pincentral_dict = _productos_pincentral_dict()
     if not pincentral_dict.get('ok'):
@@ -864,12 +868,13 @@ def _actualizar_precio_pincentral_producto(db, margin_percent, target_column='pr
     if not p_data:
         return {'ok': False, 'error': f'Código {code} no encontrado en catálogo PinCentral'}
 
-    costo = _parse_pincentral_price(p_data)
-    if costo is None or costo <= 0:
+    costo_unitario = _parse_pincentral_price(p_data)
+    if costo_unitario is None or costo_unitario <= 0:
         return {'ok': False, 'error': f'Costo inválido para {code}'}
 
+    costo_total = costo_unitario * Decimal(cantidad)
     factor = Decimal('1') + (margin_percent / Decimal('100'))
-    precio_venta = (costo * factor).quantize(Decimal('0.00000001'))
+    precio_venta = (costo_total * factor).quantize(Decimal('0.00000001'))
 
     target_column = str(target_column or 'precio').strip().lower()
     if target_column not in ('precio', 'precio_suscriptor'):
@@ -883,7 +888,9 @@ def _actualizar_precio_pincentral_producto(db, margin_percent, target_column='pr
     return {
         'ok': True,
         'precio': float(precio_venta),
-        'costo': float(costo),
+        'costo_unitario': float(costo_unitario),
+        'costo_total': float(costo_total),
+        'cantidad': cantidad,
         'producto_id': int(prod_row['id']),
         'target': target_column,
     }
@@ -892,7 +899,7 @@ def _actualizar_precio_pincentral_producto(db, margin_percent, target_column='pr
 def _actualizar_precios_pincentral(db, margin_percent, target_column='precio'):
     """Actualiza precios de todos los productos activos con PinCentral."""
     productos = db.execute(
-        "SELECT id, nombre, pincentral_product_code FROM productos WHERE usa_pincentral = 1 AND pincentral_product_code != ''"
+        "SELECT id, nombre, pincentral_product_code, pincentral_recarga_cantidad FROM productos WHERE usa_pincentral = 1 AND pincentral_product_code != ''"
     ).fetchall()
     if not productos:
         return {'total': 0, 'actualizados': 0, 'omitidos': 0, 'errores': []}
