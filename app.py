@@ -3064,8 +3064,7 @@ def _es_error_de_red_pincentral(error, status_code):
 
 def procesar_pedido_pincentral_recarga_background(
     pedido_id, user_id, total, product_code, service_user_id, additional_data,
-    additional_data_2, recargas_total, order_prefix, client_email='',
-    client_first_name='', client_last_name='', client_country='VE'
+    additional_data_2, recargas_total, order_prefix
 ):
     from pincentral_api import crear_recarga
 
@@ -3082,10 +3081,6 @@ def procesar_pedido_pincentral_recarga_background(
                 order_id=order_id,
                 additional_data=additional_data,
                 additional_data_2=additional_data_2,
-                client_email=client_email,
-                client_first_name=client_first_name,
-                client_last_name=client_last_name,
-                client_country=client_country,
                 timeout=300,
             )
             data_pc = resultado_pc.get('data', {}) if isinstance(resultado_pc.get('data', {}), dict) else {}
@@ -4136,11 +4131,7 @@ def comprar():
             flash('Producto no configurado correctamente. El pedido quedó en procesando para verificación manual.', 'warning')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
-        user = db.execute("SELECT nombre, email FROM usuarios WHERE id = ?", (user_id,)).fetchone()
         db.close()
-        nombre_partes = str((user['nombre'] if user else '') or '').split(' ', 1)
-        first_name = nombre_partes[0] if nombre_partes else ''
-        last_name = nombre_partes[1] if len(nombre_partes) > 1 else ''
         recargas_total = max(1, min(int((prod['pincentral_recarga_cantidad'] if 'pincentral_recarga_cantidad' in prod.keys() else 1) or 1), 20))
 
         # Validar la cuenta del jugador antes de intentar la recarga
@@ -4175,8 +4166,7 @@ def comprar():
             target=procesar_pedido_pincentral_recarga_background,
             args=(
                 pedido_id, user_id, total, product_code, id_juego,
-                input2, additional_data_2, recargas_total, 'PCR',
-                (user['email'] if user else ''), first_name, last_name, 'VE'
+                input2, additional_data_2, recargas_total, 'PCR'
             ),
             daemon=True,
         ).start()
@@ -7885,9 +7875,6 @@ def api_comprar():
             return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando', 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': 'Producto no configurado; pedido en procesando para verificación manual'}), 202
 
         db.close()
-        nombre_partes = str((dict(user).get('nombre', '') if user else '') or '').split(' ', 1)
-        first_name = nombre_partes[0] if nombre_partes else ''
-        last_name = nombre_partes[1] if len(nombre_partes) > 1 else ''
         recargas_total = max(1, min(int((prod['pincentral_recarga_cantidad'] if 'pincentral_recarga_cantidad' in prod.keys() else 1) or 1), 20))
 
         # Validar la cuenta del jugador antes de intentar la recarga
@@ -7920,8 +7907,7 @@ def api_comprar():
             target=procesar_pedido_pincentral_recarga_background,
             args=(
                 pedido_id, user_id_api, total, product_code, id_juego,
-                input2, additional_data_2_api, recargas_total, 'APIR',
-                (dict(user).get('email', '') if user else ''), first_name, last_name, 'VE'
+                input2, additional_data_2_api, recargas_total, 'APIR'
             ),
             daemon=True,
         ).start()
