@@ -1685,7 +1685,7 @@ def _set_cached_nombre_jugador(tipo, player_id, zone_id, data):
 
 def verificar_nombre_jugador(tipo, player_id, zone_id=''):
     """Consulta APIs externas para obtener el nombre del jugador según el tipo de juego.
-    Utiliza cache en memoria y timeouts cortos para no bloquear workers de Gunicorn."""
+    Utiliza cache en memoria, timeout corto y reintentos para no saturar workers."""
     import requests as ext_requests
     from requests.adapters import HTTPAdapter
 
@@ -1693,12 +1693,33 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
     if cached is not None:
         return cached
 
-    # Sesión sin reintentos y con timeout corto para evitar saturar workers
+    # Sesión sin reintentos internos de requests; manejamos reintentos manualmente
     session = ext_requests.Session()
     session.mount('https://', HTTPAdapter(max_retries=0))
     session.mount('http://', HTTPAdapter(max_retries=0))
-    API_TIMEOUT = 15
+    API_TIMEOUT = 10
+    VALIDATE_RETRY_ATTEMPTS = 3
+    VALIDATE_RETRY_DELAY = 2
     result = None
+
+    def _request_json_with_retry(url, method='GET'):
+        last_error = None
+        for intento in range(1, VALIDATE_RETRY_ATTEMPTS + 1):
+            try:
+                if method.upper() == 'GET':
+                    r = session.get(url, timeout=API_TIMEOUT)
+                else:
+                    r = session.post(url, timeout=API_TIMEOUT)
+                raw = (r.text or '').strip()
+                if not raw:
+                    raise ext_requests.exceptions.RequestException('Respuesta vacía del validador')
+                return r.status_code, r.json()
+            except (ext_requests.exceptions.RequestException, ValueError) as e:
+                last_error = e
+                print(f"[VALIDAR-ID] Intento {intento}/{VALIDATE_RETRY_ATTEMPTS} fallido para {tipo}: {e}")
+                if intento < VALIDATE_RETRY_ATTEMPTS:
+                    time.sleep(VALIDATE_RETRY_DELAY)
+        raise last_error
 
     try:
         with session:
@@ -1708,11 +1729,9 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
                 if not api_key:
                     result = {'ok': False, 'error': 'API key de validación Free Fire no configurada'}
                 else:
-                    r = session.get(
-                        f"{api_url}?key={api_key}&uid={player_id}&zoneId=",
-                        timeout=API_TIMEOUT,
+                    status, data = _request_json_with_retry(
+                        f"{api_url}?key={api_key}&uid={player_id}&zoneId="
                     )
-                    data = r.json()
                     if data.get('status') and data.get('code') == 200:
                         ff_data = data.get('data', {})
                         region = str(ff_data.get('region', '') or '').upper()
@@ -1727,23 +1746,19 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
                         result = {'ok': False, 'error': 'ID no encontrado'}
 
             elif tipo == 'freefire_tgv':
-                r = session.get(
-                    f"https://tiendagiftven.net/conexion_api/api.php?action=ValidarParametros&id={player_id}",
-                    timeout=API_TIMEOUT,
+                status, data = _request_json_with_retry(
+                    f"https://tiendagiftven.net/conexion_api/api.php?action=ValidarParametros&id={player_id}"
                 )
-                data = r.json()
                 if data.get('alerta') == 'green' and data.get('nickname'):
                     result = {'ok': True, 'nombre': data['nickname']}
                 else:
                     result = {'ok': False, 'error': 'ID no encontrado'}
 
             elif tipo == 'freefire_id':
-                r = session.get(
-                    f"https://freefire-api-six.vercel.app/get_player_personal_show?server=id&uid={player_id}",
-                    timeout=API_TIMEOUT,
+                status, data = _request_json_with_retry(
+                    f"https://freefire-api-six.vercel.app/get_player_personal_show?server=id&uid={player_id}"
                 )
-                if r.status_code == 200:
-                    data = r.json()
+                if status == 200:
                     basic = data.get('basicinfo', {})
                     nickname = basic.get('nickname', '')
                     if nickname:
@@ -1754,11 +1769,9 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
                     result = {'ok': False, 'error': 'ID no encontrado en servidor Indonesia'}
 
             elif tipo == 'bloodstrike':
-                r = session.get(
-                    f"https://pay.neteasegames.com/gameclub/bloodstrike/-1/login-role?roleid={player_id}&client_type=gameclub",
-                    timeout=API_TIMEOUT,
+                status, data = _request_json_with_retry(
+                    f"https://pay.neteasegames.com/gameclub/bloodstrike/-1/login-role?roleid={player_id}&client_type=gameclub"
                 )
-                data = r.json()
                 if data.get('code') == '0000' and data.get('data', {}).get('rolename'):
                     result = {'ok': True, 'nombre': data['data']['rolename']}
                 else:
@@ -1768,30 +1781,21 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
                 if not zone_id:
                     result = {'ok': False, 'error': 'Se requiere el Zone ID (Server ID)'}
                 else:
-                    r = session.get(
-                        f"https://api.isan.eu.org/nickname/ml?id={player_id}&zone={zone_id}",
-                        timeout=API_TIMEOUT,
+                    status, data = _request_json_with_retry(
+                        f"https://api.isan.eu.org/nickname/ml?id={player_id}&zone={zone_id}"
                     )
-                    if r.status_code != 200:
+                    if status != 200:
                         result = {'ok': False, 'error': 'Verificación de Mobile Legends no disponible temporalmente. Intenta más tarde.'}
+                    elif data.get('success') and data.get('name'):
+                        result = {'ok': True, 'nombre': data['name']}
                     else:
-                        try:
-                            data = r.json()
-                        except Exception:
-                            data = {}
-                        if data.get('success') and data.get('name'):
-                            result = {'ok': True, 'nombre': data['name']}
-                        else:
-                            result = {'ok': False, 'error': 'ID o Zone ID no encontrado'}
+                        result = {'ok': False, 'error': 'ID o Zone ID no encontrado'}
 
             else:
                 result = {'ok': False, 'error': f'Tipo de verificación no soportado: {tipo}'}
-    except ext_requests.exceptions.JSONDecodeError:
-        print(f"[VALIDAR-ID] Respuesta no válida JSON para {tipo}, player_id={player_id}")
+    except (ext_requests.exceptions.RequestException, ValueError):
+        print(f"[VALIDAR-ID] Todos los intentos fallaron para {tipo}, player_id={player_id}")
         result = {'ok': False, 'error': 'Validación de ID no disponible temporalmente. Intenta de nuevo.'}
-    except ext_requests.exceptions.RequestException:
-        print(f"[VALIDAR-ID] Error de conexión con {tipo}, player_id={player_id}")
-        result = {'ok': False, 'error': 'Error de conexión al validar el ID. Intenta de nuevo.'}
     except Exception as e:
         print(f"[VALIDAR-ID] Error inesperado validando {tipo}, player_id={player_id}: {e}")
         result = {'ok': False, 'error': 'Error al validar el ID. Intenta de nuevo.'}
