@@ -7616,7 +7616,6 @@ def api_comprar():
         db.close()
         return jsonify({'ok': False, 'error': 'Producto no encontrado'}), 404
 
-    db.execute("CREATE TABLE IF NOT EXISTS usuario_api_categorias_bloqueadas (usuario_id INTEGER NOT NULL, categoria_id INTEGER NOT NULL, fecha TEXT DEFAULT (datetime('now','localtime')), PRIMARY KEY (usuario_id, categoria_id), FOREIGN KEY (usuario_id) REFERENCES usuarios(id), FOREIGN KEY (categoria_id) REFERENCES categorias(id))")
     categoria_bloqueada_api = db.execute(
         "SELECT 1 FROM usuario_api_categorias_bloqueadas WHERE usuario_id = ? AND categoria_id = ? LIMIT 1",
         (user['id'], int((prod['categoria_id'] if 'categoria_id' in prod.keys() else 0) or 0)),
