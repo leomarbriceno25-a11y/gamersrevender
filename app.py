@@ -3053,6 +3053,19 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
             'mensaje': 'Pedido rechazado'
         })
 
+def _pincentral_estado_recarga(data):
+    if not isinstance(data, dict):
+        return ''
+    status = str(data.get('status', '') or '').strip()
+    st = _pincentral_status_normalizado(status)
+    if st in ('completed', 'success', 'ok', 'done', 'approved', 'aprobado', 'completado'):
+        return 'completed'
+    if st in ('created', 'pending', 'processing', 'procesando', 'inprogress', 'in_progress', 'queued', 'recibido', 'received'):
+        return 'created'
+    if st in ('retry', 'reintentar'):
+        return 'retry'
+    return st
+
 
 def _es_error_de_red_pincentral(error, status_code):
     if not error:
