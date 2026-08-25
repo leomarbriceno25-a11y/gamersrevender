@@ -3119,23 +3119,18 @@ def procesar_pedido_pincentral_recarga_background(
             db2.commit()
             db2.close()
             enviar_webhook(user_id, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref_text, 'total': total})
-        elif refs:
+        else:
+            # Cualquier error queda en procesando para verificacion manual; no se reembolsa
+            notas = ref_text
+            if errores:
+                notas = (notas + '\n' if notas else '') + 'Errores:\n' + '\n'.join(errores)
             db2.execute(
                 "UPDATE pedidos SET estado = 'procesando', nombre_jugador = ?, referencia_externa = ? WHERE id = ?",
-                (receipt_text, ref_text, pedido_id)
+                (receipt_text, notas, pedido_id)
             )
             db2.commit()
             db2.close()
-            enviar_webhook(user_id, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'procesando', 'referencia': ref_text, 'total': total})
-        else:
-            db2.execute(
-                "UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?",
-                (ref_text, pedido_id)
-            )
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id, total, f"Reembolso: Error recarga PinCentral pedido #{pedido_id}")
-            enviar_webhook(user_id, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'cancelado', 'referencia': ref_text, 'reembolsado': True, 'total': total})
+            enviar_webhook(user_id, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'procesando', 'referencia': notas, 'total': total})
     except Exception as e:
         try:
             db_err = get_db()
@@ -4135,11 +4130,10 @@ def comprar():
 
         product_code = str((prod['pincentral_product_code'] if 'pincentral_product_code' in prod.keys() else '') or '').strip()
         if not product_code:
-            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", ('sin product_code PinCentral', pedido_id))
             db.commit()
             db.close()
-            recargar_saldo(user_id, total, f"Reembolso: Código PinCentral recarga no configurado pedido #{pedido_id}")
-            flash('Este producto no está configurado correctamente. Se reembolsó tu saldo.', 'error')
+            flash('Producto no configurado correctamente. El pedido quedó en procesando para verificación manual.', 'warning')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
         user = db.execute("SELECT nombre, email FROM usuarios WHERE id = ?", (user_id,)).fetchone()
@@ -4165,12 +4159,11 @@ def comprar():
         )
         if not val_ok:
             db2 = get_db()
-            db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            error_msg = validacion.get('error') or val_data.get('message') or 'Cuenta o ID de jugador inválido'
+            db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (f'validacion: {error_msg}'[:255], pedido_id))
             db2.commit()
             db2.close()
-            error_msg = validacion.get('error') or val_data.get('message') or 'Cuenta o ID de jugador inválido'
-            recargar_saldo(user_id, total, f"Reembolso: Validación PinCentral fallida pedido #{pedido_id}: {error_msg}")
-            flash(f'La validación falló: {error_msg}. Se reembolsó tu saldo.', 'error')
+            flash(f'Validación no confirmada: {error_msg}. El pedido quedó en procesando para verificación manual.', 'warning')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
         # Lanzar el procesamiento en segundo plano para no bloquear ni depender del timeout del request
@@ -7886,11 +7879,10 @@ def api_comprar():
 
         product_code = str((prod['pincentral_product_code'] if 'pincentral_product_code' in prod.keys() else '') or '').strip()
         if not product_code:
-            db.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            db.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", ('sin product_code PinCentral', pedido_id))
             db.commit()
             db.close()
-            recargar_saldo(user_id_api, total, f"Reembolso API: Código PinCentral recarga no configurado pedido #{pedido_id}")
-            return jsonify({'ok': False, 'error': 'El producto no está configurado correctamente', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)}), 400
+            return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando', 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': 'Producto no configurado; pedido en procesando para verificación manual'}), 202
 
         db.close()
         nombre_partes = str((dict(user).get('nombre', '') if user else '') or '').split(' ', 1)
@@ -7913,12 +7905,11 @@ def api_comprar():
         )
         if not val_ok:
             db2 = get_db()
-            db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
+            error_msg = validacion.get('error') or val_data.get('message') or 'Cuenta o ID de jugador inválido'
+            db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (f'validacion: {error_msg}'[:255], pedido_id))
             db2.commit()
             db2.close()
-            error_msg = validacion.get('error') or val_data.get('message') or 'Cuenta o ID de jugador inválido'
-            recargar_saldo(user_id_api, total, f"Reembolso API: Validación PinCentral fallida pedido #{pedido_id}: {error_msg}")
-            return jsonify({'ok': False, 'error': f'La validación falló: {error_msg}', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)}), 400
+            return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando', 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': f'Validación no confirmada: {error_msg}. Pedido en procesando para verificación manual.'}), 202
 
         # Lanzar el procesamiento en segundo plano para no bloquear ni depender del timeout del request
         db2 = get_db()
