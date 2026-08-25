@@ -1786,8 +1786,15 @@ def verificar_nombre_jugador(tipo, player_id, zone_id=''):
 
             else:
                 result = {'ok': False, 'error': f'Tipo de verificación no soportado: {tipo}'}
+    except ext_requests.exceptions.JSONDecodeError:
+        print(f"[VALIDAR-ID] Respuesta no válida JSON para {tipo}, player_id={player_id}")
+        result = {'ok': False, 'error': 'Validación de ID no disponible temporalmente. Intenta de nuevo.'}
+    except ext_requests.exceptions.RequestException:
+        print(f"[VALIDAR-ID] Error de conexión con {tipo}, player_id={player_id}")
+        result = {'ok': False, 'error': 'Error de conexión al validar el ID. Intenta de nuevo.'}
     except Exception as e:
-        result = {'ok': False, 'error': f'Error de conexión: {str(e)}'}
+        print(f"[VALIDAR-ID] Error inesperado validando {tipo}, player_id={player_id}: {e}")
+        result = {'ok': False, 'error': 'Error al validar el ID. Intenta de nuevo.'}
 
     _set_cached_nombre_jugador(tipo, player_id, zone_id, result)
     return result
