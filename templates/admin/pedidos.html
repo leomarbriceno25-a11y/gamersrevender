@@ -82,6 +82,16 @@
                             {% if p.referencia_externa %}
                             <code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;word-break:break-all;display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ p.referencia_externa }}">{{ p.referencia_externa[:18] }}{% if p.referencia_externa|length > 18 %}…{% endif %}</code>
                             <button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem;margin-top:0.2rem;" data-referencia="{{ p.referencia_externa|e }}" onclick="copiarReferenciaDesdeBoton(this)"><i class="fas fa-copy"></i> Copiar</button>
+                            {% elif p.usa_pincentral and p.pincentral_recarga_directa %}
+                            {% set pc_prefix = 'APIR' if p.referencia_cliente is not none else 'PCR' %}
+                            {% set pc_qty = p.pincentral_recarga_cantidad or 1 %}
+                            {% set pc_refs = [] %}
+                            {% for idx in range(1, pc_qty + 1) %}
+                            {% set _ = pc_refs.append('%s%s-%s'|format(pc_prefix, p.id, idx)) %}
+                            {% endfor %}
+                            {% set pc_ref_text = pc_refs|join('\n') %}
+                            <code style="background:var(--bg-primary);padding:0.15rem 0.4rem;border-radius:4px;font-size:0.7rem;word-break:break-all;display:block;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{{ pc_ref_text }}">{{ pc_refs[0] }}{% if pc_refs|length > 1 %} …{% endif %}</code>
+                            <button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem;margin-top:0.2rem;" data-referencia="{{ pc_ref_text|e }}" onclick="copiarReferenciaDesdeBoton(this)"><i class="fas fa-copy"></i> Copiar</button>
                             {% else %}-{% endif %}
                         </td>
                         <td style="max-width:150px;">

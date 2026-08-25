@@ -7369,7 +7369,8 @@ def admin_pedidos():
         tuple(params)
     ).fetchone()['c']
     pedidos = db.execute(
-        "SELECT p.*, u.nombre as usuario_nombre, pr.nombre as producto_nombre "
+        "SELECT p.*, u.nombre as usuario_nombre, pr.nombre as producto_nombre, "
+        "pr.usa_pincentral, pr.pincentral_recarga_directa, pr.pincentral_recarga_cantidad "
         "FROM pedidos p "
         "JOIN usuarios u ON p.usuario_id = u.id "
         "JOIN productos pr ON p.producto_id = pr.id" + where_sql +
