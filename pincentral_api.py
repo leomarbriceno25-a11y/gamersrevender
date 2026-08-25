@@ -132,7 +132,7 @@ def validar_recarga(product_code, service_user_id, additional_data='', additiona
     return _request('POST', '/api/recharges/validate', payload)
 
 
-def crear_recarga(product_code, service_user_id, order_id, additional_data='', additional_data_2='', client_email='', client_first_name='', client_last_name='', client_country='VE'):
+def crear_recarga(product_code, service_user_id, order_id, additional_data='', additional_data_2='', client_email='', client_first_name='', client_last_name='', client_country='VE', timeout=45):
     payload = {
         'order_id': str(order_id).strip(),
         'service_user_id': str(service_user_id).strip(),
@@ -150,4 +150,4 @@ def crear_recarga(product_code, service_user_id, order_id, additional_data='', a
         payload['client_last_name'] = str(client_last_name).strip()
     if client_country:
         payload['client_country'] = str(client_country).strip()[:2].upper()
-    return _request('POST', '/api/recharges', payload)
+    return _request('POST', '/api/recharges', payload, timeout=timeout)

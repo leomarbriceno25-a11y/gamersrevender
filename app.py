@@ -3054,6 +3054,99 @@ def procesar_pedido_pincentral_background(pedido_id, user_id, total, product_cod
         })
 
 
+def _es_error_de_red_pincentral(error, status_code):
+    if not error:
+        return False
+    err = str(error).lower()
+    red_keywords = ('timeout', 'timed out', 'connection', 'connect', 'read timed out', 'network', 'unreachable')
+    return any(k in err for k in red_keywords) or status_code is None or (isinstance(status_code, int) and status_code >= 500)
+
+
+def procesar_pedido_pincentral_recarga_background(
+    pedido_id, user_id, total, product_code, service_user_id, additional_data,
+    additional_data_2, recargas_total, order_prefix, client_email='',
+    client_first_name='', client_last_name='', client_country='VE'
+):
+    from pincentral_api import crear_recarga
+
+    refs = []
+    receipts = []
+    errores = []
+    pendientes_count = 0
+    try:
+        for idx in range(1, recargas_total + 1):
+            order_id = f"{order_prefix}{pedido_id}-{idx}"
+            resultado_pc = crear_recarga(
+                product_code=product_code,
+                service_user_id=service_user_id,
+                order_id=order_id,
+                additional_data=additional_data,
+                additional_data_2=additional_data_2,
+                client_email=client_email,
+                client_first_name=client_first_name,
+                client_last_name=client_last_name,
+                client_country=client_country,
+                timeout=300,
+            )
+            data_pc = resultado_pc.get('data', {}) if isinstance(resultado_pc.get('data', {}), dict) else {}
+            estado_pc = _pincentral_estado_recarga(data_pc)
+            ref = str(data_pc.get('id') or data_pc.get('receipt') or '').strip()
+            receipt = str(data_pc.get('receipt') or '').strip()
+            if ref:
+                refs.append(f"{idx}/{recargas_total}: {ref}")
+            if receipt:
+                receipts.append(f"{idx}/{recargas_total}: {receipt}")
+            if resultado_pc.get('ok') and estado_pc == 'completed':
+                continue
+            if resultado_pc.get('ok') and estado_pc in ('created', 'retry'):
+                pendientes_count += 1
+                continue
+            if _es_error_de_red_pincentral(resultado_pc.get('error'), resultado_pc.get('status_code')):
+                pendientes_count += 1
+                continue
+            error_msg = resultado_pc.get('error') or data_pc.get('message') or f"Estado: {data_pc.get('status', 'desconocido')}"
+            errores.append(f"{idx}/{recargas_total}: {error_msg}")
+            break
+
+        ref_text = '\n'.join(refs)
+        receipt_text = '\n'.join(receipts) or service_user_id
+        db2 = get_db()
+        if not errores and pendientes_count == 0:
+            db2.execute(
+                "UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?",
+                (receipt_text, ref_text, pedido_id)
+            )
+            db2.commit()
+            db2.close()
+            enviar_webhook(user_id, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref_text, 'total': total})
+        elif refs:
+            db2.execute(
+                "UPDATE pedidos SET estado = 'procesando', nombre_jugador = ?, referencia_externa = ? WHERE id = ?",
+                (receipt_text, ref_text, pedido_id)
+            )
+            db2.commit()
+            db2.close()
+            enviar_webhook(user_id, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'procesando', 'referencia': ref_text, 'total': total})
+        else:
+            db2.execute(
+                "UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?",
+                (ref_text, pedido_id)
+            )
+            db2.commit()
+            db2.close()
+            recargar_saldo(user_id, total, f"Reembolso: Error recarga PinCentral pedido #{pedido_id}")
+            enviar_webhook(user_id, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'cancelado', 'referencia': ref_text, 'reembolsado': True, 'total': total})
+    except Exception as e:
+        try:
+            db_err = get_db()
+            db_err.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+            db_err.commit()
+            db_err.close()
+        except Exception:
+            pass
+        enviar_webhook(user_id, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'procesando', 'mensaje': f'Excepción en segundo plano: {e}'})
+
+
 def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, package_id):
     from bloodstrike_api import FREEFIRE_PACKAGES, FREEFIRE_PROMO_PACKAGES, consultar_estado as consultar_estado_bloodstrike, recargar as recargar_bloodstrike
 
@@ -4080,65 +4173,22 @@ def comprar():
             flash(f'La validación falló: {error_msg}. Se reembolsó tu saldo.', 'error')
             return redirect(url_for('pedido_detalle', id=pedido_id))
 
-        try:
-            refs = []
-            receipts = []
-            errores = []
-            pendientes = 0
-            for idx in range(1, recargas_total + 1):
-                order_id = f"PCR{pedido_id}-{idx}"
-                resultado_pc = crear_recarga(
-                    product_code=product_code,
-                    service_user_id=id_juego,
-                    order_id=order_id,
-                    additional_data=request.form.get('input2', '').strip(),
-                    additional_data_2=request.form.get('additional_data_2', '').strip(),
-                )
-                data_pc = resultado_pc.get('data', {}) if isinstance(resultado_pc.get('data', {}), dict) else {}
-                estado_pc = _pincentral_estado_recarga(data_pc)
-                ref = str(data_pc.get('id') or data_pc.get('receipt') or '').strip()
-                receipt = str(data_pc.get('receipt') or '').strip()
-                if ref:
-                    refs.append(f"{idx}/{recargas_total}: {ref}")
-                if receipt:
-                    receipts.append(f"{idx}/{recargas_total}: {receipt}")
-                if resultado_pc.get('ok') and estado_pc == 'completed':
-                    continue
-                if resultado_pc.get('ok') and estado_pc in ('created', 'retry'):
-                    pendientes += 1
-                    continue
-                error_msg = resultado_pc.get('error') or data_pc.get('message') or f"Estado: {data_pc.get('status', 'desconocido')}"
-                errores.append(f"{idx}/{recargas_total}: {error_msg}")
-                break
-            ref_text = '\n'.join(refs)
-            receipt_text = '\n'.join(receipts) or id_juego
-            db2 = get_db()
-            if not errores and pendientes == 0:
-                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
-                db2.commit()
-                db2.close()
-                flash(f'Pedido #{pedido_id} completado ({recargas_total} recarga(s)).', 'success')
-                return redirect(url_for('pedido_detalle', id=pedido_id))
-            if refs:
-                db2.execute("UPDATE pedidos SET estado = 'procesando', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
-                db2.commit()
-                db2.close()
-                flash(f'Pedido #{pedido_id} quedó procesando/parcial. Referencias guardadas.', 'warning')
-                return redirect(url_for('pedido_detalle', id=pedido_id))
-            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref_text, pedido_id))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id, total, f"Reembolso: Error recarga PinCentral pedido #{pedido_id}")
-            flash('La recarga fue rechazada. Se reembolsó tu saldo.', 'error')
-            return redirect(url_for('pedido_detalle', id=pedido_id))
-        except Exception as e:
-            db2 = get_db()
-            db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id, total, f"Reembolso: Excepción PinCentral recarga pedido #{pedido_id}")
-            flash('Error inesperado en la recarga. Se reembolsó tu saldo.', 'error')
-            return redirect(url_for('pedido_detalle', id=pedido_id))
+        # Lanzar el procesamiento en segundo plano para no bloquear ni depender del timeout del request
+        db2 = get_db()
+        db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+        db2.commit()
+        db2.close()
+        threading.Thread(
+            target=procesar_pedido_pincentral_recarga_background,
+            args=(
+                pedido_id, user_id, total, product_code, id_juego,
+                input2, additional_data_2, recargas_total, 'PCR',
+                (user['email'] if user else ''), first_name, last_name, 'VE'
+            ),
+            daemon=True,
+        ).start()
+        flash(f'Pedido #{pedido_id} recibido. La recarga se procesará en segundo plano.', 'info')
+        return redirect(url_for('pedido_detalle', id=pedido_id))
 
     # Si el producto usa Blood Strike API
     if usa_bloodstrike:
@@ -7870,62 +7920,29 @@ def api_comprar():
             recargar_saldo(user_id_api, total, f"Reembolso API: Validación PinCentral fallida pedido #{pedido_id}: {error_msg}")
             return jsonify({'ok': False, 'error': f'La validación falló: {error_msg}', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)}), 400
 
-        try:
-            refs = []
-            receipts = []
-            errores = []
-            pendientes = 0
-            for idx in range(1, recargas_total + 1):
-                order_id = f"APIR{pedido_id}-{idx}"
-                resultado_pc = crear_recarga(
-                    product_code=product_code,
-                    service_user_id=id_juego,
-                    order_id=order_id,
-                    additional_data=input2,
-                    additional_data_2=str(data.get('additional_data_2', '') or '').strip(),
-                )
-                data_pc = resultado_pc.get('data', {}) if isinstance(resultado_pc.get('data', {}), dict) else {}
-                estado_pc = _pincentral_estado_recarga(data_pc)
-                ref = str(data_pc.get('id') or data_pc.get('receipt') or '').strip()
-                receipt = str(data_pc.get('receipt') or '').strip()
-                if ref:
-                    refs.append(f"{idx}/{recargas_total}: {ref}")
-                if receipt:
-                    receipts.append(f"{idx}/{recargas_total}: {receipt}")
-                if resultado_pc.get('ok') and estado_pc == 'completed':
-                    continue
-                if resultado_pc.get('ok') and estado_pc in ('created', 'retry'):
-                    pendientes += 1
-                    continue
-                error_msg = resultado_pc.get('error') or data_pc.get('message') or f"Estado: {data_pc.get('status', 'desconocido')}"
-                errores.append(f"{idx}/{recargas_total}: {error_msg}")
-                break
-            ref_text = '\n'.join(refs)
-            receipt_text = '\n'.join(receipts) or id_juego
-            db2 = get_db()
-            if not errores and pendientes == 0:
-                db2.execute("UPDATE pedidos SET estado = 'completado', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
-                db2.commit()
-                db2.close()
-                enviar_webhook(user_id_api, {'evento': 'pedido_actualizado', 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref_text, 'total': total})
-                return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'completado', 'referencia': ref_text, 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': f'Recarga completada ({recargas_total} recarga(s))'})
-            if refs:
-                db2.execute("UPDATE pedidos SET estado = 'procesando', nombre_jugador = ?, referencia_externa = ? WHERE id = ?", (receipt_text, ref_text, pedido_id))
-                db2.commit()
-                db2.close()
-                return jsonify({'ok': True, 'pedido_id': pedido_id, 'estado': 'procesando', 'referencia': ref_text, 'merchant_ref': merchant_ref, 'total': total, 'saldo_restante': get_saldo(user_id_api), 'mensaje': 'Recarga procesando/parcial. Referencias guardadas.'}), 202
-            db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref_text, pedido_id))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id_api, total, f"Reembolso API: Error recarga PinCentral pedido #{pedido_id}")
-            return jsonify({'ok': False, 'error': 'La recarga fue rechazada', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api), 'referencia': ref_text, 'merchant_ref': merchant_ref}), 400
-        except Exception as e:
-            db2 = get_db()
-            db2.execute("UPDATE pedidos SET estado = 'cancelado' WHERE id = ?", (pedido_id,))
-            db2.commit()
-            db2.close()
-            recargar_saldo(user_id_api, total, f"Reembolso API: Excepción PinCentral recarga pedido #{pedido_id}")
-            return jsonify({'ok': False, 'error': 'Error inesperado al procesar el pedido', 'pedido_id': pedido_id, 'reembolsado': True, 'saldo_restante': get_saldo(user_id_api)}), 500
+        # Lanzar el procesamiento en segundo plano para no bloquear ni depender del timeout del request
+        db2 = get_db()
+        db2.execute("UPDATE pedidos SET estado = 'procesando' WHERE id = ?", (pedido_id,))
+        db2.commit()
+        db2.close()
+        threading.Thread(
+            target=procesar_pedido_pincentral_recarga_background,
+            args=(
+                pedido_id, user_id_api, total, product_code, id_juego,
+                input2, additional_data_2_api, recargas_total, 'APIR',
+                (dict(user).get('email', '') if user else ''), first_name, last_name, 'VE'
+            ),
+            daemon=True,
+        ).start()
+        return jsonify({
+            'ok': True,
+            'pedido_id': pedido_id,
+            'estado': 'procesando',
+            'merchant_ref': merchant_ref,
+            'total': total,
+            'saldo_restante': get_saldo(user_id_api),
+            'mensaje': 'Recarga recibida y procesándose en segundo plano',
+        }), 202
 
     # Blood Strike API
     if usa_bloodstrike:
