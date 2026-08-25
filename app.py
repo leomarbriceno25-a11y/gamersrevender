@@ -3139,6 +3139,35 @@ def procesar_pedido_pincentral_recarga_background(
 
 def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, package_id):
     from bloodstrike_api import FREEFIRE_PACKAGES, FREEFIRE_PROMO_PACKAGES, consultar_estado as consultar_estado_bloodstrike, recargar as recargar_bloodstrike
+    import json
+    import traceback
+
+    def _safe_json(obj):
+        try:
+            return json.dumps(obj, default=str, ensure_ascii=False)[:4000]
+        except Exception:
+            return ''
+
+    def _log_auditoria(estado, detalle, payload=''):
+        db = get_db()
+        try:
+            row = db.execute("SELECT producto_id FROM pedidos WHERE id = ?", (pedido_id,)).fetchone()
+            producto_id = int(row['producto_id']) if row and row['producto_id'] else 0
+            db.execute(
+                "INSERT INTO recargas_auditoria (pedido_id, usuario_id, producto_id, proveedor, etapa, estado, detalle, payload, referencia) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (pedido_id, user_id, producto_id, 'bloodstrike', 'background', estado, detalle, payload, ref)
+            )
+            db.commit()
+        except Exception:
+            try:
+                db.rollback()
+            except Exception:
+                pass
+        finally:
+            try:
+                db.close()
+            except Exception:
+                pass
 
     package_key = str(package_id or '').strip()
     if package_key in {p['id'] for p in FREEFIRE_PROMO_PACKAGES}:
@@ -3194,19 +3223,18 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
                         })
                         return
                     if estado_api.get('final'):
+                        error_msg = estado_api.get('error') or estado_api.get('status') or 'Respuesta final no exitosa'
+                        _log_auditoria('error', error_msg, _safe_json(estado_api))
                         db_fail = get_db()
-                        db_fail.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+                        db_fail.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
                         db_fail.commit()
                         db_fail.close()
-                        recargar_saldo(user_id, total, f"Reembolso: Recarga rechazada pedido #{pedido_id}")
                         enviar_webhook(user_id, {
                             'evento': 'pedido_actualizado',
                             'pedido_id': pedido_id,
-                            'estado': 'cancelado',
+                            'estado': 'procesando',
                             'referencia': ref,
-                            'razon': 'La recarga fue rechazada',
-                            'reembolsado': True,
-                            'mensaje': 'Recarga rechazada',
+                            'mensaje': 'Recarga en verificación',
                             'tiempo_respuesta': estado_api.get('elapsed_seconds'),
                         })
                         return
@@ -3222,34 +3250,32 @@ def procesar_pedido_bloodstrike_background(pedido_id, user_id, total, id_juego, 
                 'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
             })
             return
-        db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+        db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
         db2.commit()
         db2.close()
-        recargar_saldo(user_id, total, f"Reembolso: Error API recarga pedido #{pedido_id}")
+        error_msg = resultado_api.get('error') or resultado_api.get('message') or 'Error en respuesta de recarga'
+        _log_auditoria('error', error_msg, _safe_json(resultado_api))
         enviar_webhook(user_id, {
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
-            'estado': 'cancelado',
+            'estado': 'procesando',
             'referencia': ref,
-            'razon': 'La recarga fue rechazada',
-            'reembolsado': True,
-            'mensaje': 'Recarga rechazada',
+            'mensaje': 'Recarga en verificación',
             'tiempo_respuesta': resultado_api.get('elapsed_seconds'),
         })
     except Exception as e:
+        error_msg = str(e)
+        _log_auditoria('exception', error_msg, traceback.format_exc())
         db2 = get_db()
-        db2.execute("UPDATE pedidos SET estado = 'cancelado', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
+        db2.execute("UPDATE pedidos SET estado = 'procesando', referencia_externa = ? WHERE id = ?", (ref, pedido_id))
         db2.commit()
         db2.close()
-        recargar_saldo(user_id, total, f"Reembolso: Excepción API recarga pedido #{pedido_id}")
         enviar_webhook(user_id, {
             'evento': 'pedido_actualizado',
             'pedido_id': pedido_id,
-            'estado': 'cancelado',
+            'estado': 'procesando',
             'referencia': ref,
-            'razon': 'Error inesperado al procesar la recarga',
-            'reembolsado': True,
-            'mensaje': 'Recarga rechazada',
+            'mensaje': 'Recarga en verificación',
         })
 
 
