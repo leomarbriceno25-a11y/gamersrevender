@@ -7642,18 +7642,51 @@ def api_comprar():
     db = get_db()
     if merchant_ref:
         pedido_existente = db.execute(
-            "SELECT id, estado FROM pedidos WHERE usuario_id = ? AND referencia_cliente = ? ORDER BY id DESC LIMIT 1",
+            "SELECT id, estado, total, referencia_externa, codigo_entregado, id_juego "
+            "FROM pedidos WHERE usuario_id = ? AND referencia_cliente = ? ORDER BY id DESC LIMIT 1",
             (user['id'], merchant_ref),
         ).fetchone()
         if pedido_existente:
             db.close()
+            pedido_id = int(pedido_existente['id'])
+            estado = str(pedido_existente['estado'] or '')
+            referencia = str(pedido_existente['referencia_externa'] or '').strip()
+            codigo = str(pedido_existente['codigo_entregado'] or '').strip()
+            saldo_restante = get_saldo(user['id'])
+            if estado == 'completado':
+                respuesta = {
+                    'ok': True,
+                    'pedido_id': pedido_id,
+                    'estado': estado,
+                    'merchant_ref': merchant_ref,
+                    'total': float(pedido_existente['total'] or 0),
+                    'referencia': referencia,
+                    'saldo_restante': saldo_restante,
+                    'mensaje': 'Recarga completada',
+                }
+                if codigo:
+                    respuesta['codigo'] = codigo
+                return jsonify(respuesta), 200
+            if estado in ('procesando', 'pendiente'):
+                return jsonify({
+                    'ok': True,
+                    'pedido_id': pedido_id,
+                    'estado': estado,
+                    'merchant_ref': merchant_ref,
+                    'total': float(pedido_existente['total'] or 0),
+                    'referencia': referencia,
+                    'saldo_restante': saldo_restante,
+                    'mensaje': 'Recarga en proceso',
+                }), 202
             return jsonify({
                 'ok': False,
-                'error': 'merchant_ref ya usado en otro pedido',
-                'pedido_id': int(pedido_existente['id']),
-                'estado': str(pedido_existente['estado'] or ''),
+                'pedido_id': pedido_id,
+                'estado': estado,
                 'merchant_ref': merchant_ref,
-            }), 409
+                'total': float(pedido_existente['total'] or 0),
+                'saldo_restante': saldo_restante,
+                'error': 'El pedido fue cancelado',
+            }), 200
 
 
     prod = db.execute("SELECT p.*, c.nombre as categoria_nombre, c.tipo as categoria_tipo, c.validar_id_api, c.validar_id_api_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.id = ? AND p.activo = 1", (producto_id,)).fetchone()
