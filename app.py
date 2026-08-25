@@ -7556,7 +7556,7 @@ def api_productos():
     user = request.api_user
     suscripcion_activa = _suscripcion_activa_desde_row(user)
     db = get_db()
-    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.campos_cliente, p.precio, p.precio_suscriptor, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.gamepoint_product_id, p.gamepoint_fields, p.moogold_category_id, p.moogold_variation_id, p.moogold_fields, p.bloodstrike_package_id, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
+    productos = db.execute("SELECT p.id, p.nombre, p.descripcion, p.campos_cliente, p.precio, p.precio_suscriptor, p.usa_api, p.usa_razer, p.razer_paquete, p.usa_deltaforce, p.deltaforce_paquete, p.usa_pincentral, p.pincentral_product_code, p.pincentral_fields, p.pincentral_recarga_directa, p.pincentral_entrega_directa, p.gamepoint_product_id, p.gamepoint_fields, p.moogold_category_id, p.moogold_variation_id, p.moogold_fields, p.bloodstrike_package_id, p.rechazo_automatico, p.recarga_manual, c.nombre as categoria, c.tipo as categoria_tipo FROM productos p JOIN categorias c ON p.categoria_id = c.id WHERE p.activo = 1 ORDER BY c.orden, p.nombre").fetchall()
     db.close()
     result = []
     for p in productos:
@@ -7575,6 +7575,9 @@ def api_productos():
         deltaforce_paquete = d.pop('deltaforce_paquete', 0)
         usa_api_pincentral = d.pop('usa_pincentral', 0)
         pincentral_product_code = (d.pop('pincentral_product_code', '') or '').strip()
+        pincentral_fields_raw = d.pop('pincentral_fields', '') or ''
+        pincentral_recarga_directa = int(d.pop('pincentral_recarga_directa', 0) or 0)
+        pincentral_entrega_directa = int(d.pop('pincentral_entrega_directa', 0) or 0)
         moogold_category_id = int(d.pop('moogold_category_id', 0) or 0)
         moogold_variation_id = int(d.pop('moogold_variation_id', 0) or 0)
         moogold_fields_raw = d.pop('moogold_fields', '') or ''
@@ -7615,7 +7618,11 @@ def api_productos():
         elif usa_api_deltaforce:
             d['campos_requeridos'] = [{'nombre': 'id_juego', 'descripcion': 'ID del jugador', 'tipo': 'string', 'opciones': []}]
         elif usa_api_pincentral:
-            d['campos_requeridos'] = []
+            if pincentral_recarga_directa:
+                pc_campos = _pincentral_parse_fields(pincentral_fields_raw)
+                d['campos_requeridos'] = [{'nombre': f['name'], 'descripcion': f['label'], 'tipo': 'string', 'opciones': []} for f in pc_campos]
+            else:
+                d['campos_requeridos'] = []
         else:
             d['campos_requeridos'] = []
         d.pop('gamepoint_product_id', None)
