@@ -4012,6 +4012,17 @@ def comprar():
     precio_unitario = _precio_producto_para_usuario(prod, user_row)
     total = precio_unitario * cantidad
 
+    # Evitar pedidos duplicados por doble click o reenvío del formulario
+    if id_juego:
+        dup = db.execute(
+            "SELECT id FROM pedidos WHERE usuario_id = ? AND producto_id = ? AND id_juego = ? AND fecha_pedido > datetime('now','localtime','-60 seconds') ORDER BY id DESC LIMIT 1",
+            (user_id, producto_id, id_juego)
+        ).fetchone()
+        if dup:
+            db.close()
+            flash('Ya existe un pedido reciente para este ID de jugador. Redirigiendo al pedido existente.', 'warning')
+            return redirect(url_for('pedido_detalle', id=dup['id']))
+
     desc_compra = f"Compra: {prod['nombre']} x{cantidad}"
     if precio_unitario != float((prod['precio'] if 'precio' in prod.keys() else 0) or 0):
         desc_compra += " (tarifa suscriptor)"

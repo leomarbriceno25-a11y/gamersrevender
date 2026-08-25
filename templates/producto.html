@@ -503,6 +503,20 @@ if (levelpassVerificado && playerIdPrefill) {
         }
     }
 }
+
+// Evitar doble submit en el formulario de compra
+(function() {
+    var form = document.getElementById('form-comprar');
+    var btn = document.getElementById('btn-comprar');
+    if (form && btn) {
+        form.addEventListener('submit', function() {
+            if (!btn.disabled) {
+                btn.disabled = true;
+                btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Procesando...';
+            }
+        });
+    }
+})();
 </script>
 {% endblock %}
 
