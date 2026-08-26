@@ -441,6 +441,7 @@ def _actualizar_precios_gamepoint_desde_tasa(db, tasa_myr_usd, margen_porcentaje
             db.execute("UPDATE productos SET precio_suscriptor = ? WHERE id = ?", (float(precio_usd), prod['id']))
         else:
             db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_usd), prod['id']))
+        db.commit()
         actualizados += 1
 
     return {
@@ -752,6 +753,7 @@ def _actualizar_precio_moogold_producto_desde_margen(db, margen_porcentaje, mg_p
             db.execute("UPDATE productos SET precio_suscriptor = ? WHERE id = ?", (float(precio_venta), int(prod_id)))
         else:
             db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_venta), int(prod_id)))
+        db.commit()
 
     return {
         'ok': True,
@@ -884,6 +886,7 @@ def _actualizar_precio_pincentral_producto(db, margin_percent, target_column='pr
         db.execute("UPDATE productos SET precio_suscriptor = ? WHERE id = ?", (float(precio_venta), int(prod_row['id'])))
     else:
         db.execute("UPDATE productos SET precio = ? WHERE id = ?", (float(precio_venta), int(prod_row['id'])))
+    db.commit()
 
     return {
         'ok': True,
@@ -5326,6 +5329,21 @@ def _iniciar_refresh_precios_async(origen='admin_manual_async'):
             result = _ejecutar_refresh_precios_proveedores(db, origen=origen)
             if result.get('ok'):
                 db.commit()
+                run_id = int(result.get('run_id') or 0)
+                total_cambios = int(result.get('total_cambios') or 0)
+                if run_id > 0 and total_cambios > 0:
+                    try:
+                        telegram_msg = _build_refresh_prices_telegram_message(db, run_id, total_cambios)
+                        enviar_telegram_con_keys(
+                            telegram_msg,
+                            token_key='telegram_precios_bot_token',
+                            chat_id_key='telegram_precios_chat_id',
+                            activo_key='telegram_precios_activo',
+                            fallback_to_default=False,
+                            async_send=True,
+                        )
+                    except Exception as te:
+                        print(f"[REFRESH_PRECIOS] Error enviando Telegram: {te}")
             else:
                 db.rollback()
                 print(f"[REFRESH_PRECIOS] Falló refresh async: {result.get('error', 'sin detalle')}")
@@ -6955,71 +6973,15 @@ def cron_restock_pines():
 
 @app.route('/cron/refresh-precios', methods=['GET'])
 def cron_refresh_precios():
-    """Endpoint para cron job - refresca precios GamePoint/MooGold y reporta cambios."""
+    """Endpoint para cron job - inicia refresh de precios en segundo plano."""
     cron_key = request.args.get('key', '')
     if cron_key != app.secret_key:
         return jsonify({'ok': False, 'error': 'No autorizado'}), 403
 
-    db = get_db()
     try:
-        result = _ejecutar_refresh_precios_proveedores(db, origen='cron_15m')
-        if not result.get('ok'):
-            db.rollback()
-            db.close()
-            return jsonify(result), 400
-
-        run_id = int(result.get('run_id') or 0)
-
-        base_url = str(request.args.get('base_url', '') or '').strip().rstrip('/')
-        if not base_url:
-            base_url = str(_config_get(db, 'admin_public_base_url', '') or '').strip().rstrip('/')
-        if not base_url:
-            base_url = request.url_root.rstrip('/')
-
-        link_path = url_for('admin_reporte_refresh_precios', refresh_id=run_id)
-        if base_url:
-            reporte_url = f"{base_url}{link_path}"
-        else:
-            reporte_url = link_path
-
-        total_cambios = int(result.get('total_cambios') or 0)
-        telegram_msg = ''
-        if total_cambios > 0:
-            telegram_msg = _build_refresh_prices_telegram_message(db, run_id, total_cambios)
-
-        db.commit()
-        db.close()
-
-        autorenovacion_global = {'renovadas': 0, 'saldo_insuficiente': 0, 'errores': 0, 'procesadas': 0}
-
-        telegram_notificado = False
-        telegram_error = ''
-        if total_cambios > 0:
-            telegram_result = enviar_telegram_con_keys(
-                telegram_msg,
-                token_key='telegram_precios_bot_token',
-                chat_id_key='telegram_precios_chat_id',
-                activo_key='telegram_precios_activo',
-                fallback_to_default=False,
-                async_send=False,
-            )
-            telegram_notificado = bool(telegram_result.get('ok'))
-            telegram_error = str(telegram_result.get('error') or '').strip()
-            if not telegram_notificado:
-                print(f"[REFRESH_PRECIOS] No se pudo enviar Telegram de precios: {telegram_error or 'sin detalle'}")
-
-        return jsonify({
-            'ok': True,
-            'run_id': run_id,
-            'total_cambios': total_cambios,
-            'reporte_url': reporte_url,
-            'autorenovacion': autorenovacion_global,
-            'telegram_notificado': telegram_notificado,
-            'telegram_error': telegram_error,
-        })
+        _iniciar_refresh_precios_async(origen='cron_15m')
+        return jsonify({'ok': True, 'mensaje': 'Refresh de precios iniciado en segundo plano'})
     except Exception as e:
-        db.rollback()
-        db.close()
         return jsonify({'ok': False, 'error': str(e)}), 500
 
 
